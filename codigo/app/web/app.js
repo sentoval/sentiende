@@ -243,7 +243,9 @@ function vistaRevision() {
   const extra = [["Ejercicio", datos.ejercicio], ["Entidad", d.entidad]].filter(([, x]) => x).map(([a, b]) => `${a}: <b>${esc(b)}</b>`).join(" · ");
   // 2 · persona
   const fich = buscarFichada(P);
-  const chipsPersona = leidas.map((p, i) => `<button type="button" class="chip peq ${R.persona === i ? "sel" : ""}" data-persona="${i}">${esc(p.completo)}${p.dni ? `<small class="mono">${esc(p.dni)}</small>` : ""}</button>`).join("")
+  // la persona elegida va siempre la primera
+  const chipsLeidas = leidas.map((p, i) => ({ sel: R.persona === i, html: `<button type="button" class="chip peq ${R.persona === i ? "sel" : ""}" data-persona="${i}">${esc(p.completo)}${p.dni ? `<small class="mono">${esc(p.dni)}</small>` : ""}</button>` }));
+  const chipsPersona = [...chipsLeidas.filter(c => c.sel), ...chipsLeidas.filter(c => !c.sel)].map(c => c.html).join("")
     + `<button type="button" class="chip peq ${R.persona === -1 ? "sel" : ""}" data-persona="-1">Otra persona…</button>`;
   const lm = loteMayoritario(d);
   const chipLote = lm ? `<button type="button" class="chip peq lote ${R.persona === -2 ? "sel" : ""}" id="r-lote" title="Lo que más se repite en los documentos ya confirmados de este lote">Como el resto del lote: ${esc(`${lm.per.nombre} ${lm.per.apellido1}`)}<small>${lm.n} de ${lm.total}</small></button>` : "";
@@ -308,8 +310,8 @@ function vistaRevision() {
   const filaOtras = otras.length ? `<div class="fila-rev otras"><span class="lab">Más personas en el documento</span><div class="otras-lista">
       ${otras.map(x => `<div class="otra"><span><b>${esc(x.p.completo)}</b>${x.p.dni ? ` <span class="mono muted">${esc(x.p.dni)}</span>` : ""}</span>
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
-          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}</span>`}</div>`).join("")}
-      <button type="button" class="btn peq" id="todos-terceros">Todos: tercero</button></div></div>` : "";
+          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}</span>`}</div>`).join("")}</div></div>` : "";
+  const pendientesOtras = otras.filter(x => !x.yaEsta).length;
   const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">Ver y unir</a></div>` : ""; })();
   return `
   <section class="barra-rev" aria-label="Revisar">
@@ -318,18 +320,24 @@ function vistaRevision() {
       <div class="paso"><span class="lab">1 · Tipo</span><select id="r-tipo">${R.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
         ${(d.alternativas || []).length ? `<span class="chips">${d.alternativas.map(a => `<button type="button" class="chip mini" data-tipo="${a.tipo}">${esc(nombreTipo(a.tipo))}</button>`).join("")}</span>` : ""}
         ${extra ? `<span class="sub">${extra}</span>` : ""}</div>
-      <div class="paso"><span class="lab">2 · ¿De quién es?</span><span class="chips">${chipLote}${chipsPersona}</span>${estadoPersona}</div>
+      <div class="paso"><span class="lab">2 · ¿De quién es?</span><span class="chips">${R.persona >= 0 ? chipsPersona.replace(/(<\/button>)/, "$1" + chipLote) : chipLote + chipsPersona}</span>${estadoPersona}</div>
       <div class="paso"><span class="lab">3 · ${clave ? FECHA_TXT[clave][0] : "Fecha"}</span>
         ${clave ? `<span class="chips">${chipsFecha || '<span class="sub">No ha leído ninguna.</span>'}</span><input type="date" id="r-fecha" aria-label="Otra fecha" value="${R.fecha && !candidatas.includes(R.fecha) ? R.fecha : ""}">` : '<span class="sub">Este tipo no lleva fecha en el nombre.</span>'}</div>
       <div class="paso"><span class="lab">4 · Expediente</span><div class="destinos" role="radiogroup" aria-label="Expediente">${opciones}</div></div>
       <div class="paso acciones-rev">
+        <a class="btn peq" href="#unir/${d.id}">Unir…</a>
+        <button class="btn peq" id="r-limbo">${ico("limbo", 15)}Limbo</button>
         <label class="check mini"><input type="checkbox" id="r-comun" ${R.comun ? "checked" : ""}><span>De todo el expediente</span></label>
-        <label class="check mini"><input type="checkbox" id="r-priv" ${R.priv ? "checked" : ""}><span>No compartir</span></label>
-        <button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button>
-        <span class="acciones"><button class="btn peq" id="r-limbo">${ico("limbo", 15)}Limbo</button><a class="btn peq" href="#unir/${d.id}">Unir…</a></span>
       </div>
     </div>
-    ${avisoDup}${filaDatos}${filaOtras}
+    ${avisoDup}${filaDatos}
+    <div class="pie-rev ${filaOtras ? "con-otras" : ""}">
+      <div class="pie-izq">${filaOtras}</div>
+      <div class="pie-der">
+        <div class="pie-btns">${pendientesOtras > 1 ? '<button type="button" class="btn peq" id="todos-terceros">Todos: tercero</button>' : ""}<button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button></div>
+        <label class="check mini"><input type="checkbox" id="r-priv" ${R.priv ? "checked" : ""}><span>No compartir</span></label>
+      </div>
+    </div>
   </section>
   <div class="rev-abajo">
     <nav class="cola" aria-label="Pendientes">${lista}</nav>

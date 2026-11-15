@@ -314,3 +314,19 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhe
 .barra-rev .btn.pri { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
 .pie-tabla { padding: 10px 14px; border-top: 1px solid var(--border); }
 td.der { text-align: right; white-space: nowrap; }
+
+/* v1.1 · disposición de Joan (15/11 15:54): acciones secundarias arriba a la derecha; confirmar abajo a la derecha */
+.barra-pasos { grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.4fr) minmax(170px, .9fr) minmax(260px, 1.3fr) 170px; }
+.acciones-rev { display: flex; flex-direction: column; align-items: stretch !important; gap: 8px; padding-top: 22px; }
+.acciones-rev .btn { justify-content: center; width: 100%; }
+.acciones-rev .check.mini { margin-top: 4px; }
+.pie-rev { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: end; padding-top: 10px; border-top: 1px solid var(--border); }
+.pie-rev .pie-izq:empty { display: none; }
+.pie-rev:not(.con-otras) { grid-template-columns: 1fr; justify-items: end; }
+.pie-rev .fila-rev { border-top: 0; padding-top: 0; }
+.pie-rev.con-otras .pie-der { align-self: start; padding-top: 24px; }
+.pie-der { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.pie-btns { display: flex; gap: 10px; align-items: center; }
+.pie-der .btn.pri { height: 44px; min-width: 210px; font-size: 15px; justify-content: center; }
+.otra { min-height: 42px; }
+@media (max-width: 1350px) { .acciones-rev { flex-direction: row !important; padding-top: 0; } .acciones-rev .btn { width: auto; } }
