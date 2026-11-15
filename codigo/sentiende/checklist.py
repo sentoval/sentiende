@@ -31,6 +31,8 @@ def evaluar(variante, almacen, expediente_id, hoy=None):
             quien = f'{persona["nombre"]} {persona["apellido1"]}'.strip() if persona else "Expediente"
             nombre_tipo = variante.docs.get(it["tipo"], {}).get("nombres", {}).get("es", [it["tipo"]])[0]
             filas.append({"tipo": it["tipo"], "documento": nombre_tipo, "quien": quien, "estado": estado,
+                          "persona_id": persona["id"] if persona else None, "clave": f'{persona["id"] if persona else "exp"}:{it["tipo"]}',
+                          "familia": variante.docs.get(it["tipo"], {}).get("familia", ""),
                           "detalle": detalle, "importancia": it.get("importancia"), "archivos": [d["nombre_final"] for d in encontrados]})
             if estado in ("Caducado", "Incompleto"):
                 avisos.append(f"{nombre_tipo} · {quien}: {detalle}")

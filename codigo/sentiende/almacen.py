@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS textos_documento(
 CREATE TABLE IF NOT EXISTS avisos_cliente(
   expediente_id INTEGER, mensaje TEXT, activo INTEGER DEFAULT 1, creado TEXT, resuelto TEXT,
   PRIMARY KEY(expediente_id, mensaje));
+CREATE TABLE IF NOT EXISTS terceros_lote(
+  lote_id INTEGER, nombre TEXT, PRIMARY KEY(lote_id, nombre));
 CREATE TABLE IF NOT EXISTS eventos(
   id INTEGER PRIMARY KEY, fecha TEXT, documento_id INTEGER, lote_id INTEGER, fase INTEGER,
   nivel TEXT, mensaje TEXT);
