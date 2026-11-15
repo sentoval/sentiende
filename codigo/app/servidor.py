@@ -134,7 +134,8 @@ class App:
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
         return {"trabajando": self.trabajando, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
-                            "limbo": cuenta("limbo"), "avisos": len(a.avisos_cliente()) + len(a.eventos(nivel="se")),
+                            "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
+                            "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
                             "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0]}}
 
     def documento(self, did):
@@ -416,6 +417,9 @@ def crear_manejador(app):
                             m.no_es_tarjeta(int(datos["documento"])); return self._json({"ok": True})
                         return self._json(m.guardar_tarjeta(int(datos["documento"]), int(datos["expediente"]), datos.get("entidad"), datos.get("contacto") or {}))
                     g = m.gestion
+                    if p == "/api/avisos_se_vistos":
+                        ultimo = m.almacen.db.execute("SELECT COALESCE(MAX(id), 0) FROM eventos WHERE nivel = 'se'").fetchone()[0]
+                        return self._json(g.guardar_ajustes({"avisos_se_visto": ultimo}))
                     if p == "/api/estado_expediente":
                         return self._json(g.cambiar_estado(int(datos["expediente"]), datos["estado"], datos.get("extra")))
                     if p == "/api/operacion":

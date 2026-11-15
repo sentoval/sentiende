@@ -64,18 +64,18 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
+    ${c.avisos_se ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos Se: problemas del programa">${ico("bell", 18)}<span>Avisos del programa</span><b>${c.avisos_se}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("revision", "check", "Centro de revisión", c.revisar)}
       ${item("motor", "motor", "Motor de proceso", (c.pendientes - (c.revisar || 0)) + (c.cuarentena || 0))}
-      ${item("avisos", "bell", "Avisos", c.avisos)}
       ${item("personas", "user", "Personas")}
       ${item("estadisticas", "chart", "Estadísticas")}
     </div>
@@ -925,11 +925,20 @@ async function cargarExpediente(id, suave) {
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
 let AV = null, TMP = null;
-function vistaAvisos() {
+function vistaAvisosCliente() {
   if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
-  return `<div class="cab"><div><small>Avisos</small><h1>Avisos</h1><div class="sub">Avisos Cliente: lo que falta o caducó. Avisos Se: problemas del programa o de los archivos.</div></div></div>
-  <section class="tarjeta"><h2>Avisos Cliente</h2>${AV.cliente.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">expediente ${a.expediente_id}</span></div>`).join("") || '<span class="sub">Nada pendiente.</span>'}</section>
-  <section class="tarjeta"><h2>Avisos Se</h2>${AV.se.slice().reverse().map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Nada pendiente.</span>'}</section>`;
+  const exps = Object.fromEntries(S.expedientes.map(e => [e.id, e]));
+  const por = {}; AV.cliente.forEach(a => (por[a.expediente_id] = por[a.expediente_id] || []).push(a));
+  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>Avisos cliente</h1><div class="sub">Lo que falta o ha caducado en cada expediente. Desaparecen solos cuando llega el documento.</div></div></div>
+  ${Object.keys(por).length ? Object.entries(por).map(([eid, l]) => `<section class="tarjeta"><div class="neg-cab"><h2><a href="#expediente/${eid}">${esc(exps[eid]?.nombre || "Expediente " + eid)}</a></h2><span class="sub">${l.length} aviso(s)</span></div>
+    ${l.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">desde ${fmtF(a.creado)}</span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}`;
+}
+function vistaAvisosSe() {
+  if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
+  const nuevos = S.estado.cuentas.avisos_se || 0;
+  return `<div class="cab"><div><h1>Avisos del programa</h1><div class="sub">Problemas del motor, de la versión o de los archivos (Avisos Se). La campanita del menú solo aparece cuando hay alguno nuevo.</div></div>
+    <div class="acciones">${nuevos ? `<button class="btn pri" id="se-vistos">${ico("check")}Marcar como vistos</button>` : ""}</div></div>
+  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
 }
 function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
@@ -1124,7 +1133,8 @@ function pintar() {
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, () => {}], avisos_se: [vistaAvisosSe, () => $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); })],
+    avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
     bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)] };
@@ -1147,7 +1157,7 @@ async function ir() {
   if (r === "expediente") return cargarExpediente(+id);
   if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
   if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
-  if (r === "avisos") AV = await api("avisos");
+  if (["avisos", "avisos_se", "avisos_cliente"].includes(r)) AV = await api("avisos");
   if (r === "cuarentena") CUA = await api("cuarentena");
   if (r === "personas" || r === "persona") PERS = await api("personas");
   if (r === "papelera") PAP = await api("papelera");
@@ -1218,7 +1228,7 @@ function vistaExpedientes() {
   const peso = e => (e.marcas.prioridad === "alta" ? 0 : e.marcas.prioridad === "media" ? 1 : e.marcas.prioridad === "baja" ? 2 : 4) - (e.marcas.favorito ? 0.5 : 0);
   const lista = S.expedientes.filter(grupos[EXP_TAB]).sort((a, b) => peso(a) - peso(b) || b.id - a.id);
   return `<div class="cab"><div><h1>Expedientes</h1><div class="sub">Se crean desde el Centro de revisión al emparejar el primer documento, o aquí a mano. Primero los de campanita, luego los favoritos.</div></div>
-    <div class="acciones"><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
+    <div class="acciones"><a class="btn avisos-cli" href="#avisos_cliente">${ico("bell", 16)}Avisos cliente${S.estado.cuentas.avisos_cliente ? `<span class="num">${S.estado.cuentas.avisos_cliente}</span>` : ""}</a><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
   ${NUEVO_EXP ? formNuevoExp() : ""}
   <nav class="pestanas">${Object.entries(nombres).map(([k, n]) => `<a href="javascript:void 0" data-exp-tab="${k}" ${k === EXP_TAB ? 'aria-current="page"' : ""}>${n}<span class="num">${S.expedientes.filter(grupos[k]).length}</span></a>`).join("")}</nav>
   ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th></tr></thead><tbody>

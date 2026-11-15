@@ -88,6 +88,8 @@ class Gestion:
             aj["apariencia"] = {"tamano": max(80, min(140, int(nuevos["apariencia"].get("tamano", 100))))}
         if "bienvenida_vista" in nuevos:
             aj["bienvenida_vista"] = bool(nuevos["bienvenida_vista"])
+        if "avisos_se_visto" in nuevos:
+            aj["avisos_se_visto"] = int(nuevos["avisos_se_visto"])
         self.m.carpetas.datos.mkdir(parents=True, exist_ok=True)
         self._ruta_ajustes.write_text(json.dumps(aj, ensure_ascii=False, indent=1), encoding="utf-8")
         self.aplicar()

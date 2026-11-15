@@ -538,3 +538,11 @@ select { background: var(--bg); color: var(--text); border: 1px solid var(--bord
 .checklist .neg-cab h2 { font-size: 15px; }
 select.misma { height: 28px; font-size: 12.5px; max-width: 220px; }
 select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-color: var(--selFondo); }
+
+/* Avisos: «Avisos cliente» dentro de Expedientes; campanita de Avisos Se arriba del todo solo si hay algo nuevo */
+.campana-se { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #3A2C0B; border: 1px solid #FBBF24; color: #FDE68A; text-decoration: none; font-weight: 600; font-size: 13px; animation: latido-se 2s ease-in-out infinite; }
+.campana-se b { margin-left: auto; background: #FBBF24; color: #1A1406; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.campana-se svg { color: #FBBF24; }
+@keyframes latido-se { 50% { box-shadow: 0 0 0 4px rgba(251,191,36,.18); } }
+.avisos-cli .num { margin-left: 6px; background: var(--warn); color: #1A1406; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.dato.nuevo span:first-child { color: var(--text); font-weight: 600; }
