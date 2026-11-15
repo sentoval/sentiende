@@ -48,11 +48,11 @@ function aviso(txt, mal = false) {
 }
 const pill = (t, c = "todo") => `<span class="pill p-${c}">${esc(t)}</span>`;
 const nombreTipo = id => (S.info.tipos.find(t => t.id === id) || {}).nombre || id || "—";
-const ESTADOS = { en_proceso: ["Trabajando", "acc"], espera_emparejar: ["Para revisar", "warn"], parado: ["Parado", "bad"], guardado: ["Guardado", "ok"],
+const ESTADOS = { en_proceso: ["Trabajando", "acc"], espera_emparejar: ["Para revisar", "warn"], parado: ["Parado", "bad"], guardado: ["Guardado", "ok"], contacto: ["Contacto de banco", "ok"],
   limbo: ["En el Limbo", "todo"], unido: ["Unido a otro", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
 const est = e => pill(...(ESTADOS[e] || [e, "todo"]));
 function fbar(fase, estado) {
-  const n = estado === "guardado" || estado === "limbo" ? 10 : fase;
+  const n = ["guardado", "limbo", "contacto"].includes(estado) ? 10 : fase;
   const cls = estado === "parado" ? "bad" : estado === "espera_emparejar" || estado === "duplicado" ? "warn" : "on";
   let s = '<span class="fbar" aria-hidden="true">';
   for (let i = 0; i < 10; i++) s += `<i class="${i < n ? cls : ""}"></i>`;
@@ -159,16 +159,16 @@ function pestanasMotor(activa) {
 }
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);
-  const pendiente = x => x.documentos.some(d => !["guardado", "limbo", "duplicado"].includes(d.estado));
+  const pendiente = x => x.documentos.some(d => !["guardado", "limbo", "duplicado", "contacto"].includes(d.estado));
   const l = lotes.find(x => x.id === LOTE) || lotes.find(pendiente) || lotes[0];
   if (!l) return `<div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
   const docs = l.documentos;
-  const enFase = i => docs.filter(d => (d.estado === "guardado" || d.estado === "limbo" ? 10 : d.fase) === i + 1 || (i === 6 && d.estado === "espera_emparejar")).length;
-  const minF = Math.min(...docs.map(d => d.estado === "guardado" || d.estado === "limbo" ? 10 : d.estado === "espera_emparejar" ? 7 : d.fase));
+  const enFase = i => docs.filter(d => (["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.fase) === i + 1 || (i === 6 && d.estado === "espera_emparejar")).length;
+  const minF = Math.min(...docs.map(d => ["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.estado === "espera_emparejar" ? 7 : d.fase));
   const parado = docs.find(d => d.estado === "parado");
   const espera = docs.filter(d => d.estado === "espera_emparejar").length;
-  const hechos = docs.filter(d => ["guardado", "limbo", "duplicado"].includes(d.estado)).length;
-  const pct = Math.round(100 * docs.reduce((s, d) => s + (["guardado", "limbo", "duplicado"].includes(d.estado) ? 10 : d.fase), 0) / (10 * Math.max(docs.length, 1)));
+  const hechos = docs.filter(d => ["guardado", "limbo", "duplicado", "contacto"].includes(d.estado)).length;
+  const pct = Math.round(100 * docs.reduce((s, d) => s + (["guardado", "limbo", "duplicado", "contacto"].includes(d.estado) ? 10 : d.fase), 0) / (10 * Math.max(docs.length, 1)));
   const pipe = FASES.map((f, i) => {
     const n = i + 1;
     let c = n < minF ? "hecha" : n === minF ? (parado ? "fallo" : espera && n === 7 ? "pregunta" : "ahora") : "";
@@ -212,13 +212,21 @@ const FIN_ICO = { hipotecario: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V1
 const fmtF = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
 const fmtM = iso => iso ? iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
 
+// Documentos donde salen notarios, vendedores, representantes del banco…: nunca se elige a nadie solo
+const TIPOS_VARIAS_PERSONAS = new Set(["escritura", "notasimple", "tasacion", "arras", "compraventa", "constitucion", "divorcio"]);
 function iniciarRevision(d) {
-  const datos = d.datos || {}, p0 = (datos.personas || [])[0] || {};
+  const datos = d.datos || {}, leidas = datos.personas || [];
   const fin = (S.info.finalidades_visibles || Object.keys(S.info.variante.finalidades))[0];
-  S.rev = { tipo: d.tipo || "", persona: p0.completo ? 0 : -1, fecha: null, finalidad: fin,
-    nuevo: { nombre: p0.nombre || "", ap1: p0.apellido1 || "", ap2: p0.apellido2 || "", dni: p0.dni || (datos.dni || [])[0] || "" } };
-  const lm = !p0.completo && loteMayoritario(d);
-  if (lm) usarLote(lm);      // sin ningún nombre leído: se propone como el resto del lote
+  const otros = {};
+  leidas.forEach((p, i) => { if (p.tercero_lote) otros[i] = "tercero"; });        // ya marcados como terceros en este lote
+  const candidatas = leidas.map((p, i) => ({ p, i })).filter(x => !x.p.tercero_lote);
+  const variasPersonas = candidatas.length > 1 || TIPOS_VARIAS_PERSONAS.has(d.tipo);
+  const elegida = !variasPersonas && candidatas[0];
+  S.rev = { tipo: d.tipo || "", persona: elegida ? elegida.i : -3, fecha: null, finalidad: fin, otros,
+    nuevo: elegida ? { nombre: elegida.p.nombre || "", ap1: elegida.p.apellido1 || "", ap2: elegida.p.apellido2 || "", dni: elegida.p.dni || (datos.dni || [])[0] || "" }
+                   : { nombre: "", ap1: "", ap2: "", dni: "" } };
+  const lm = !elegida && loteMayoritario(d);
+  if (lm) usarLote(lm);      // sin persona clara: se propone como el resto del lote
 }
 function usarLote(lm) {
   const R = S.rev, p = lm.per;
@@ -274,12 +282,15 @@ function vistaRevision() {
   // 2 · persona
   const fich = buscarFichada(P);
   // la persona elegida va siempre la primera
-  const chipsLeidas = leidas.map((p, i) => ({ sel: R.persona === i, html: `<button type="button" class="chip peq ${R.persona === i ? "sel" : ""}" data-persona="${i}">${esc(p.completo)}${p.dni ? `<small class="mono">${esc(p.dni)}</small>` : ""}</button>` }));
+  const esTercero = i => (R.otros || {})[i] === "tercero";
+  const chipsLeidas = leidas.map((p, i) => ({ sel: R.persona === i, html: esTercero(i)
+      ? `<span class="chip peq tercero" title="Marcado como tercero: no se ficha">${esc(p.completo)}<small>tercero</small><button type="button" class="x-chip" data-no-tercero="${i}" aria-label="Ya no es tercero">↺</button></span>`
+      : `<span class="chip-par"><button type="button" class="chip peq ${R.persona === i ? "sel" : ""}" data-persona="${i}">${esc(p.completo)}${p.dni ? `<small class="mono">${esc(p.dni)}</small>` : ""}</button><button type="button" class="x-chip" data-tercero="${i}" title="Es un tercero (notario, vendedor, banco…): no se ficha" aria-label="Marcar ${esc(p.completo)} como tercero">Tercero</button></span>` }));
   const chipsPersona = [...chipsLeidas.filter(c => c.sel), ...chipsLeidas.filter(c => !c.sel)].map(c => c.html).join("")
     + `<button type="button" class="chip peq ${R.persona === -1 ? "sel" : ""}" data-persona="-1">Otra persona…</button>`;
   const lm = loteMayoritario(d);
   const chipLote = lm ? `<button type="button" class="chip peq lote ${R.persona === -2 ? "sel" : ""}" id="r-lote" title="Lo que más se repite en los documentos ya confirmados de este lote">Como el resto del lote: ${esc(`${lm.per.nombre} ${lm.per.apellido1}`)}<small>${lm.n} de ${lm.total}</small></button>` : "";
-  const estadoPersona = fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
+  const estadoPersona = R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
     : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`;
   // 3 · fecha
   const clave = R.tipo ? (d.fecha_claves || {})[R.tipo] : null;
@@ -321,10 +332,10 @@ function vistaRevision() {
         ${x.exps.filter(e => e.estado === "abierto").map(e => `<button type="button" class="btn peq" data-ir-exp="${e.id}">Añadir a «${esc(e.nombre)}»</button>`).join(" ")}</div>`).join("")}
       <label class="check"><input type="checkbox" id="dup-ok" ${R.dupOk ? "checked" : ""}><span>Es otra persona o quiero otro expediente aparte</span></label></div>` : "";
   // datos de la persona (para persona nueva o expediente nuevo)
-  const mostrarDatos = R.destino === "nuevo" || R.persona === -1 || !fich;
+  const mostrarDatos = R.destino === "nuevo" || R.persona === -1 || (!fich && R.persona !== -3);
   const finalidades = Object.entries(v.finalidades).filter(([k]) => (S.info.finalidades_visibles || [k]).includes(k)).map(([k, n]) => `<button type="button" class="fin-pill ${R.finalidad === k ? "sel" : ""}" data-fin="${k}" aria-pressed="${R.finalidad === k}">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${FIN_ICO[k] || IC.folder}</svg>${esc(n)}</button>`).join("");
-  const filaDatos = mostrarDatos ? `<div class="fila-rev"><span class="lab">${R.destino === "nuevo" ? "Expediente nuevo" : "Datos de la persona"}</span>
+  const filaDatos = mostrarDatos ? `<div class="fila-rev"><span class="lab">${R.destino === "nuevo" ? "Expediente nuevo" : "Datos de la persona"} <button type="button" class="btn peq vaciar" id="r-vaciar" title="Borrar los cuatro campos">${ico("x", 13)}Vaciar</button></span>
       <div class="campos-inline">
         <div class="campo"><label for="n-nom">Nombre</label><input id="n-nom" data-n="nombre" value="${esc(P.nombre)}"></div>
         <div class="campo"><label for="n-ap1">Primer apellido</label><input id="n-ap1" data-n="ap1" value="${esc(P.ap1)}"></div>
@@ -342,20 +353,37 @@ function vistaRevision() {
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
           .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}</span>`}</div>`).join("")}</div></div>` : "";
   const pendientesOtras = otras.filter(x => !x.yaEsta).length;
-  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">Ver y unir</a></div>` : ""; })();
-  return `
-  <section class="barra-rev" aria-label="Revisar">
+  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a></div>` : ""; })();
+  // ¿tarjeta de visita? Se pregunta siempre, arriba y en grande: no se puede confirmar sin responder
+  const tj = datos.tarjeta && !datos.tarjeta_descartada ? datos.tarjeta : null;
+  if (tj && !R.tj) { const lm2 = loteMayoritario(d); R.tj = { ...tj, expediente: lm2 ? lm2.exp.id : (abiertos[0] || {}).id || "" }; }
+  const T = R.tj || {};
+  const preguntaTarjeta = tj ? `<section class="tarjeta-preg" role="alertdialog" aria-labelledby="tj-tit">
+    <div class="tj-cab"><span class="tj-ico">☎</span><div><h2 id="tj-tit">¿Es una TARJETA DE VISITA o datos de contacto de un banco?</h2>
+      <span>Este documento tiene muy poco texto, con teléfono o correo y algo de banco o cargo. Si es la tarjeta del gestor, del director o de la oficina, se guarda como contacto del banco en el expediente. <b>Responde antes de seguir.</b></span></div></div>
+    <div class="tj-campos">
+      <div class="campo"><label for="tj-entidad">Banco</label><input id="tj-entidad" list="tj-bancos" value="${esc(T.entidad || "")}"><datalist id="tj-bancos">${S.info.bancos.map(b => `<option value="${esc(b)}">`).join("")}</datalist></div>
+      ${[["nombre", "Nombre"], ["cargo", "Cargo"], ["movil", "Móvil"], ["telefono", "Teléfono"], ["email", "Correo"], ["oficina", "Oficina"], ["direccion", "Dirección"]]
+        .map(([k, l]) => `<div class="campo"><label for="tj-${k}">${l}</label><input id="tj-${k}" data-tj="${k}" value="${esc(T[k] || "")}"></div>`).join("")}
+      <div class="campo"><label for="tj-exp">Expediente</label><select id="tj-exp">${abiertos.map(e => `<option value="${e.id}" ${+T.expediente === e.id ? "selected" : ""}>${esc(e.nombre)}</option>`).join("")}</select></div>
+    </div>
+    <div class="acciones"><button class="btn pri" id="tj-si">${ico("check")}Sí, guardar como contacto del banco</button><button class="btn" id="tj-no">No, es un documento normal</button></div></section>` : "";
+  R.tarjetaPendiente = !!tj;
+  return `${preguntaTarjeta}
+  <section class="barra-rev ${tj ? "bloqueada" : ""}" aria-label="Revisar">
     <div class="barra-cab"><b>Revisar</b><span class="sub">${esc(d.nombre_recibido)} · ${d.motivo ? esc(d.motivo) : "clasificado con " + Math.round((d.confianza || 0) * 100) + " %"} · ${cola.length} pendiente(s)</span>${union}</div>
     <div class="barra-pasos">
       <div class="paso"><span class="lab">1 · Tipo</span><select id="r-tipo">${R.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
         ${(d.alternativas || []).length ? `<span class="chips">${d.alternativas.map(a => `<button type="button" class="chip mini" data-tipo="${a.tipo}">${esc(nombreTipo(a.tipo))}</button>`).join("")}</span>` : ""}
         ${extra ? `<span class="sub">${extra}</span>` : ""}</div>
-      <div class="paso"><span class="lab">2 · ¿De quién es?</span><span class="chips">${R.persona >= 0 ? chipsPersona.replace(/(<\/button>)/, "$1" + chipLote) : chipLote + chipsPersona}</span>${estadoPersona}</div>
+      <div class="paso"><span class="lab">2 · ¿De quién es?</span><span class="chips">${R.persona >= 0 ? chipsPersona.replace(/(<\/span>)/, "$1" + chipLote) : chipLote + chipsPersona}</span>${estadoPersona}</div>
       <div class="paso"><span class="lab">3 · ${clave ? FECHA_TXT[clave][0] : "Fecha"}</span>
         ${clave ? `<span class="chips">${chipsFecha || '<span class="sub">No ha leído ninguna.</span>'}</span><input type="date" id="r-fecha" aria-label="Otra fecha" value="${R.fecha && !candidatas.includes(R.fecha) ? R.fecha : ""}">` : '<span class="sub">Este tipo no lleva fecha en el nombre.</span>'}</div>
-      <div class="paso"><span class="lab">4 · Expediente</span><div class="destinos" role="radiogroup" aria-label="Expediente">${opciones}</div></div>
+      <div class="paso"><span class="lab">4 · Expediente</span><div class="destinos" role="radiogroup" aria-label="Expediente">${opciones}</div>
+        ${R.verMover ? `<div class="mover-rev"><label for="r-mover-sel">Mover a otro expediente</label><select id="r-mover-sel"><option value="">— Elegir —</option>${abiertos.map(e => `<option value="e:${e.id}" ${R.destino === "e:" + e.id ? "selected" : ""}>${esc(e.nombre)} · ${esc(e.personas.map(p => p.nombre + " " + p.apellido1).join(", "))}</option>`).join("")}</select></div>` : ""}</div>
       <div class="paso acciones-rev">
-        <a class="btn peq" href="#unir/${d.id}">Unir…</a>
+        <a class="btn peq" href="#unir/${d.id}" title="Juntar varias fotos u hojas en un solo PDF">Unir páginas</a>
+        <button type="button" class="btn peq" id="r-mover" title="Llevar este documento a cualquier expediente">Mover a otro expediente…</button>
         <button class="btn peq" id="r-limbo">${ico("limbo", 15)}Limbo</button>
         <hr class="sep-acc">
         <div class="ambito" role="radiogroup" aria-label="De quién es el documento">
@@ -419,6 +447,26 @@ function activarRevision() {
     R.dupOk = false; pintar();
   }));
   $("#r-otro")?.addEventListener("change", e => { if (e.target.value) { R.destino = e.target.value; R.dupOk = false; pintar(); } });
+  document.querySelectorAll("[data-tercero]").forEach(b => b.addEventListener("click", () => {
+    const i = +b.dataset.tercero; R.otros = { ...(R.otros || {}), [i]: "tercero" };
+    if (R.persona === i) { R.persona = -3; R.nuevo = { nombre: "", ap1: "", ap2: "", dni: "" }; R.destino = undefined; }
+    pintar();
+  }));
+  document.querySelectorAll("[data-no-tercero]").forEach(b => b.addEventListener("click", () => { delete R.otros[+b.dataset.noTercero]; pintar(); }));
+  $("#r-vaciar")?.addEventListener("click", () => { R.nuevo = { nombre: "", ap1: "", ap2: "", dni: "" }; R.persona = -1; R.destino = undefined; pintar(); $("#n-nom")?.focus(); });
+  $("#r-mover")?.addEventListener("click", () => { R.verMover = !R.verMover; pintar(); });
+  $("#r-mover-sel")?.addEventListener("change", e => { if (e.target.value) { R.destino = e.target.value; R.dupOk = false; R.verMover = false; pintar(); } });
+  document.querySelectorAll("[data-tj]").forEach(i => i.addEventListener("input", () => (R.tj[i.dataset.tj] = i.value)));
+  $("#tj-entidad")?.addEventListener("input", e => (R.tj.entidad = e.target.value));
+  $("#tj-exp")?.addEventListener("change", e => (R.tj.expediente = e.target.value));
+  $("#tj-si")?.addEventListener("click", async () => {
+    const T = R.tj;
+    if (!T.entidad.trim()) return aviso("Indica de qué banco es la tarjeta.", true);
+    if (!T.expediente) return aviso("Elige el expediente (o crea antes el expediente del cliente).", true);
+    try { const r = await api("tarjeta", { documento: S.docId, expediente: +T.expediente, entidad: T.entidad.trim(), contacto: T });
+      aviso(`Contacto guardado en ${T.entidad}: ${r.nombre_final}`); siguiente(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#tj-no")?.addEventListener("click", async () => { await api("tarjeta", { documento: S.docId, no: true }); R.tj = null; S.doc = await api("documento/" + S.docId); pintar(); });
   $("#r-lote")?.addEventListener("click", () => { const lm = loteMayoritario(S.doc); if (lm) { usarLote(lm); pintar(); } });
   document.querySelectorAll("[data-ir-exp]").forEach(b => b.addEventListener("click", () => { R.destino = "e:" + b.dataset.irExp; pintar(); }));
   $("#dup-ok")?.addEventListener("change", e => (R.dupOk = e.target.checked));
@@ -446,11 +494,14 @@ function activarRevision() {
 }
 async function confirmar() {
   const R = S.rev, tipo = R.tipo, P = R.nuevo;
+  if (R.tarjetaPendiente) return aviso("Primero responde arriba: ¿es una tarjeta de visita?", true);
   if (!tipo) return aviso("Elige el tipo de documento.", true);
-  if (!P.nombre.trim() || !P.ap1.trim()) return aviso("Falta el nombre o el primer apellido de la persona.", true);
+  const colectivoSinPersona = R.comun && R.destino.startsWith("e:") && (R.persona === -3 || !P.nombre.trim());
+  if (R.persona === -3 && !colectivoSinPersona) return aviso("Elige de quién es el documento (paso 2), o «Colectivo» si es de todo el expediente.", true);
+  if (!colectivoSinPersona && (!P.nombre.trim() || !P.ap1.trim())) return aviso("Falta el nombre o el primer apellido de la persona.", true);
   const leidas = (S.doc.datos || {}).personas || [];
   const expSel = R.destino.startsWith("e:") ? S.expedientes.find(e => e.id === +R.destino.slice(2)) : null;
-  const pendientes = leidas.map((p, i) => ({ p, i })).filter(x => x.i !== R.persona).filter(x => {
+  const pendientes = leidas.map((p, i) => ({ p, i })).filter(x => x.i !== R.persona && !(colectivoSinPersona && x.i === R.persona)).filter(x => {
     const f = buscarFichada({ nombre: x.p.nombre, ap1: x.p.apellido1, ap2: x.p.apellido2, dni: x.p.dni });
     return !(f && expSel && expSel.personas.some(q => q.id === f.id));
   });
@@ -465,8 +516,13 @@ async function confirmar() {
       if (dups.length && !R.dupOk) return aviso("Esta persona ya tiene expediente: añade el documento a ese expediente o marca que quieres otro aparte.", true);
       const r = await api("expediente", { persona: persona_datos, finalidad: R.finalidad, confirmado: !!R.dupOk });
       expediente = r.expediente; persona = r.persona; aviso("Expediente creado: " + r.carpeta);
-    } else { expediente = +R.destino.slice(2); persona = fich ? fich.id : null; }
-    const g = await api("emparejar", { documento: S.docId, expediente, persona, persona_datos: persona ? null : persona_datos,
+    } else {
+      expediente = +R.destino.slice(2); persona = colectivoSinPersona ? null : fich ? fich.id : null;
+      const exp = S.expedientes.find(e => e.id === expediente);
+      if (!colectivoSinPersona && !(fich && exp.personas.some(q => q.id === fich.id))
+          && !confirm(`¿Añadir a ${P.nombre} ${P.ap1} como COTITULAR del expediente «${exp.nombre}»?\n\nSi no es titular de la operación (notario, vendedor, banco…), pulsa Cancelar y márcalo como «Tercero».`)) return;
+    }
+    const g = await api("emparejar", { documento: S.docId, expediente, persona, persona_datos: persona || colectivoSinPersona ? null : persona_datos,
       comun: !!R.comun, tipo, privado: !!R.priv, fecha: R.fecha, otros: otrosEnvio });
     aviso("Guardado: " + g.nombre_final);
     siguiente();
@@ -548,19 +604,107 @@ function vistaExpedientes() {
 let EXP = null;
 function vistaExpediente() {
   if (!EXP) return '<div class="tarjeta vacio">Cargando…</div>';
-  const { e, ck } = EXP, v = S.info.variante;
-  const c = { Recibido: "ok", Incompleto: "warn", Caducado: "bad", Pendiente: "todo" };
-  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a> › ${esc(e.nombre)}</small><h1>${esc(e.nombre)}</h1>
-    <div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)} · carpeta <code>${esc(S.info.carpetas.documentos)}\\${esc(e.carpeta)}\\</code></div></div>
+  const { e } = EXP, v = S.info.variante;
+  const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
+  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
+    <div class="sub">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · ${esc(v.finalidades[e.finalidad] || e.finalidad)} · carpeta <code>${esc(e.carpeta)}</code>
+      ${e.estado === "unido" ? pill("Unido a otro") : pill("Abierto")}</div></div>
     <div class="acciones"><button class="btn" id="rehacer">${ico("play")}Rehacer archivo de texto</button>${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro expediente…</button>` : ""}</div></div>
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
-  <section class="tarjeta sinp"><div class="tcab"><h2>Checklist · ${ck.recibidos} de ${ck.total}</h2></div>
-    <table class="tabla"><thead><tr><th>Documento</th><th>De</th><th>Estado</th><th>Detalle</th><th>Archivo</th></tr></thead><tbody>
-    ${ck.filas.map(f => `<tr><td>${esc(f.documento)}${f.importancia === "imprescindible" ? ' <span class="pill p-acc">Imprescindible</span>' : ""}</td><td>${esc(f.quien)}</td><td>${pill(f.estado, c[f.estado] || "todo")}</td><td>${esc(f.detalle)}</td><td class="mono">${esc(f.archivos.join(", "))}</td></tr>`).join("")}
-    </tbody></table></section>
-  ${ck.avisos_cliente.length ? `<section class="tarjeta"><h2>Avisos al cliente</h2>${ck.avisos_cliente.map(a => `<div class="dato"><span>${esc(a)}</span></div>`).join("")}</section>` : ""}
-  ${tarjetaDocsExp(e)}`;
+  ${EXP.neg ? `<div class="exp-notas">${panelNegBanco(e)}${panelNegCliente(e)}</div>` : ""}
+  <div class="exp-cuerpo">
+    <div class="exp-izq">${tarjetaDocsExp(e)}${tarjetaPersonasExp(e)}</div>
+    <aside class="exp-der">${tarjetaChecklist(e)}</aside>
+  </div>${INFORME ? modalInforme() : ""}`;
+}
+// ---------------- negociación banco (varios bancos, contactos) y negociación cliente (F-17)
+const NEG = { banco: 0, verBanco: false, contacto: null, historial: { banco: false, cliente: false } };
+function notasLista(tipo, notas) {
+  if (!notas.length) return '<span class="sub">Sin notas todavía.</span>';
+  const banco = id => (EXP.neg.bancos.find(b => b.id === id) || {}).entidad;
+  const una = n => `<div class="nota"><span class="nota-f">${fmtF(n.fecha)} · ${n.fecha.slice(11, 16)}${tipo === "banco" && n.banco_id && !NEG.banco ? ` · <b>${esc(banco(n.banco_id) || "")}</b>` : ""}</span><span>${esc(n.texto)}</span></div>`;
+  const resto = notas.slice(2);
+  return notas.slice(0, 2).map(una).join("") + (resto.length ? `<details class="historial" ${NEG.historial[tipo] ? "open" : ""} data-hist="${tipo}"><summary>Historial · ${resto.length} anterior(es)</summary>${resto.map(una).join("")}</details>` : "");
+}
+function panelNegBanco(e) {
+  const n = EXP.neg, sel = n.bancos.find(b => b.id === NEG.banco);
+  const notas = n.notas.filter(x => x.tipo === "banco" && (!sel || x.banco_id === sel.id));
+  const c0 = NEG.contacto;
+  const fichaContacto = c => `<div class="contacto">
+      <div><b>${esc(c.nombre || "Sin nombre")}</b>${c.cargo ? ` <span class="muted">· ${esc(c.cargo)}</span>` : ""}</div>
+      <div class="contacto-datos">${c.movil ? `<span>${ico("user", 13)} ${esc(c.movil)}</span>` : ""}${c.telefono ? `<span>☎ ${esc(c.telefono)}</span>` : ""}${c.email ? `<span>✉ ${esc(c.email)}</span>` : ""}${c.oficina ? `<span>Oficina ${esc(c.oficina)}</span>` : ""}${c.direccion ? `<span>${esc(c.direccion)}</span>` : ""}</div>
+      ${c.notas ? `<div class="sub">${esc(c.notas)}</div>` : ""}
+      <div class="acciones"><button class="btn peq" data-ed-contacto="${c.id}">Editar</button><button class="btn peq" data-quitar-contacto="${c.id}">Quitar</button>${c.documento_id ? '<span class="sub">De una tarjeta de visita</span>' : ""}</div></div>`;
+  const formContacto = c => `<div class="contacto form">${[["nombre", "Nombre y apellidos"], ["cargo", "Cargo (gestor, director…)"], ["movil", "Móvil"], ["telefono", "Teléfono"], ["email", "Correo"], ["oficina", "Oficina"], ["direccion", "Dirección"], ["notas", "Notas"]]
+      .map(([k, l]) => `<div class="campo"><label for="ct-${k}">${l}</label><input id="ct-${k}" value="${esc(c[k] || "")}"></div>`).join("")}
+      <div class="acciones"><button class="btn pri peq" id="ct-guardar">${ico("check", 14)}Guardar contacto</button><button class="btn peq" id="ct-cancelar">Cancelar</button></div></div>`;
+  return `<section class="tarjeta neg banco"><div class="neg-cab"><h2>${ico("folder", 17)} Negociación banco</h2><span class="sub">${n.notas.filter(x => x.tipo === "banco").length} notas · ${n.bancos.length} banco(s)</span>
+      <button class="btn peq" id="neg-add-banco">＋ Banco</button></div>
+    ${NEG.verBanco ? `<div class="fila-arreglo"><input id="neg-entidad" list="lista-bancos" placeholder="Escribe o elige el banco"><datalist id="lista-bancos">${S.info.bancos.map(b => `<option value="${esc(b)}">`).join("")}</datalist>
+      <button class="btn pri peq" id="neg-banco-ok">Añadir</button><button class="btn peq" id="neg-banco-no">Cancelar</button></div>` : ""}
+    ${n.bancos.length ? `<div class="bancos-chips"><button type="button" class="chip peq ${!sel ? "sel" : ""}" data-banco="0">Todos</button>${n.bancos.map(b => `<button type="button" class="chip peq ${sel && sel.id === b.id ? "sel" : ""}" data-banco="${b.id}">${esc(b.entidad)}<small>${esc(b.estado)}</small></button>`).join("")}</div>` : '<span class="sub">Añade los bancos con los que negocias este expediente: cada uno con su estado, sus contactos y sus notas.</span>'}
+    ${sel ? `<div class="banco-ficha"><div class="fila-arreglo"><label>Estado con ${esc(sel.entidad)} <select id="neg-estado">${n.estados_banco.map(s => `<option ${s === sel.estado ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+        <button class="btn peq" id="neg-add-contacto">＋ Contacto</button></div>
+      ${c0 && !c0.id ? formContacto(c0) : ""}
+      ${sel.contactos.map(c => c0 && c0.id === c.id ? formContacto(c0) : fichaContacto(c)).join("") || (c0 ? "" : '<span class="sub">Sin contactos: gestor, director, oficina… (también desde una tarjeta de visita).</span>')}</div>` : ""}
+    <div class="neg-nueva"><input id="nota-banco" placeholder="Escribe una nota${sel ? " sobre " + esc(sel.entidad) : ""}… (se guarda con la fecha y la hora)"><button class="btn peq" data-nota="banco">Añadir</button></div>
+    ${notasLista("banco", notas)}</section>`;
+}
+function panelNegCliente() {
+  const notas = EXP.neg.notas.filter(x => x.tipo === "cliente");
+  return `<section class="tarjeta neg cliente"><div class="neg-cab"><h2>${ico("user", 17)} Negociación cliente</h2><span class="sub">${notas.length} notas</span></div>
+    <div class="neg-nueva"><input id="nota-cliente" placeholder="Escribe una nota…"><button class="btn peq" data-nota="cliente">Añadir</button></div>
+    ${notasLista("cliente", notas)}</section>`;
+}
+// ---------------- checklist con marcas (Aportado lo pone el programa; Solicitado y Sin pedir, a mano)
+let CK_TAB = null, INFORME = null;
+function estadoCheck(f) {
+  const m = (EXP.neg?.marcas || {})[f.clave];
+  if (f.estado === "Recibido") return ["Aportado", "ok", "✓"];
+  if (f.estado === "Caducado") return ["Caducado", "bad", "!"];
+  if (f.estado === "Incompleto") return ["Incompleto", "warn", "!"];
+  if (m?.estado === "solicitado") return ["Solicitado", "sol", "◷"];
+  if (m?.estado === "sin_pedir") return ["Sin pedir", "nop", "–"];
+  return ["Pendiente", "todo", "○"];
+}
+function tarjetaChecklist(e) {
+  const ck = EXP.ck, v = S.info.variante;
+  const grupos = [];
+  e.personas.filter(p => ck.filas.some(f => f.persona_id === p.id)).forEach(p => grupos.push({ id: String(p.id), nombre: `${p.nombre} ${p.apellido1}`, filas: ck.filas.filter(f => f.persona_id === p.id) }));
+  const comunes = ck.filas.filter(f => !f.persona_id);
+  if (comunes.length) grupos.push({ id: "exp", nombre: "Comunes a la operación", filas: comunes });
+  if (!grupos.some(g => g.id === CK_TAB)) CK_TAB = grupos[0]?.id;
+  const g = grupos.find(x => x.id === CK_TAB);
+  const marcas = EXP.neg?.marcas || {};
+  const solicitados = ck.filas.filter(f => marcas[f.clave]?.estado === "solicitado").length;
+  const cuenta = gr => `${gr.filas.filter(f => f.estado === "Recibido").length}/${gr.filas.length}`;
+  const fila = f => { const [txt, cls, ic] = estadoCheck(f); const libre = f.estado !== "Recibido";
+    return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><b>${esc(f.documento)}</b>${f.importancia === "imprescindible" ? ' <span class="ck-imp">Imprescindible</span>' : ""}
+      <small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small></div>
+      ${libre ? `<span class="ck-acc"><button type="button" class="${marcas[f.clave]?.estado === "solicitado" ? "sel" : ""}" data-marca="${f.clave}" data-estado="solicitado" title="Ya se lo he pedido al cliente">Solicitado</button><button type="button" class="${marcas[f.clave]?.estado === "sin_pedir" ? "sel" : ""}" data-marca="${f.clave}" data-estado="sin_pedir" title="No hace falta pedirlo en este expediente">Sin pedir</button></span>` : `<span class="ck-estado">${txt}</span>`}</div>`; };
+  return `<section class="tarjeta checklist"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
+    ${solicitados ? `<div class="progreso fino"><i style="width:${Math.round(100 * ck.recibidos / Math.max(1, ck.recibidos + solicitados))}%"></i></div>` : ""}
+    <div class="pestanas ck-tabs">${grupos.map(x => `<a href="javascript:void 0" data-ck-tab="${x.id}" ${x.id === CK_TAB ? 'aria-current="page"' : ""}>${esc(x.nombre)} <span class="num">${cuenta(x)}</span></a>`).join("")}</div>
+    ${g ? g.filas.map(fila).join("") : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
+    ${ck.avisos_cliente.length ? `<div class="ck-avisos"><b>Avisos al cliente</b>${ck.avisos_cliente.map(a => `<span>${esc(a)}</span>`).join("")}</div>` : ""}
+    <button class="btn" id="ck-informe">Generar informe de lo que falta</button></section>`;
+}
+function textoInforme() {
+  const { e, ck } = EXP, falta = ck.filas.filter(f => f.estado !== "Recibido" && (EXP.neg?.marcas || {})[f.clave]?.estado !== "sin_pedir");
+  const por = {}; falta.forEach(f => (por[f.quien] = por[f.quien] || []).push(`- ${f.documento}${f.detalle && f.estado !== "Pendiente" ? " (" + f.detalle + ")" : ""}`));
+  return `Documentación pendiente · ${e.nombre}\n\n` + Object.entries(por).map(([q, l]) => `${q === "Expediente" ? "De la operación" : q}:\n${l.join("\n")}`).join("\n\n") + (falta.length ? "" : "No falta nada.");
+}
+function modalInforme() {
+  return `<div class="zoom informe"><div class="tarjeta"><h2>Lo que falta</h2><textarea id="inf-txt" rows="16">${esc(INFORME)}</textarea>
+    <div class="acciones"><button class="btn pri" id="inf-copiar">${ico("check")}Copiar</button><button class="btn" id="inf-cerrar">Cerrar</button></div></div></div>`;
+}
+function tarjetaPersonasExp(e) {
+  const docsDe = id => (EXP.docs || []).filter(d => d.persona_id === id && !d.de_expediente).length;
+  return `<section class="tarjeta sinp"><div class="tcab"><h2>Personas del expediente · ${e.personas.length}</h2></div>
+    <table class="tabla"><tbody>${e.personas.map(p => { const n = docsDe(p.id);
+      return `<tr><td><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></td><td>${esc(p.papel)}</td><td class="mono">${esc(p.dni || "sin DNI")}</td><td>${n} documento(s)</td>
+      <td class="der">${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
 }
 // ---------------- arreglar lo ya guardado (v1.1)
 const ARR = { unir: false, destino: "", mover: null, exp: "", persona: "", comun: false };
@@ -598,6 +742,48 @@ function panelMover(e, d) {
     <span class="sub">El archivo y su original se mueven a la carpeta de ese expediente y se renombran con el código de la persona. No se borra nada.</span></div>`;
 }
 function activarExpediente(id) {
+  const recargar = async () => { S.expedientes = await api("expedientes"); EXP.e = S.expedientes.find(x => x.id === id) || EXP.e; await cargarExpediente(id, true); };
+  const n = EXP?.neg;
+  document.querySelectorAll("[data-nota]").forEach(b => b.addEventListener("click", async () => {
+    const tipo = b.dataset.nota, inp = $("#nota-" + tipo);
+    try { await api("nota", { expediente: id, tipo, texto: inp.value, banco: tipo === "banco" ? NEG.banco || null : null }); aviso("Nota guardada"); await recargar(); } catch (e) { aviso(e.message, true); }
+  }));
+  ["banco", "cliente"].forEach(tp => $("#nota-" + tp)?.addEventListener("keydown", ev => { if (ev.key === "Enter") document.querySelector(`[data-nota="${tp}"]`).click(); }));
+  document.querySelectorAll("details[data-hist]").forEach(dt => dt.addEventListener("toggle", () => (NEG.historial[dt.dataset.hist] = dt.open)));
+  $("#neg-add-banco")?.addEventListener("click", () => { NEG.verBanco = true; pintar(); $("#neg-entidad")?.focus(); });
+  $("#neg-banco-no")?.addEventListener("click", () => { NEG.verBanco = false; pintar(); });
+  $("#neg-banco-ok")?.addEventListener("click", async () => {
+    try { const r = await api("banco", { expediente: id, entidad: $("#neg-entidad").value }); NEG.verBanco = false; NEG.banco = r.id; await recargar(); } catch (e) { aviso(e.message, true); }
+  });
+  document.querySelectorAll("[data-banco]").forEach(b => b.addEventListener("click", () => { NEG.banco = +b.dataset.banco; NEG.contacto = null; pintar(); }));
+  $("#neg-estado")?.addEventListener("change", async ev => { await api("banco", { expediente: id, id: NEG.banco, estado: ev.target.value }); await recargar(); });
+  $("#neg-add-contacto")?.addEventListener("click", () => { NEG.contacto = {}; pintar(); $("#ct-nombre")?.focus(); });
+  document.querySelectorAll("[data-ed-contacto]").forEach(b => b.addEventListener("click", () => {
+    NEG.contacto = { ...n.bancos.flatMap(x => x.contactos).find(c => c.id === +b.dataset.edContacto) }; pintar();
+  }));
+  document.querySelectorAll("[data-quitar-contacto]").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("¿Quitar este contacto?")) return;
+    await api("contacto", { quitar: +b.dataset.quitarContacto }); await recargar();
+  }));
+  $("#ct-cancelar")?.addEventListener("click", () => { NEG.contacto = null; pintar(); });
+  $("#ct-guardar")?.addEventListener("click", async () => {
+    const c = { ...NEG.contacto }; ["nombre", "cargo", "movil", "telefono", "email", "oficina", "direccion", "notas"].forEach(k => (c[k] = $("#ct-" + k).value));
+    try { await api("contacto", { ...c, banco: NEG.banco }); NEG.contacto = null; aviso("Contacto guardado"); await recargar(); } catch (e) { aviso(e.message, true); }
+  });
+  document.querySelectorAll("[data-ck-tab]").forEach(a => a.addEventListener("click", () => { CK_TAB = a.dataset.ckTab; pintar(); }));
+  document.querySelectorAll("[data-marca]").forEach(b => b.addEventListener("click", async () => {
+    const actual = (n?.marcas || {})[b.dataset.marca]?.estado;
+    await api("marca", { expediente: id, clave: b.dataset.marca, estado: actual === b.dataset.estado ? null : b.dataset.estado }); await recargar();
+  }));
+  $("#ck-informe")?.addEventListener("click", () => { INFORME = textoInforme(); pintar(); });
+  $("#inf-cerrar")?.addEventListener("click", () => { INFORME = null; pintar(); });
+  $("#inf-copiar")?.addEventListener("click", async () => { const tx = $("#inf-txt"); tx.select(); try { await navigator.clipboard.writeText(tx.value); } catch { document.execCommand("copy"); } aviso("Copiado: pégalo en el correo o el WhatsApp del cliente"); });
+  document.querySelectorAll("[data-quitar-persona]").forEach(b => b.addEventListener("click", async () => {
+    const p = EXP.e.personas.find(x => x.id === +b.dataset.quitarPersona);
+    if (!confirm(`¿Quitar a ${p.nombre} ${p.apellido1} (${p.papel}) del expediente «${EXP.e.nombre}»?`)) return;
+    try { const r = await api("arreglo", { accion: "quitar_persona", expediente: id, persona: p.id }); aviso("Quitada del expediente" + (r.ficha_borrada ? " y su ficha borrada" : "")); await recargar(); }
+    catch (e) { aviso(e.message, true); }
+  }));
   $("#rehacer")?.addEventListener("click", async () => { await api("textos", { expediente: id }); aviso("Archivo de texto rehecho"); });
   $("#unir-exp")?.addEventListener("click", () => { ARR.unir = true; ARR.destino = ""; pintar(); });
   $("#arr-destino")?.addEventListener("change", ev => { ARR.destino = ev.target.value; pintar(); });
@@ -622,11 +808,12 @@ function activarExpediente(id) {
     } catch (e) { aviso(e.message, true); }
   });
 }
-async function cargarExpediente(id) {
-  EXP = null; pintar();
+async function cargarExpediente(id, suave) {
+  if (!suave) { EXP = null; pintar(); }
   const e = S.expedientes.find(x => x.id === id) || (await api("expedientes")).find(x => x.id === id);
-  const [ck, docs] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id)]);
-  EXP = { e, ck, docs }; ARR.unir = false; ARR.mover = null; pintar();
+  const [ck, docs, neg] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id)]);
+  if (EXP?.e?.id !== id) Object.assign(NEG, { banco: 0, verBanco: false, contacto: null });
+  EXP = { e, ck, docs, neg }; ARR.unir = false; ARR.mover = null; pintar();
 }
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes

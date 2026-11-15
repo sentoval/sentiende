@@ -13,6 +13,7 @@ from sentiende import VERSION, CONTRATO, FASES
 from sentiende.motor import Motor, MotorError
 from sentiende import checklist, arreglos
 from sentiende.carpetas import libre
+from sentiende.negociacion import ErrorNegociacion
 
 WEB = Path(__file__).resolve().parent / "web"
 CERROJO = threading.RLock()
@@ -109,7 +110,8 @@ class App:
         tipos = sorted(({"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["nombre"])
         return {"motor": {"version": VERSION, "contrato": CONTRATO}, "variante": {k: v.meta.get(k) for k in ("id", "nombre", "version", "colores", "vocabulario", "finalidades", "papeles", "modulos")},
                 "compatibilidad": v.compat.mensaje, "finalidades_visibles": self.motor.finalidades_visibles(), "fases": FASES, "tipos": tipos,
-                "carpetas": {k: str(p) for k, p in self.motor.carpetas.rutas.items()}}
+                "carpetas": {k: str(p) for k, p in self.motor.carpetas.rutas.items()},
+                "bancos": sorted(b["nombre"] for b in v.base.get("entidades_financieras", []))}
 
     def estado(self):
         a = self.motor.almacen
@@ -143,6 +145,10 @@ class App:
         d["eventos"] = a.eventos(did)
         d["sugerencias"] = m.sugerencias(did)
         d["paginas_lista"] = sel
+        from sentiende.extraer import norm
+        terceros = set(m.terceros_lote(d["lote_id"]))
+        for p in (d["datos"] or {}).get("personas", []):
+            p["tercero_lote"] = norm(p.get("completo", "")) in terceros
         d["fecha_clave"] = m.clave_fecha(d["tipo"]) if d["tipo"] else None
         d["fecha_claves"] = {t["id"]: m.clave_fecha(t["id"]) for t in m.variante.base["documentos"]}
         return d
@@ -227,8 +233,9 @@ def crear_manejador(app):
             return self.rfile.read(n) if n else b""
 
         def _error(self, e):
-            self._json({"error": str(e)}, 400 if isinstance(e, MotorError) else 500)
-            if not isinstance(e, MotorError):
+            conocido = isinstance(e, (MotorError, ErrorNegociacion))
+            self._json({"error": str(e)}, 400 if conocido else 500)
+            if not conocido:
                 traceback.print_exc()
 
         def do_GET(self):
@@ -260,6 +267,7 @@ def crear_manejador(app):
                         from sentiende.correo import PREDEFINIDOS
                         return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
                     if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
+                    if m := re.fullmatch(r"/api/negociacion/(\d+)", p): return self._json(app.motor.negociacion.de_expediente(int(m.group(1))))
                     if p == "/api/personas_repetidas": return self._json(arreglos.personas_repetidas(app.motor))
                     if m := re.fullmatch(r"/api/documentos_expediente/(\d+)", p):
                         a = app.motor.almacen
@@ -325,6 +333,21 @@ def crear_manejador(app):
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
                                         datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
                         return self._json(d)
+                    neg = m.negociacion
+                    if p == "/api/nota":
+                        return self._json({"id": neg.nota(int(datos["expediente"]), datos["tipo"], datos.get("texto"), datos.get("banco"))})
+                    if p == "/api/banco":
+                        return self._json({"id": neg.banco(int(datos["expediente"]), datos.get("entidad"), datos.get("estado"), datos.get("id"))})
+                    if p == "/api/contacto":
+                        if datos.get("quitar"):
+                            neg.quitar_contacto(int(datos["quitar"])); return self._json({"ok": True})
+                        return self._json({"id": neg.contacto(int(datos["banco"]), datos, datos.get("id"))})
+                    if p == "/api/marca":
+                        neg.marcar(int(datos["expediente"]), datos["clave"], datos.get("estado")); return self._json({"ok": True})
+                    if p == "/api/tarjeta":
+                        if datos.get("no"):
+                            m.no_es_tarjeta(int(datos["documento"])); return self._json({"ok": True})
+                        return self._json(m.guardar_tarjeta(int(datos["documento"]), int(datos["expediente"]), datos.get("entidad"), datos.get("contacto") or {}))
                     if p == "/api/arreglo":
                         acc = datos.get("accion")
                         if acc == "mover":
@@ -332,6 +355,8 @@ def crear_manejador(app):
                                                                        int(datos["persona"]) if datos.get("persona") else None, datos.get("de_expediente")))
                         if acc == "unir_expedientes":
                             return self._json(arreglos.unir_expedientes(m, int(datos["origen"]), int(datos["destino"])))
+                        if acc == "quitar_persona":
+                            return self._json(arreglos.quitar_persona(m, int(datos["expediente"]), int(datos["persona"])))
                         if acc == "unir_personas":
                             return self._json(arreglos.unir_personas(m, int(datos["quitar"]), int(datos["quedar"]), bool(datos.get("forzar"))))
                         raise MotorError("Arreglo desconocido.")

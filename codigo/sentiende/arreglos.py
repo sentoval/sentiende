@@ -190,6 +190,35 @@ def unir_personas(m, quitar_id, quedar_id, forzar=False):
     return persona
 
 
+def quitar_persona(m, expediente_id, persona_id):
+    """Quita a una persona de un expediente (p. ej. un cotitular añadido por error). Solo si no tiene
+    documentos guardados en él; si después no está en ningún expediente ni tiene documentos, se borra su ficha."""
+    a = m.almacen
+    exp, p = a.expediente(expediente_id), a.persona(persona_id)
+    if not exp or not p:
+        raise ErrorArreglo("No existe ese expediente o esa persona.")
+    docs = a.documentos("expediente_id = ? AND persona_id = ? AND estado = 'guardado'", (expediente_id, persona_id))
+    if docs:
+        raise ErrorArreglo(f"{p['nombre']} {p['apellido1']} tiene {len(docs)} documento(s) en este expediente. "
+                           "Muévelos antes a otra persona o a otro expediente («Mover…»).")
+    personas = a.personas_de(expediente_id)
+    if len(personas) == 1:
+        raise ErrorArreglo("Es la única persona del expediente: no se puede quitar.")
+    a.db.execute("DELETE FROM expediente_personas WHERE expediente_id = ? AND persona_id = ?", (expediente_id, persona_id))
+    if not any(x["papel"] == "Titular" for x in a.personas_de(expediente_id)):      # siempre queda un titular
+        primero = a.personas_de(expediente_id)[0]
+        a.db.execute("UPDATE expediente_personas SET papel = 'Titular' WHERE expediente_id = ? AND persona_id = ?", (expediente_id, primero["id"]))
+    borrada = False
+    if not a.db.execute("SELECT 1 FROM expediente_personas WHERE persona_id = ?", (persona_id,)).fetchone() and \
+       not a.db.execute("SELECT 1 FROM documentos WHERE persona_id = ?", (persona_id,)).fetchone():
+        a.db.execute("DELETE FROM personas WHERE id = ?", (persona_id,))
+        borrada = True
+    a.db.commit()
+    a.evento(f"Arreglo: {p['nombre']} {p['apellido1']} quitada del expediente «{exp['nombre']}»" + (" · su ficha se ha borrado (no estaba en ningún otro)" if borrada else ""))
+    _refrescar(m, expediente_id)
+    return {"ok": True, "ficha_borrada": borrada}
+
+
 def personas_repetidas(m):
     """Parejas de fichas que parecen la misma persona (mismo DNI o mismo nombre y apellidos)."""
     from .extraer import norm

@@ -21,6 +21,7 @@ from .extraer import extraer, aprender_personas
 from .clasificar import Clasificador
 from .nombres import Nombrador, carpeta_expediente
 from . import checklist, textos
+from .negociacion import Negociacion, parece_tarjeta
 
 class MotorError(Exception):
     pass
@@ -41,6 +42,7 @@ class Motor:
         self.clasificador = Clasificador(self.variante)
         self.nombrador = Nombrador(self.variante)
         self._cargar_finalidades()
+        self.negociacion = Negociacion(self.almacen)
         aprender_personas([dict(r) for r in self.almacen.db.execute("SELECT * FROM personas")])   # nombres ya confirmados
 
     # ------------------------------------------------------------ finalidades (editables por el usuario)
@@ -213,6 +215,12 @@ class Motor:
                 a.actualizar(did, fase=5, datos=datos)
                 a.evento(f"Datos: {len(datos['dni'])} DNI/NIE, {len(datos['iban'])} IBAN, {len(datos['fechas'])} fechas", did, lote, 5)
             c = self.clasificador.clasificar(texto)
+            datos = a.documento(did)["datos"] or {}
+            tarjeta = parece_tarjeta(texto, c.entidad, len(datos.get("dni") or []), self.clasificador.bancos)
+            if tarjeta and not datos.get("tarjeta"):
+                datos["tarjeta"] = tarjeta
+                a.actualizar(did, datos=datos)
+                a.evento("Parece una tarjeta de visita o datos de contacto de un banco: se preguntará en el Centro de revisión.", did, lote, 6, "revision")
             a.actualizar(did, fase=6, tipo=c.tipo, confianza=c.confianza,
                          alternativas=c.alternativas, indicios=c.indicios, entidad=c.entidad, entidad_por=c.entidad_por,
                          estado="espera_emparejar",
@@ -287,6 +295,9 @@ class Motor:
                     out.append({"persona": p, "expedientes": exps(p["id"]), "por": f"nombre «{leida['completo']}» (sin DNI: confirmar)"})
         return out
 
+    def terceros_lote(self, lote_id):
+        return [r[0] for r in self.almacen.db.execute("SELECT nombre FROM terceros_lote WHERE lote_id = ?", (lote_id,))]
+
     def personas_leidas(self, doc_id):
         """Personas que el documento nombra (para crear la persona sin teclear)."""
         return (self.almacen.documento(doc_id)["datos"] or {}).get("personas", [])
@@ -348,6 +359,11 @@ class Motor:
             pe, accion = o.get("persona") or {}, o.get("accion")
             nombre = f'{pe.get("nombre", "")} {pe.get("apellido1", "")}'.strip()
             if accion == "tercero" or not accion:
+                if doc_id and (d0 := a.documento(doc_id)):        # se recuerda en el lote: en los siguientes documentos ya viene como tercero
+                    from .extraer import norm
+                    completo = " ".join(x for x in (pe.get("nombre"), pe.get("apellido1"), pe.get("apellido2")) if x)
+                    a.db.execute("INSERT OR IGNORE INTO terceros_lote VALUES(?, ?)", (d0["lote_id"], norm(completo)))
+                    a.db.commit()
                 hechos.append(f"{nombre}: tercero, no se ficha"); continue
             if not pe.get("nombre") or not pe.get("apellido1"):
                 raise MotorError(f"Faltan el nombre o el primer apellido de {nombre or 'la otra persona'}.")
@@ -451,6 +467,42 @@ class Motor:
                      de_expediente=int(de_expediente), privado=int(privado), estado="en_proceso", motivo="")
         a.evento(f"Emparejado con el expediente {expediente_id}" + (" (de todo el expediente)" if de_expediente else f" · {persona['nombre']} {persona['apellido1']}"), doc_id, d["lote_id"], 7)
         return self._renombrar_y_guardar(doc_id)
+
+    def guardar_tarjeta(self, doc_id, expediente_id, entidad, contacto):
+        """Tarjeta de visita confirmada: el contacto va al banco del expediente (se añade si no estaba)
+        y la imagen se guarda en SeDocumentos\\<expediente>\\Contactos\\ (el original, en Doc_original)."""
+        a, c = self.almacen, self.carpetas
+        d, exp = a.documento(doc_id), a.expediente(expediente_id)
+        if not d or not exp:
+            raise MotorError("No existe el documento o el expediente.")
+        if d["estado"] not in ("espera_emparejar", "parado"):
+            raise MotorError("Este documento ya no espera revisión.")
+        bid = self.negociacion.banco(expediente_id, entidad)
+        cid = self.negociacion.contacto(bid, contacto, documento_id=doc_id)
+        ent = (self.clasificador.abrev5(entidad) if entidad else None) or re.sub(r"\W", "", entidad or "BANCO")[:5].upper()
+        quien = re.sub(r"[^A-Za-z]", "", unicodedata.normalize("NFD", ((contacto.get("nombre") or "").split() + ["", ""])[1 if len((contacto.get("nombre") or "").split()) > 1 else 0] or "contacto").encode("ascii", "ignore").decode())
+        dir_doc, dir_orig = c.documentos / exp["carpeta"] / "Contactos", c.originales / exp["carpeta"]
+        dir_doc.mkdir(parents=True, exist_ok=True); dir_orig.mkdir(parents=True, exist_ok=True)
+        destino = libre(dir_doc / f"CONTACTO_{ent}_{quien or 'contacto'}{d['extension'] if d['extension'] != '.pdf' else '.pdf'}")
+        self._documento_editado(d, destino)
+        orig = None
+        if not d["padre_id"]:
+            orig = libre(dir_orig / d["nombre_recibido"])
+            shutil.move(d["ruta_original"], orig)
+        self._limpiar_trabajo(d)
+        a.fijar_textos(d)
+        a.actualizar(doc_id, fase=10, estado="contacto", expediente_id=expediente_id, nombre_final=destino.name, ruta_final=str(destino),
+                     motivo="", **({"ruta_original_final": str(orig)} if orig else {}))
+        a.evento(f"Tarjeta de visita guardada como contacto de {entidad} en «{exp['nombre']}»: {destino.name}", doc_id, d["lote_id"], 10)
+        return {"banco": bid, "contacto": cid, "nombre_final": destino.name}
+
+    def no_es_tarjeta(self, doc_id):
+        a = self.almacen
+        d = a.documento(doc_id)
+        datos = d["datos"] or {}
+        datos["tarjeta_descartada"] = True
+        a.actualizar(doc_id, datos=datos)
+        a.evento("No es una tarjeta de visita: sigue como documento normal.", doc_id, d["lote_id"], 7)
 
     def al_limbo(self, doc_id, persona=None):
         a = self.almacen
@@ -643,7 +695,7 @@ class Motor:
         docs = self.almacen.documentos("lote_id = ?" if lote_id else "1", (lote_id,) if lote_id else ())
         out = []
         for d in docs:
-            if d["estado"] in ("guardado", "limbo"):
+            if d["estado"] in ("guardado", "limbo", "contacto"):
                 donde = {"editado": d["ruta_final"], "original": d["ruta_original_final"]}
             else:
                 donde = {"original": d["ruta_original"], "trabajo": d["ruta_trabajo"]}
