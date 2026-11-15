@@ -29,6 +29,22 @@ def mensaje(texto, titulo="SeFinancia", error=True):
         except Exception:
             pass
 
+def desbloquear():
+    """Quita la marca «descargado de internet» (Zone.Identifier) a las DLL del programa.
+
+    Al descomprimir un zip bajado de internet, Windows marca cada archivo; .NET se niega entonces
+    a cargar las DLL de la ventana propia (pythonnet, WebView2) y el programa acaba en el navegador."""
+    if os.name != "nt":
+        return 0
+    n = 0
+    for f in AQUI.rglob("*.dll"):
+        try:
+            os.remove(str(f) + ":Zone.Identifier")
+            n += 1
+        except OSError:
+            pass
+    return n
+
 def preparar_ocr():
     """Pone Tesseract al alcance del motor. Devuelve la ruta de tesseract.exe o None."""
     candidatos = [AQUI / "tesseract" / "tesseract.exe", AQUI / "tesseract" / "tesseract",
@@ -104,6 +120,10 @@ def main(argv=None, lanzador=None):
         mensaje("Este motor necesita una versión más nueva de SeFinancia.exe.\n\nActualiza la aplicación (SeFinancia.exe); tus documentos y datos no se tocan.")
         return 3
 
+    if CONGELADO:
+        n = desbloquear()
+        if n:
+            print(f"Desbloqueadas {n} DLL marcadas como descargadas de internet")
     tesseract = preparar_ocr()
     if a.comprobar:
         r = comprobar(raiz, variante, tesseract)
