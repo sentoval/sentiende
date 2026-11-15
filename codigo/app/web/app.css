@@ -330,3 +330,10 @@ td.der { text-align: right; white-space: nowrap; }
 .pie-der .btn.pri { height: 44px; min-width: 210px; font-size: 15px; justify-content: center; }
 .otra { min-height: 42px; }
 @media (max-width: 1350px) { .acciones-rev { flex-direction: row !important; padding-top: 0; } .acciones-rev .btn { width: auto; } }
+
+/* v1.1 · Individual / Colectivo en lugar de la casilla «De todo el expediente» */
+.sep-acc { border: 0; border-top: 1px solid #4A5869; margin: 4px 0; width: 100%; }
+.ambito { display: flex; flex-direction: column; gap: 8px; }
+.ambito .btn { justify-content: center; width: 100%; }
+.barra-rev .ambito .btn.sel { background: #F1F4F8; border-color: #F1F4F8; color: #0F141B; font-weight: 700; }
+@media (max-width: 1350px) { .ambito { flex-direction: row; } .sep-acc { width: 1px; height: 28px; border-top: 0; border-left: 1px solid var(--border); margin: 0 4px; } }

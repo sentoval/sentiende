@@ -10,6 +10,8 @@ const IC = {
   motor: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   check: '<path d="m5 12 5 5 9-10"/>', folder: '<path d="M3 6h7l2 2h9v11H3z"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/>', limbo: '<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2.4.6 4 2.3 4 5.2"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/>', search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', tag: '<path d="M3 3h8l10 10-8 8L3 11z"/>',
@@ -327,7 +329,11 @@ function vistaRevision() {
       <div class="paso acciones-rev">
         <a class="btn peq" href="#unir/${d.id}">Unir…</a>
         <button class="btn peq" id="r-limbo">${ico("limbo", 15)}Limbo</button>
-        <label class="check mini"><input type="checkbox" id="r-comun" ${R.comun ? "checked" : ""}><span>De todo el expediente</span></label>
+        <hr class="sep-acc">
+        <div class="ambito" role="radiogroup" aria-label="De quién es el documento">
+          <button type="button" class="btn peq ${R.comun ? "" : "sel"}" data-comun="0" aria-pressed="${!R.comun}" title="Documento de la persona elegida en el paso 2">${ico("user", 15)}Individual</button>
+          <button type="button" class="btn peq ${R.comun ? "sel" : ""}" data-comun="1" aria-pressed="${!!R.comun}" title="Documento de todo el expediente: nota simple, tasación, arras, escritura del inmueble…">${ico("users", 15)}Colectivo</button>
+        </div>
       </div>
     </div>
     ${avisoDup}${filaDatos}
@@ -388,7 +394,7 @@ function activarRevision() {
   $("#r-lote")?.addEventListener("click", () => { const lm = loteMayoritario(S.doc); if (lm) { usarLote(lm); pintar(); } });
   document.querySelectorAll("[data-ir-exp]").forEach(b => b.addEventListener("click", () => { R.destino = "e:" + b.dataset.irExp; pintar(); }));
   $("#dup-ok")?.addEventListener("change", e => (R.dupOk = e.target.checked));
-  $("#r-comun")?.addEventListener("change", e => (R.comun = e.target.checked));
+  document.querySelectorAll("[data-comun]").forEach(b => b.addEventListener("click", () => { R.comun = b.dataset.comun === "1"; pintar(); }));
   $("#r-priv")?.addEventListener("change", e => (R.priv = e.target.checked));
   document.querySelectorAll("[data-persona]").forEach(b => b.addEventListener("click", () => {
     const i = +b.dataset.persona;
