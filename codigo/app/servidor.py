@@ -11,7 +11,7 @@ from urllib.parse import urlparse, unquote
 
 from sentiende import VERSION, CONTRATO, FASES
 from sentiende.motor import Motor, MotorError
-from sentiende import checklist
+from sentiende import checklist, arreglos
 from sentiende.carpetas import libre
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -24,6 +24,53 @@ class App:
         self._cola = []
         self._grupos = {}
         self._hilo = None
+        from sentiende.correo import Correo
+        from app.bluetooth import Bluetooth
+        self.correo = Correo(self.motor.carpetas.rutas["datos"])
+        self.correo_estado = {"trabajando": False, "ultimo": None, "resumen": None, "error": None}
+        self.bluetooth = Bluetooth(lambda rutas: self.encolar(rutas, "bluetooth")[0])
+        threading.Thread(target=self._correo_auto, daemon=True).start()
+
+    # ---------------- correo (v1.1)
+    def revisar_correo(self):
+        """Recoge el correo en segundo plano; el estado se consulta en /api/correo."""
+        if self.correo_estado["trabajando"]:
+            return self.correo_estado
+        self.correo_estado.update(trabajando=True, error=None)
+        def tarea():
+            import datetime
+            try:
+                def lote(rutas, descripcion):
+                    l, ids = self.encolar(rutas, "correo")
+                    with CERROJO:
+                        self.motor.almacen.evento(f"Recibido por {descripcion}: {len(ids)} adjunto(s)", lote_id=l, fase=1)
+                    return l
+                self.correo_estado["resumen"] = self.correo.recoger(self.motor.carpetas.entrada, lote)
+                for x in self.correo_estado["resumen"]["ignorados"]:
+                    with CERROJO:
+                        self.motor.almacen.evento(f"Correo: adjunto ignorado (tipo no admitido o con macros): {x}", fase=1, nivel="se")
+            except Exception as e:
+                self.correo_estado["error"] = str(e)
+            finally:
+                self.correo_estado.update(trabajando=False, ultimo=datetime.datetime.now().isoformat(timespec="seconds"))
+        threading.Thread(target=tarea, daemon=True).start()
+        return self.correo_estado
+
+    def _correo_auto(self):
+        import time
+        espera = 0
+        while True:
+            time.sleep(30)
+            try:
+                a = self.correo.ajustes()
+                if not (a.get("activo") and a.get("cada_minutos")):
+                    continue
+                espera += 30
+                if espera >= int(a["cada_minutos"]) * 60:
+                    espera = 0
+                    self.revisar_correo()
+            except Exception:
+                pass
 
     # ---------------- trabajo en segundo plano
     def encolar(self, rutas, origen, grupo=None):
@@ -209,6 +256,19 @@ def crear_manejador(app):
                         a = app.motor.almacen
                         return self._json({"cliente": a.avisos_cliente(), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:]})
                     if m := re.fullmatch(r"/api/documento/(\d+)", p): return self._json(app.documento(int(m.group(1))))
+                    if p == "/api/correo":
+                        from sentiende.correo import PREDEFINIDOS
+                        return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
+                    if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
+                    if p == "/api/personas_repetidas": return self._json(arreglos.personas_repetidas(app.motor))
+                    if m := re.fullmatch(r"/api/documentos_expediente/(\d+)", p):
+                        a = app.motor.almacen
+                        out = []
+                        for d in a.documentos("expediente_id = ? AND estado = 'guardado'", (int(m.group(1)),)):
+                            per = a.persona(d["persona_id"]) or {}
+                            out.append({k: d[k] for k in ("id", "nombre_final", "tipo", "nombre_recibido", "persona_id", "de_expediente", "privado")}
+                                       | {"persona": f'{per.get("nombre", "")} {per.get("apellido1", "")}'.strip()})
+                        return self._json(sorted(out, key=lambda x: x["nombre_final"] or ""))
                     if m := re.fullmatch(r"/api/checklist/(\d+)", p): return self._json(checklist.evaluar(app.motor.variante, app.motor.almacen, int(m.group(1))))
                     if m := re.fullmatch(r"/api/vista/(\d+)/(\d+)", p):
                         b = app.vista(int(m.group(1)), int(m.group(2)), "grande=1" in (urlparse(self.path).query or ""))
@@ -229,6 +289,16 @@ def crear_manejador(app):
                     lote, ids = app.encolar([destino], origen, self.headers.get("X-Grupo"))
                     return self._json({"lote": lote, "documentos": ids})
                 datos = json.loads(self._cuerpo() or b"{}")
+                if p == "/api/correo/guardar": return self._json(app.correo.guardar(datos))
+                if p == "/api/correo/probar":
+                    try: return self._json(app.correo.probar(datos or None))
+                    except Exception as e: raise MotorError(str(e))
+                if p == "/api/correo/revisar":
+                    if not app.correo.ajustes()["servidor"]: raise MotorError("Primero configura el correo en Ajustes.")
+                    return self._json(app.revisar_correo())
+                if p == "/api/bluetooth":
+                    try: return self._json(app.bluetooth.empezar())
+                    except RuntimeError as e: raise MotorError(str(e))
                 with CERROJO:
                     m = app.motor
                     if p == "/api/procesar":
@@ -255,6 +325,16 @@ def crear_manejador(app):
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
                                         datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
                         return self._json(d)
+                    if p == "/api/arreglo":
+                        acc = datos.get("accion")
+                        if acc == "mover":
+                            return self._json(arreglos.mover_documento(m, int(datos["documento"]), int(datos["expediente"]),
+                                                                       int(datos["persona"]) if datos.get("persona") else None, datos.get("de_expediente")))
+                        if acc == "unir_expedientes":
+                            return self._json(arreglos.unir_expedientes(m, int(datos["origen"]), int(datos["destino"])))
+                        if acc == "unir_personas":
+                            return self._json(arreglos.unir_personas(m, int(datos["quitar"]), int(datos["quedar"]), bool(datos.get("forzar"))))
+                        raise MotorError("Arreglo desconocido.")
                     if p == "/api/sacar_limbo":
                         return self._json(m.sacar_del_limbo(int(datos["documento"])))
                     if p == "/api/limbo":

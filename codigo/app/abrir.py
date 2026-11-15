@@ -16,7 +16,7 @@ if str(AQUI) not in sys.path:
 from sentiende import VERSION
 from sentiende.motor import MotorError
 
-LANZADOR_MINIMO = 1          # versión mínima de SeFinancia.exe que necesita este motor
+LANZADOR_MINIMO = 2          # versión mínima de SeFinancia.exe que necesita este motor
 CONGELADO = getattr(sys, "frozen", False)
 
 def mensaje(texto, titulo="SeFinancia", error=True):
