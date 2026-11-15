@@ -63,7 +63,8 @@ function fbar(fase, estado) {
 // ------------------------------------------------------------------ barra lateral
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
-  const r0 = S.ruta.split("/")[0] || "motor", r = r0 === "limbo" ? "motor" : r0;   // el Limbo está dentro del motor
+  const r0 = S.ruta.split("/")[0] || "motor";
+  const r = ({ limbo: "motor", cuarentena: "motor", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
@@ -73,12 +74,14 @@ function lateral() {
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("revision", "check", "Centro de revisión", c.revisar)}
-      ${item("motor", "motor", "Motor de proceso", c.pendientes - (c.revisar || 0))}
+      ${item("motor", "motor", "Motor de proceso", (c.pendientes - (c.revisar || 0)) + (c.cuarentena || 0))}
       ${item("avisos", "bell", "Avisos", c.avisos)}
-      ${item("", "chart", "Estadísticas", 0, false, "pronto")}
+      ${item("personas", "user", "Personas")}
+      ${item("estadisticas", "chart", "Estadísticas")}
     </div>
     <div class="nav-iconos">
-      <a class="inactivo" aria-disabled="true" title="Buscar en documentos (pronto)" aria-label="Buscar en documentos (pronto)">${ico("search", 20)}</a>
+      <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
+      <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
       <a href="#ajustes" title="Ajustes" aria-label="Ajustes" ${r === "ajustes" ? 'aria-current="page"' : ""}>${ico("gear", 20)}</a>
     </div>
     <div class="lat-zona" id="zona">
@@ -88,7 +91,7 @@ function lateral() {
       <label class="btn peq pri">${ico("upload", 15)}Elegir archivos…<input type="file" id="elegir" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.docx,.xlsx"></label>
       <span class="lat-btns"><button class="btn peq" id="b-correo" title="Recoger los adjuntos de los correos nuevos">${ico("mail", 15)}Correo</button>
       <button class="btn peq" id="b-bt" title="Abrir la recepción por Bluetooth de Windows">${ico("bt", 15)}Bluetooth</button></span>
-      <button class="btn peq lat-escaner" disabled title="Escanear directamente: en una próxima versión">${ico("scan", 15)}Escanear <span class="v11">pronto</span></button>
+      <button class="btn peq lat-escaner" id="b-scan" title="Escanear con el escáner conectado a este equipo">${ico("scan", 15)}Escanear</button>
       ${CORREO_TXT ? `<span class="lat-estado">${esc(CORREO_TXT)}</span>` : ""}${BT?.activo ? `<span class="lat-estado">${ico("bt", 13)} ${esc(BT.mensaje)}</span>` : ""}
       ${S.estado?.trabajando ? '<span class="trabajando">El motor está trabajando…</span>' : ""}
     </div>
@@ -102,6 +105,11 @@ function activarZona() {
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
   $("#b-correo").addEventListener("click", revisarCorreo);
+  $("#b-scan").addEventListener("click", async ev => {
+    const b = ev.currentTarget; b.disabled = true; aviso("Abriendo el escáner de Windows…");
+    try { const r = await api("escanear", {}); aviso(r.cancelado ? "Escaneo cancelado" : "Escaneado: " + r.archivo); refrescar(true); } catch (e) { aviso(e.message, true); }
+    b.disabled = false;
+  });
   $("#b-bt").addEventListener("click", async () => {
     try { BT = await api("bluetooth", {}); aviso("Asistente de Bluetooth de Windows abierto: envía los archivos desde el móvil. Lo recibido entra solo."); vigilarBT(); }
     catch (e) { aviso(e.message, true); }
@@ -153,9 +161,10 @@ document.addEventListener("paste", e => {
 // ------------------------------------------------------------------ Motor de proceso
 let LOTE = null;
 function pestanasMotor(activa) {
-  const n = S.estado.cuentas.limbo || 0;
+  const n = S.estado.cuentas.limbo || 0, q = S.estado.cuentas.cuarentena || 0;
   return `<nav class="pestanas" aria-label="Motor de proceso"><a href="#motor" ${activa === "motor" ? 'aria-current="page"' : ""}>${ico("motor", 16)}Proceso</a>
-    <a href="#limbo" ${activa === "limbo" ? 'aria-current="page"' : ""}>${ico("limbo", 16)}Limbo${n ? `<span class="num">${n}</span>` : ""}</a></nav>`;
+    <a href="#limbo" ${activa === "limbo" ? 'aria-current="page"' : ""}>${ico("limbo", 16)}Limbo${n ? `<span class="num">${n}</span>` : ""}</a>
+    <a href="#cuarentena" ${activa === "cuarentena" ? 'aria-current="page"' : ""}>${ico("mail", 16)}Correo por revisar${q ? `<span class="num">${q}</span>` : ""}</a></nav>`;
 }
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);
@@ -280,7 +289,7 @@ function vistaRevision() {
   const tipos = S.info.tipos.map(t => `<option value="${t.id}" ${t.id === R.tipo ? "selected" : ""}>${esc(t.nombre)}</option>`).join("");
   const extra = [["Ejercicio", datos.ejercicio], ["Entidad", d.entidad]].filter(([, x]) => x).map(([a, b]) => `${a}: <b>${esc(b)}</b>`).join(" · ");
   // 2 · persona
-  const fich = buscarFichada(P);
+  const fich = R.ignorarFicha ? null : buscarFichada(P);
   // la persona elegida va siempre la primera
   const esTercero = i => (R.otros || {})[i] === "tercero";
   const chipsLeidas = leidas.map((p, i) => ({ sel: R.persona === i, html: esTercero(i)
@@ -292,6 +301,12 @@ function vistaRevision() {
   const chipLote = lm ? `<button type="button" class="chip peq lote ${R.persona === -2 ? "sel" : ""}" id="r-lote" title="Lo que más se repite en los documentos ya confirmados de este lote">Como el resto del lote: ${esc(`${lm.per.nombre} ${lm.per.apellido1}`)}<small>${lm.n} de ${lm.total}</small></button>` : "";
   const estadoPersona = R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
     : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`;
+  // discrepancia: la ficha coincide por nombre pero el DNI leído es otro (pantalla 14)
+  const discrepa = fich && P.dni && fich.dni && P.dni.toUpperCase() !== fich.dni.toUpperCase() && !R.discrepanciaVista;
+  const avisoDiscrepancia = discrepa ? `<div class="dup discrepancia" role="alert"><b>Discrepancia: ¿es la misma persona?</b>
+      <div class="lado"><div><small>En la ficha</small><b>${esc(`${fich.nombre} ${fich.apellido1} ${fich.apellido2 || ""}`)}</b><span class="mono">${esc(fich.dni)}</span></div>
+      <div><small>Leído en el documento</small><b>${esc(`${P.nombre} ${P.ap1} ${P.ap2}`)}</b><span class="mono">${esc(P.dni)}</span></div></div>
+      <div class="acciones"><button class="btn peq" id="dis-misma">Es la misma: dejar el DNI de la ficha</button><button class="btn peq" id="dis-corregir">Es la misma: corregir la ficha con ${esc(P.dni)}</button><button class="btn peq" id="dis-otra">Es otra persona</button></div></div>` : "";
   // 3 · fecha
   const clave = R.tipo ? (d.fecha_claves || {})[R.tipo] : null;
   const auto = fechaAuto(d, clave), elegida = R.fecha || auto;
@@ -392,7 +407,7 @@ function vistaRevision() {
         </div>
       </div>
     </div>
-    ${avisoDup}${filaDatos}
+    ${avisoDiscrepancia}${avisoDup}${filaDatos}
     <div class="pie-rev ${filaOtras ? "con-otras" : ""}">
       <div class="pie-izq">${filaOtras}</div>
       <div class="pie-der">
@@ -407,7 +422,9 @@ function vistaRevision() {
       <div class="pie-v"><span>${esc(d.nombre_recibido)} · página ${S.pag} de ${pags}</span>
         <span class="acciones"><button class="btn peq" id="pant" ${S.pag <= 1 ? "disabled" : ""} aria-label="Página anterior">${ico("left", 15)}</button><button class="btn peq" id="psig" ${S.pag >= pags ? "disabled" : ""} aria-label="Página siguiente">${ico("right", 15)}</button>
           <span class="sep"></span><button class="btn peq" id="v-menos" aria-label="Alejar">−</button><span id="v-nivel" class="nivel">${Math.round(S.zoom * 100)} %</span><button class="btn peq" id="v-mas" aria-label="Acercar">+</button>
-          <button class="btn peq" id="v-ajustar">Ajustar</button><button class="btn peq" id="v-grande">Pantalla completa</button></span></div>
+          <button class="btn peq" id="v-ajustar">Ajustar</button><button class="btn peq" id="v-grande">Pantalla completa</button>
+          <span class="sep"></span><button class="btn peq" data-girar="-90" title="Girar a la izquierda" aria-label="Girar a la izquierda">↺</button><button class="btn peq" data-girar="90" title="Girar a la derecha" aria-label="Girar a la derecha">↻</button>
+          ${pags > 1 ? `<a class="btn peq" href="#separar/${d.id}" title="Partir este PDF en varios documentos">✂ Separar</a>` : ""}<button class="btn peq peligro" id="r-papelera" title="Enviar a la Papelera">${ico("trash", 14)}</button></span></div>
       <div class="lienzo" id="v-lienzo"><img id="v-img" style="width:${S.zoom * 100}%" alt="Página ${S.pag} de ${esc(d.nombre_recibido)}" src="/api/vista/${d.id}/${S.pag}?grande=1&t=${d.actualizado}"></div>
       <span class="sub" style="padding:6px 14px">Ctrl + rueda del ratón para acercar o alejar · doble clic para verlo a pantalla completa.</span>
       <details style="padding:0 14px 14px"><summary class="muted" style="cursor:pointer;padding:10px 0">Ver el texto leído de esta página</summary><div class="campo"><textarea readonly>${esc(d.texto_paginas[S.pag - 1] || "")}</textarea></div></details>
@@ -453,6 +470,19 @@ function activarRevision() {
     pintar();
   }));
   document.querySelectorAll("[data-no-tercero]").forEach(b => b.addEventListener("click", () => { delete R.otros[+b.dataset.noTercero]; pintar(); }));
+  $("#dis-misma")?.addEventListener("click", () => { R.nuevo.dni = buscarFichada({ ...R.nuevo, dni: "" })?.dni || R.nuevo.dni; R.discrepanciaVista = true; pintar(); });
+  $("#dis-corregir")?.addEventListener("click", async () => {
+    const f = buscarFichada({ ...R.nuevo, dni: "" });
+    try { await api("persona", { id: f.id, dni: R.nuevo.dni }); S.expedientes = await api("expedientes"); aviso("Ficha corregida y documentos renombrados"); R.discrepanciaVista = true; pintar(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#dis-otra")?.addEventListener("click", () => { R.ignorarFicha = true; R.discrepanciaVista = true; R.destino = "nuevo"; R.dupOk = true; pintar(); });
+  document.querySelectorAll("[data-girar]").forEach(b => b.addEventListener("click", async () => {
+    await api("girar", { documento: S.docId, pos: S.pag, grados: +b.dataset.girar }); S.doc = await api("documento/" + S.docId); pintar();
+  }));
+  $("#r-papelera")?.addEventListener("click", async () => {
+    if (!confirm("¿Enviar este documento a la Papelera? Se puede restaurar.")) return;
+    try { await api("eliminar", { documento: S.docId }); aviso("A la Papelera"); siguiente(); } catch (e) { aviso(e.message, true); }
+  });
   $("#r-vaciar")?.addEventListener("click", () => { R.nuevo = { nombre: "", ap1: "", ap2: "", dni: "" }; R.persona = -1; R.destino = undefined; pintar(); $("#n-nom")?.focus(); });
   $("#r-mover")?.addEventListener("click", () => { R.verMover = !R.verMover; pintar(); });
   $("#r-mover-sel")?.addEventListener("change", e => { if (e.target.value) { R.destino = e.target.value; R.dupOk = false; R.verMover = false; pintar(); } });
@@ -508,7 +538,7 @@ async function confirmar() {
   if (pendientes.some(x => !(R.otros || {})[x.i])) return aviso("Hay más personas en el documento: indica qué es cada una.", true);
   const otrosEnvio = pendientes.map(x => ({ persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: R.otros[x.i] }));
   const persona_datos = { nombre: P.nombre.trim(), apellido1: P.ap1.trim(), apellido2: P.ap2.trim(), dni: P.dni.trim().toUpperCase() || null };
-  const fich = buscarFichada(P);
+  const fich = R.ignorarFicha ? null : buscarFichada(P);
   let expediente, persona = null;
   try {
     if (R.destino === "nuevo") {
@@ -522,13 +552,39 @@ async function confirmar() {
       if (!colectivoSinPersona && !(fich && exp.personas.some(q => q.id === fich.id))
           && !confirm(`¿Añadir a ${P.nombre} ${P.ap1} como COTITULAR del expediente «${exp.nombre}»?\n\nSi no es titular de la operación (notario, vendedor, banco…), pulsa Cancelar y márcalo como «Tercero».`)) return;
     }
-    const g = await api("emparejar", { documento: S.docId, expediente, persona, persona_datos: persona || colectivoSinPersona ? null : persona_datos,
+    let segunda = null, nombre_previsto = null;
+    if (R.destino !== "nuevo") {
+      const pv = await api("nombre_previsto", { documento: S.docId, expediente, persona, tipo, fecha: R.fecha, privado: !!R.priv, comun: !!R.comun });
+      if (pv.existe) {
+        segunda = await preguntarSegunda(pv);
+        if (!segunda) return;
+        nombre_previsto = pv.nombre;
+      }
+    }
+    const g = await api("emparejar", { documento: S.docId, expediente, persona, persona_datos: persona || colectivoSinPersona ? null : persona_datos, segunda, nombre_previsto,
       comun: !!R.comun, tipo, privado: !!R.priv, fecha: R.fecha, otros: otrosEnvio });
     aviso("Guardado: " + g.nombre_final);
     siguiente();
   } catch (e) { aviso(e.message, true); }
 }
 
+// Segunda aportación (pantalla 19): ya hay un documento con ese nombre en el expediente
+function preguntarSegunda(pv) {
+  return new Promise(res => {
+    const caja = document.createElement("div");
+    caja.className = "zoom informe";
+    caja.innerHTML = `<div class="tarjeta"><h2>Ya hay un «${esc(pv.nombre)}» en este expediente</h2>
+      <span class="sub">Llegó el ${pv.previo ? fmtF(pv.previo.creado) : "—"}. ¿Qué es el que estás guardando ahora?</span>
+      <div class="opciones-2">
+        <button class="btn pri" data-s="sustituir">Sustituye al anterior<small>el anterior pasa a llamarse …-ant y deja de contar</small></button>
+        <button class="btn" data-s="secundaria">Es otro más (secundario)<small>se guarda como …-2</small></button>
+        <button class="btn" data-s="duplicado">Es el mismo, repetido<small>va a la Papelera</small></button>
+        <button class="btn" data-s="limbo">No lo sé todavía<small>al Limbo</small></button></div>
+      <div class="acciones"><button class="btn" data-s="">Cancelar</button></div></div>`;
+    document.body.appendChild(caja);
+    caja.querySelectorAll("[data-s]").forEach(b => b.addEventListener("click", () => { caja.remove(); res(b.dataset.s || null); }));
+  });
+}
 async function siguiente() {
   await refrescar(false);
   const cola = colaRevision();
@@ -607,16 +663,20 @@ function vistaExpediente() {
   const { e } = EXP, v = S.info.variante;
   const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
   return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
-    <div class="sub">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · ${esc(v.finalidades[e.finalidad] || e.finalidad)} · carpeta <code>${esc(e.carpeta)}</code>
-      ${e.estado === "unido" ? pill("Unido a otro") : pill("Abierto")}</div></div>
-    <div class="acciones"><button class="btn" id="rehacer">${ico("play")}Rehacer archivo de texto</button>${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro expediente…</button>` : ""}</div></div>
+    <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · ${esc(v.finalidades[e.finalidad] || e.finalidad)} · carpeta <code>${esc(e.carpeta)}</code>
+      <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
+      <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
+      <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 16)}</button></div></div>
+    <div class="acciones"><button class="btn" id="exp-carpeta">${ico("folder")}Abrir carpeta</button><button class="btn" id="exp-exportar">Exportar (zip)</button><button class="btn" id="rehacer">${ico("play")}Rehacer texto</button>
+      ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro expediente…</button>` : ""}<button class="btn peligro" id="exp-eliminar">${ico("trash")}Eliminar</button></div></div>
+  ${OPV && EXP.op ? panelOperacion(e) : ""}
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
   ${EXP.neg ? `<div class="exp-notas">${panelNegBanco(e)}${panelNegCliente(e)}</div>` : ""}
   <div class="exp-cuerpo">
     <div class="exp-izq">${tarjetaDocsExp(e)}${tarjetaPersonasExp(e)}</div>
     <aside class="exp-der">${tarjetaChecklist(e)}</aside>
-  </div>${INFORME ? modalInforme() : ""}`;
+  </div>${INFORME ? modalInforme() : ""}${dialogoEstado()}`;
 }
 // ---------------- negociación banco (varios bancos, contactos) y negociación cliente (F-17)
 const NEG = { banco: 0, verBanco: false, contacto: null, historial: { banco: false, cliente: false } };
@@ -659,6 +719,7 @@ function panelNegCliente() {
 }
 // ---------------- checklist con marcas (Aportado lo pone el programa; Solicitado y Sin pedir, a mano)
 let CK_TAB = null, INFORME = null;
+const PAPELES = ["Titular", "Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior", "Tercero"];
 function estadoCheck(f) {
   const m = (EXP.neg?.marcas || {})[f.clave];
   if (f.estado === "Recibido") return ["Aportado", "ok", "✓"];
@@ -686,7 +747,8 @@ function tarjetaChecklist(e) {
   return `<section class="tarjeta checklist"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
     ${solicitados ? `<div class="progreso fino"><i style="width:${Math.round(100 * ck.recibidos / Math.max(1, ck.recibidos + solicitados))}%"></i></div>` : ""}
     <div class="pestanas ck-tabs">${grupos.map(x => `<a href="javascript:void 0" data-ck-tab="${x.id}" ${x.id === CK_TAB ? 'aria-current="page"' : ""}>${esc(x.nombre)} <span class="num">${cuenta(x)}</span></a>`).join("")}</div>
-    ${g ? g.filas.map(fila).join("") : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
+    ${g ? (() => { const fam = {}; g.filas.forEach(f => (fam[f.familia || "Otros"] = fam[f.familia || "Otros"] || []).push(f));
+        return Object.entries(fam).map(([k, fs]) => `<div class="ck-familia">${esc(k)}</div>` + fs.map(fila).join("")).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
     ${ck.avisos_cliente.length ? `<div class="ck-avisos"><b>Avisos al cliente</b>${ck.avisos_cliente.map(a => `<span>${esc(a)}</span>`).join("")}</div>` : ""}
     <button class="btn" id="ck-informe">Generar informe de lo que falta</button></section>`;
 }
@@ -703,7 +765,7 @@ function tarjetaPersonasExp(e) {
   const docsDe = id => (EXP.docs || []).filter(d => d.persona_id === id && !d.de_expediente).length;
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Personas del expediente · ${e.personas.length}</h2></div>
     <table class="tabla"><tbody>${e.personas.map(p => { const n = docsDe(p.id);
-      return `<tr><td><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></td><td>${esc(p.papel)}</td><td class="mono">${esc(p.dni || "sin DNI")}</td><td>${n} documento(s)</td>
+      return `<tr><td><a href="#persona/${p.id}"><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></a></td><td><select data-papel="${p.id}" aria-label="Papel">${PAPELES.map(x => `<option ${x === p.papel ? "selected" : ""}>${x}</option>`).join("")}</select></td><td class="mono">${esc(p.dni || "sin DNI")}</td><td>${n} documento(s)</td>
       <td class="der">${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
 }
 // ---------------- arreglar lo ya guardado (v1.1)
@@ -721,7 +783,7 @@ function tarjetaDocsExp(e) {
   if (!EXP.docs) return "";
   const d0 = EXP.docs.find(d => d.id === ARR.mover);
   const filas = EXP.docs.map(d => `<tr><td class="mono">${esc(d.nombre_final)}</td><td>${esc(nombreTipo(d.tipo))}</td><td>${d.de_expediente ? "Todo el expediente" : esc(d.persona)}${d.privado ? ' <span class="pill p-todo">Privado</span>' : ""}</td>
-    <td class="der">${e.estado === "abierto" ? `<button class="btn peq" data-mover="${d.id}">${ico("play", 14)}Mover…</button>` : ""}</td></tr>
+    <td class="der"><button class="btn peq" data-abrir-doc="${esc(d.ruta_final || "")}" title="Ver en la carpeta">Abrir</button> ${e.estado === "abierto" ? `<button class="btn peq" data-mover="${d.id}">${ico("play", 14)}Mover…</button>` : ""} <button class="btn peq" data-eliminar-doc="${d.id}" title="A la Papelera">${ico("trash", 14)}</button></td></tr>
     ${d0 && d0.id === d.id ? `<tr class="fila-mover"><td colspan="4">${panelMover(e, d)}</td></tr>` : ""}`).join("");
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Documentos guardados · ${EXP.docs.length}</h2></div>
     ${EXP.docs.length ? `<table class="tabla"><thead><tr><th>Archivo</th><th>Tipo</th><th>De</th><th></th></tr></thead><tbody>${filas}</tbody></table>` : '<div class="vacio">Sin documentos guardados.</div>'}</section>`;
@@ -743,6 +805,7 @@ function panelMover(e, d) {
 }
 function activarExpediente(id) {
   const recargar = async () => { S.expedientes = await api("expedientes"); EXP.e = S.expedientes.find(x => x.id === id) || EXP.e; await cargarExpediente(id, true); };
+  activarOperacion(id, recargar);
   const n = EXP?.neg;
   document.querySelectorAll("[data-nota]").forEach(b => b.addEventListener("click", async () => {
     const tipo = b.dataset.nota, inp = $("#nota-" + tipo);
@@ -811,9 +874,9 @@ function activarExpediente(id) {
 async function cargarExpediente(id, suave) {
   if (!suave) { EXP = null; pintar(); }
   const e = S.expedientes.find(x => x.id === id) || (await api("expedientes")).find(x => x.id === id);
-  const [ck, docs, neg] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id)]);
-  if (EXP?.e?.id !== id) Object.assign(NEG, { banco: 0, verBanco: false, contacto: null });
-  EXP = { e, ck, docs, neg }; ARR.unir = false; ARR.mover = null; pintar();
+  const [ck, docs, neg, op] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id)]);
+  if (EXP?.e?.id !== id) { Object.assign(NEG, { banco: 0, verBanco: false, contacto: null }); OPV = false; DIALOGO = null; }
+  EXP = { e, ck, docs, neg, op }; ARR.unir = false; ARR.mover = null; pintar();
 }
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
@@ -845,8 +908,23 @@ function activarLimbo() {
 function vistaAjustes() {
   const c = S.info.carpetas, mb = b => (b / 1e6).toFixed(1).replace(".", ",") + " MB";
   return `<div class="cab"><div><small>Ajustes</small><h1>Ajustes</h1><div class="sub">${esc(S.info.compatibilidad)}</div></div></div>
-  <section class="tarjeta"><h2>Carpetas</h2>${Object.entries(c).map(([k, p]) => `<div class="dato"><span>${esc(k)}</span><span class="mono">${esc(p)}</span></div>`).join("")}
-    <span class="sub">Cambiar carpetas desde aquí llegará en la siguiente entrega; ahora se cambian en Datos\\ajustes.json.</span></section>
+  <section class="tarjeta"><h2>Carpetas</h2>
+    ${[["entrada", "Entrada (lo que llega)"], ["documentos", "SeDocumentos (los ordenados)"], ["originales", "Doc_original (originales sin tocar)"], ["papelera", "Papelera"]]
+      .map(([k, l]) => `<div class="fila-carpeta"><label for="cp-${k}">${l}</label><input id="cp-${k}" data-carpeta="${k}" value="${esc(c[k])}"><button class="btn peq" data-abrir="${esc(c[k])}">Abrir</button></div>`).join("")}
+    <div class="dato"><span>Datos (base de datos y ajustes)</span><span class="mono">${esc(c.datos)}</span></div>
+    <div class="acciones"><button class="btn pri" id="cp-ok">${ico("check")}Guardar carpetas</button></div>
+    <span class="sub">Lo que ya está guardado no se mueve: las carpetas nuevas se usan desde ahora. Si cambias SeDocumentos o Doc_original, mueve antes las carpetas de los expedientes con el Explorador de Windows.</span></section>
+  <section class="tarjeta"><h2>Reconocimiento (OCR)</h2>
+    <div class="campos-inline"><div class="campo"><label for="oc-rev">Pedir revisión por debajo de (%)</label><input id="oc-rev" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.revisar || .75) * 100)}"></div>
+      <div class="campo"><label for="oc-no">«No reconocido» por debajo de (%)</label><input id="oc-no" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.no_reconocido || .4) * 100)}"></div></div>
+    <div class="chips">${[["spa", "Castellano"], ["cat", "Valenciano / catalán"], ["eus", "Euskera"], ["glg", "Gallego"], ["eng", "Inglés"]]
+      .map(([k, n]) => `<label class="check mini"><input type="checkbox" data-idioma="${k}" ${(S.ajustes?.ocr?.idiomas || []).includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
+    <span class="sub">Idiomas que usa el OCR en las fotos y escaneos. Menos idiomas = un poco más rápido.</span>
+    <div class="acciones"><button class="btn pri" id="oc-ok">${ico("check")}Guardar</button><a class="btn" href="#reglas">Ver reglas de nombres y tipos de documento</a></div></section>
+  <section class="tarjeta"><h2>Apariencia</h2>
+    <div class="fila-carpeta"><label for="ap-t">Tamaño del texto</label><input id="ap-t" type="range" min="80" max="140" step="5" value="${S.ajustes?.apariencia?.tamano || 100}"><b id="ap-v">${S.ajustes?.apariencia?.tamano || 100} %</b></div></section>
+  <section class="tarjeta"><h2>Copia de seguridad</h2><span class="sub">Guarda en un zip la base de datos, las finalidades y los ajustes (no los documentos, que ya están en sus carpetas) en <code>${esc(c.datos)}\\Copias</code>.</span>
+    <div class="acciones"><button class="btn" id="copia">Hacer copia ahora</button></div></section>
   <section class="tarjeta"><h2>Datos temporales</h2>${TMP ? `
     <div class="dato"><span>Copia de trabajo</span><span>${TMP.trabajo_archivos} archivos · ${mb(TMP.trabajo_bytes)}</span></div>
     <div class="dato"><span>Sin uso (restos de lotes terminados)</span><span>${TMP.trabajo_sin_uso} archivos · ${mb(TMP.trabajo_sin_uso_bytes)}</span></div>
@@ -876,6 +954,7 @@ function tarjetaCorreo() {
     <span class="sub">${esc(p.nota)}</span>
     <div class="campos-inline">${campo("usuario", "Usuario (tu dirección de correo)", f.usuario, "email", 'autocomplete="off"')}${campo("clave", "Contraseña", f.clave, "password", `autocomplete="new-password" placeholder="${CORREO.ajustes.hay_clave ? "•••••••• (guardada; escribe otra para cambiarla)" : ""}"`)}</div>
     <div class="campos-inline">${campo("carpeta", "Carpeta del buzón", f.carpeta)}${campo("dias", "Mirar correos de los últimos (días)", f.dias, "number", 'min="1" max="365"')}${campo("remitentes", "Solo de estos remitentes (opcional, separados por comas)", f.remitentes, "text", 'placeholder="@banco.es, gestor@ejemplo.com"')}</div>
+    <label class="check mini"><input type="checkbox" id="co-nuevos" ${f.revisar_nuevos !== false ? "checked" : ""}><span>Los remitentes nuevos van a «Correo por revisar» hasta que los aceptes (recomendado)</span></label>
     <div class="campos-inline"><div class="campo"><label for="co-cada">Revisar solo</label><select id="co-cada">${[[0, "Solo cuando pulse «Correo»"], [5, "Cada 5 minutos"], [15, "Cada 15 minutos"], [30, "Cada 30 minutos"], [60, "Cada hora"]].map(([v, n]) => `<option value="${v}" ${+f.cada_minutos === v ? "selected" : ""}>${n}</option>`).join("")}</select></div></div>
     <div class="acciones"><button class="btn pri" id="co-guardar">${ico("check")}Guardar</button><button class="btn" id="co-probar">Probar conexión</button>${CORREO.ajustes.servidor && CORREO.ajustes.hay_clave ? `<button class="btn" id="co-revisar">${ico("mail")}Revisar ahora</button>` : ""}</div>
     ${e.ultimo ? `<span class="sub">Última revisión: ${esc(e.ultimo.replace("T", " ").slice(0, 16))}${e.error ? " · error: " + esc(e.error) : e.resumen ? ` · ${e.resumen.adjuntos} adjunto(s) recogido(s)` : ""}</span>` : ""}
@@ -884,7 +963,7 @@ function tarjetaCorreo() {
 function leerCorreoForm() {
   const f = CORREO.form;
   ["servidor", "puerto", "usuario", "clave", "carpeta", "dias", "remitentes"].forEach(k => { const el = $("#co-" + k); if (el) f[k] = el.value; });
-  f.cada_minutos = +($("#co-cada")?.value || 0); f.activo = true;
+  f.cada_minutos = +($("#co-cada")?.value || 0); f.activo = true; f.revisar_nuevos = !!$("#co-nuevos")?.checked;
   return f;
 }
 function tarjetaRepetidas() {
@@ -959,6 +1038,18 @@ function activarFinalidades() {
 async function recargarFinalidades() { [FIN, S.info] = await Promise.all([api("finalidades"), api("info")]); pintar(); }
 function activarAjustes() {
   activarFinalidades();
+  document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrir)));
+  $("#cp-ok")?.addEventListener("click", async () => {
+    const carpetas = {}; document.querySelectorAll("[data-carpeta]").forEach(i => (carpetas[i.dataset.carpeta] = i.value.trim()));
+    try { S.ajustes = await api("ajustes", { carpetas }); S.info = await api("info"); aviso("Carpetas guardadas"); pintar(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#oc-ok")?.addEventListener("click", async () => {
+    const idiomas = [...document.querySelectorAll("[data-idioma]:checked")].map(i => i.dataset.idioma);
+    try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
+  });
+  $("#ap-t")?.addEventListener("input", e => { $("#ap-v").textContent = e.target.value + " %"; });
+  $("#ap-t")?.addEventListener("change", async e => { S.ajustes = await api("ajustes", { apariencia: { tamano: +e.target.value } }); aplicarApariencia(); });
+  $("#copia")?.addEventListener("click", async () => { try { const r = await api("copia", {}); aviso("Copia hecha: " + r.ruta.split(/[\\/]/).pop()); abrirRuta(r.ruta, true); } catch (e) { aviso(e.message, true); } });
   $("#co-proveedor")?.addEventListener("change", ev => { const f = leerCorreoForm(), p = CORREO.proveedores[ev.target.value]; f.proveedor = ev.target.value; if (p.servidor) { f.servidor = p.servidor; f.puerto = p.puerto; } pintar(); });
   $("#co-guardar")?.addEventListener("click", async () => { try { CORREO.ajustes = await api("correo/guardar", leerCorreoForm()); CORREO.form.clave = ""; aviso("Correo guardado"); pintar(); } catch (e) { aviso(e.message, true); } });
   $("#co-probar")?.addEventListener("click", async ev => {
@@ -987,9 +1078,12 @@ function pintar() {
   lateral();
   const [r, id] = S.ruta.split("/");
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
-    expedientes: [vistaExpedientes, () => document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", () => (location.hash = "expediente/" + tr.dataset.exp)))],
+    expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes] };
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
+    cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
+    papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
+    bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)] };
   const [v, act] = vistas[r] || vistas.motor;
   const y = $("#vista").scrollTop;
   $("#vista").innerHTML = v();
@@ -1010,7 +1104,13 @@ async function ir() {
   if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
   if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
   if (r === "avisos") AV = await api("avisos");
-  if (r === "ajustes") { [TMP, FIN, REP, CORREO] = await Promise.all([api("temporales"), api("finalidades"), api("personas_repetidas"), api("correo")]); CORREO.form = { ...CORREO.ajustes, clave: "" }; }
+  if (r === "cuarentena") CUA = await api("cuarentena");
+  if (r === "personas" || r === "persona") PERS = await api("personas");
+  if (r === "papelera") PAP = await api("papelera");
+  if (r === "estadisticas") EST = await api("estadisticas");
+  if (r === "reglas" && !REG) REG = await api("reglas");
+  if (r === "separar") { SEP = { id: +id, doc: await api("documento/" + id), cortes: new Set() }; }
+  if (r === "ajustes") { [TMP, FIN, REP, CORREO, S.ajustes] = await Promise.all([api("temporales"), api("finalidades"), api("personas_repetidas"), api("correo"), api("ajustes")]); CORREO.form = { ...CORREO.ajustes, clave: "" }; }
   pintar();
 }
 async function refrescar(repintar) {
@@ -1018,18 +1118,323 @@ async function refrescar(repintar) {
   [S.estado, S.expedientes] = await Promise.all([api("estado"), api("expedientes")]);
   const cambio = antes !== JSON.stringify(S.estado);
   const r = S.ruta.split("/")[0] || "motor";
-  if (repintar || (cambio && ["motor", "limbo", ""].includes(r))) pintar();
+  if (repintar || (cambio && ["motor", "limbo", "cuarentena", ""].includes(r))) pintar();
   else if (cambio) { lateral(); if (r === "revision" && !S.editando && !S.doc) ir(); }
 }
+function aplicarApariencia() { document.body.style.zoom = ((S.ajustes?.apariencia?.tamano || 100) / 100).toString(); }
 async function inicio() {
   S.info = await api("info");
   const c = S.info.variante.colores || {}, st = document.documentElement.style;
   [["--marco", c.marco], ["--accent", c.acento], ["--lateral", c.lateral], ["--lateralActivo", c.lateral_activo], ["--lateralBorde", c.lateral_borde], ["--lateralTenue", c.lateral_tenue]]
     .forEach(([k, v]) => v && st.setProperty(k, v));
   document.title = `${S.info.variante.nombre} · con Sentiende`;
-  [S.estado, S.expedientes] = await Promise.all([api("estado"), api("expedientes")]);
+  [S.estado, S.expedientes, S.ajustes] = await Promise.all([api("estado"), api("expedientes"), api("ajustes")]);
+  aplicarApariencia();
+  if (!S.ajustes.bienvenida_vista && !S.expedientes.length && !location.hash) location.hash = "bienvenida";
   window.addEventListener("hashchange", ir);
   await ir();
   setInterval(() => refrescar(false).catch(() => {}), 1500);
 }
 inicio().catch(e => { document.body.innerHTML = `<p style="padding:30px">No se ha podido abrir: ${esc(e.message)}</p>`; });
+
+// ================================================================== pantallas de gestión (diseño 15–33)
+const eur = v => v === null || v === undefined || v === "" || isNaN(+v) ? "—" : (+v).toLocaleString("es-ES", { maximumFractionDigits: 2 }) + " €";
+const PRIO = { "": "Sin prioridad", baja: "Prioridad baja", media: "Prioridad media", alta: "Prioridad alta" };
+const SIG_PRIO = { "": "baja", baja: "media", media: "alta", alta: "" };
+async function abrirRuta(ruta, seleccionar) { try { await api("abrir", { ruta, seleccionar: !!seleccionar }); } catch (e) { aviso(e.message, true); } }
+
+// ---------------- correo por revisar (remitentes nuevos, M-65)
+let CUA = null;
+function vistaCuarentena() {
+  return `<div class="cab"><div><h1>Correo por revisar</h1><div class="sub">Adjuntos de remitentes nuevos. No entran en el motor hasta que los aceptas; si aceptas al remitente, sus próximos correos entran solos.</div></div></div>
+  ${pestanasMotor("cuarentena")}
+  ${!CUA ? '<div class="tarjeta vacio">Cargando…</div>' : !CUA.length ? '<div class="tarjeta vacio">No hay correos por revisar.</div>' : CUA.map(c => `<section class="tarjeta cua">
+    <div class="neg-cab"><h2>${ico("mail", 17)} ${esc(c.asunto)}</h2><span class="sub">${esc(c.remitente)} · ${fmtF(c.fecha)} ${c.fecha.slice(11, 16)}</span></div>
+    <div class="chips">${c.archivos.map(a => `<span class="chip peq">${esc(a)}</span>`).join("")}</div>
+    <div class="acciones"><button class="btn pri" data-cua="${c.id}" data-acc="aceptar">${ico("check")}Aceptar y confiar en ${esc(c.remitente)}</button>
+      <button class="btn" data-cua="${c.id}" data-acc="aceptar_una">Aceptar solo este correo</button>
+      <button class="btn" data-cua="${c.id}" data-acc="rechazar">Rechazar (a la Papelera)</button>
+      <button class="btn peligro" data-cua="${c.id}" data-acc="bloquear">Bloquear remitente</button>
+      <button class="btn" data-abrir="${esc(c.carpeta)}">Ver los archivos</button></div></section>`).join("")}`;
+}
+function activarCuarentena() {
+  document.querySelectorAll("[data-cua]").forEach(b => b.addEventListener("click", async () => {
+    try { const r = await api("cuarentena", { id: +b.dataset.cua, accion: b.dataset.acc }); aviso(r.aceptados ? `${r.aceptados} adjunto(s) al motor` : "Hecho"); CUA = await api("cuarentena"); refrescar(true); }
+    catch (e) { aviso(e.message, true); }
+  }));
+  document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrir)));
+}
+
+// ---------------- lista de expedientes con pestañas, favorito y prioridad (21, 26)
+let EXP_TAB = "curso", NUEVO_EXP = null;
+function vistaExpedientes() {
+  const v = S.info.variante;
+  const grupos = { curso: e => e.estado === "abierto", firmados: e => e.estado === "firmado", cerrados: e => e.estado === "cerrado", todos: () => true };
+  const nombres = { curso: "En curso", firmados: "Firmados", cerrados: "Cerrados sin operación", todos: "Todos" };
+  const peso = e => (e.marcas.prioridad === "alta" ? 0 : e.marcas.prioridad === "media" ? 1 : e.marcas.prioridad === "baja" ? 2 : 4) - (e.marcas.favorito ? 0.5 : 0);
+  const lista = S.expedientes.filter(grupos[EXP_TAB]).sort((a, b) => peso(a) - peso(b) || b.id - a.id);
+  return `<div class="cab"><div><h1>Expedientes</h1><div class="sub">Se crean desde el Centro de revisión al emparejar el primer documento, o aquí a mano. Primero los de campanita, luego los favoritos.</div></div>
+    <div class="acciones"><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
+  ${NUEVO_EXP ? formNuevoExp() : ""}
+  <nav class="pestanas">${Object.entries(nombres).map(([k, n]) => `<a href="javascript:void 0" data-exp-tab="${k}" ${k === EXP_TAB ? 'aria-current="page"' : ""}>${n}<span class="num">${S.expedientes.filter(grupos[k]).length}</span></a>`).join("")}</nav>
+  ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th></tr></thead><tbody>
+  ${lista.map(e => `<tr class="clic prio-${e.marcas.prioridad || "no"} ${e.estado === "unido" ? "apagada" : ""}" data-exp="${e.id}">
+    <td class="marcas-exp"><button type="button" class="marca-b ${e.marcas.favorito ? "on" : ""}" data-fav="${e.id}" title="Favorito">${e.marcas.favorito ? "★" : "☆"}</button><button type="button" class="marca-b ${e.marcas.prioridad ? "on" : ""}" data-prio="${e.id}" title="${PRIO[e.marcas.prioridad]} (pulsa para cambiar)">${ico("bell", 16)}</button></td>
+    <td><b>${esc(e.nombre)}</b><div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)}</div></td><td>${pill(e.etiqueta, e.estado === "firmado" ? "ok" : e.estado === "cerrado" ? "bad" : "todo")}</td>
+    <td>${e.personas.map(p => esc(`${p.nombre} ${p.apellido1}`) + ` <span class="muted">(${esc(p.papel)})</span>`).join("<br>")}</td>
+    <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td></tr>`).join("")}</tbody></table></section>`
+    : `<div class="tarjeta vacio">No hay expedientes ${EXP_TAB === "todos" ? "todavía" : "en «" + nombres[EXP_TAB] + "»"}.</div>`}`;
+}
+function formNuevoExp() {
+  const f = NUEVO_EXP, fin = S.info.finalidades_visibles || Object.keys(S.info.variante.finalidades);
+  const fila = (p, i) => `<div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]]
+    .map(([k, l]) => `<div class="campo"><label>${l}</label><input data-ne="${i}" data-k="${k}" value="${esc(p[k] || "")}"></div>`).join("")}
+    ${i ? `<div class="campo"><label>Papel</label><select data-ne="${i}" data-k="papel">${["Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior"].map(x => `<option ${p.papel === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>` : '<div class="campo"><label>Papel</label><input value="Titular" disabled></div>'}</div>`;
+  return `<section class="tarjeta"><h2>Nuevo expediente</h2>
+    <div class="fin-pills">${fin.map(k => `<button type="button" class="fin-pill ${f.finalidad === k ? "sel" : ""}" data-ne-fin="${k}">${esc(S.info.variante.finalidades[k])}</button>`).join("")}</div>
+    ${f.personas.map(fila).join("")}
+    <div class="acciones"><button class="btn" id="ne-mas">＋ Otra persona</button><button class="btn pri" id="ne-ok">${ico("check")}Crear expediente</button><button class="btn" id="ne-no">Cancelar</button></div></section>`;
+}
+function activarExpedientes() {
+  document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", ev => { if (!ev.target.closest("button")) location.hash = "expediente/" + tr.dataset.exp; }));
+  document.querySelectorAll("[data-exp-tab]").forEach(a => a.addEventListener("click", () => { EXP_TAB = a.dataset.expTab; pintar(); }));
+  document.querySelectorAll("[data-fav]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.fav); await api("marcar_expediente", { expediente: e.id, favorito: !e.marcas.favorito }); refrescar(true); }));
+  document.querySelectorAll("[data-prio]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.prio); const p = SIG_PRIO[e.marcas.prioridad || ""]; await api("marcar_expediente", { expediente: e.id, prioridad: p }); aviso(PRIO[p]); refrescar(true); }));
+  $("#exp-nuevo")?.addEventListener("click", () => { NUEVO_EXP = { finalidad: (S.info.finalidades_visibles || [])[0], personas: [{}] }; pintar(); });
+  $("#ne-no")?.addEventListener("click", () => { NUEVO_EXP = null; pintar(); });
+  document.querySelectorAll("[data-ne]").forEach(i => i.addEventListener("input", () => (NUEVO_EXP.personas[+i.dataset.ne][i.dataset.k] = i.value)));
+  document.querySelectorAll("select[data-ne]").forEach(i => i.addEventListener("change", () => (NUEVO_EXP.personas[+i.dataset.ne].papel = i.value)));
+  document.querySelectorAll("[data-ne-fin]").forEach(b => b.addEventListener("click", () => { NUEVO_EXP.finalidad = b.dataset.neFin; pintar(); }));
+  $("#ne-mas")?.addEventListener("click", () => { NUEVO_EXP.personas.push({ papel: "Cotitular" }); pintar(); });
+  $("#ne-ok")?.addEventListener("click", async () => {
+    const [p0, ...otras] = NUEVO_EXP.personas;
+    if (!p0.nombre || !p0.apellido1) return aviso("Falta el nombre o el primer apellido del titular.", true);
+    try { const r = await api("expediente_manual", { persona: p0, otras, finalidad: NUEVO_EXP.finalidad }); NUEVO_EXP = null; S.expedientes = await api("expedientes"); location.hash = "expediente/" + r.expediente; }
+    catch (e) { aviso(e.message, true); }
+  });
+}
+
+// ---------------- estado y datos de la operación (23, 33)
+let OPV = false, DIALOGO = null;
+function panelOperacion(e) {
+  const op = EXP.op, d = op.datos, cerrado = ["firmado", "cerrado"].includes(op.estado);
+  const campo = (k, l, tipo = "text") => `<div class="campo"><label for="op-${k}">${l}</label><input id="op-${k}" type="${tipo}" data-op="${k}" value="${esc(d[k] || "")}"></div>`;
+  return `<section class="tarjeta operacion"><div class="neg-cab"><h2>Estado y datos de la operación</h2><button class="btn peq" id="op-cerrar-panel">Cerrar</button></div>
+    <div class="pasos-estado">${Object.entries(op.fases).map(([k, n]) => `<button type="button" class="paso-e ${!cerrado && d.fase === k ? "sel" : ""}" data-fase="${k}" ${cerrado ? "disabled" : ""}>${n}</button>`).join('<span class="flecha">›</span>')}
+      <span class="flecha">›</span><button type="button" class="paso-e ${op.estado === "firmado" ? "sel ok" : ""}" id="op-firmar">Firmado</button>
+      <button type="button" class="paso-e ${op.estado === "cerrado" ? "sel bad" : ""}" id="op-cerrar">Cerrar sin operación</button>
+      ${cerrado ? '<button class="btn peq" id="op-reabrir">Reabrir</button>' : ""}</div>
+    ${op.estado === "cerrado" ? `<div class="ck-avisos"><b>Cerrado sin operación</b><span>${esc(d.motivo_cierre || "")} · ${fmtF(d.fecha_cierre)}${d.entidad_cierre ? " · " + esc(d.entidad_cierre) : ""}${d.nota_cierre ? " · " + esc(d.nota_cierre) : ""}</span></div>` : ""}
+    <div class="op-campos">${campo("importe_solicitado", "Importe solicitado (€)", "number")}${campo("importe_concedido", "Importe concedido (€)", "number")}
+      <div class="campo"><label for="op-entidad">Entidad</label><input id="op-entidad" data-op="entidad" list="op-bancos" value="${esc(d.entidad || "")}"><datalist id="op-bancos">${[...new Set([...(EXP.neg?.bancos || []).map(b => b.entidad), ...S.info.bancos])].map(b => `<option value="${esc(b)}">`).join("")}</datalist></div>
+      ${campo("fecha_envio", "Enviado al banco", "date")}${campo("fecha_aprobacion", "Aprobado", "date")}${campo("fecha_firma", "Firma", "date")}</div>
+    <h3>Honorarios</h3>
+    <div class="op-campos"><div class="campo"><label for="op-ht">Tipo</label><select id="op-ht" data-op="honorarios_tipo"><option value="porcentaje" ${d.honorarios_tipo !== "importe" ? "selected" : ""}>Porcentaje del importe</option><option value="importe" ${d.honorarios_tipo === "importe" ? "selected" : ""}>Importe fijo</option></select></div>
+      ${campo("honorarios_valor", d.honorarios_tipo === "importe" ? "Importe (€)" : "Porcentaje (%)", "number")}
+      <div class="campo"><label>Honorarios</label><input disabled value="${eur(d.honorarios_importe)}"></div>
+      ${campo("factura_num", "N.º de factura")}${campo("factura_fecha", "Fecha de factura", "date")}${campo("fecha_cobro", "Fecha de cobro", "date")}</div>
+    ${op.estado === "firmado" && d.honorarios_importe && !d.fecha_cobro ? '<span class="warn-txt">Honorarios pendientes de cobro.</span>' : ""}
+    <div class="acciones"><button class="btn pri" id="op-guardar">${ico("check")}Guardar datos</button></div>
+    ${op.historial.length ? `<details class="historial"><summary>Historial · ${op.historial.length}</summary>${op.historial.map(h => `<div class="nota"><span class="nota-f">${fmtF(h.fecha)} · ${h.fecha.slice(11, 16)}</span><span>${esc(h.nota)}</span></div>`).join("")}</details>` : ""}
+  </section>`;
+}
+function dialogoEstado() {
+  if (!DIALOGO) return "";
+  const d = EXP.op.datos, bancos = [...new Set([...(EXP.neg?.bancos || []).map(b => b.entidad), ...S.info.bancos])];
+  const lista = `<datalist id="dl-bancos">${bancos.map(b => `<option value="${esc(b)}">`).join("")}</datalist>`;
+  if (DIALOGO === "firmar") return `<div class="zoom informe"><div class="tarjeta"><h2>Marcar como firmado</h2>
+    <div class="op-campos"><div class="campo"><label>Importe concedido (€)</label><input id="df-imp" type="number" value="${esc(d.importe_concedido || d.importe_solicitado || "")}"></div>
+    <div class="campo"><label>Entidad</label><input id="df-ent" list="dl-bancos" value="${esc(d.entidad || "")}">${lista}</div>
+    <div class="campo"><label>Fecha de firma</label><input id="df-fecha" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+    <div class="campo"><label>Honorarios</label><select id="df-ht"><option value="porcentaje">Porcentaje</option><option value="importe" ${d.honorarios_tipo === "importe" ? "selected" : ""}>Importe fijo</option></select></div>
+    <div class="campo"><label>Valor</label><input id="df-hv" type="number" value="${esc(d.honorarios_valor || "")}"></div></div>
+    <span class="sub">Los honorarios quedan «pendientes de cobro» hasta que pongas la fecha de cobro.</span>
+    <div class="acciones"><button class="btn pri" id="df-ok">${ico("check")}Marcar como firmado</button><button class="btn" id="dlg-no">Cancelar</button></div></div></div>`;
+  return `<div class="zoom informe"><div class="tarjeta"><h2>Cerrar sin operación</h2>
+    <div class="op-campos"><div class="campo"><label>Motivo</label><select id="dc-mot">${EXP.op.motivos.map(m => `<option>${m}</option>`).join("")}</select></div>
+    <div class="campo"><label>Fecha</label><input id="dc-fecha" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+    <div class="campo"><label>Entidad (si aplica)</label><input id="dc-ent" list="dl-bancos">${lista}</div></div>
+    <div class="campo"><label>Nota</label><input id="dc-nota"></div>
+    <div class="acciones"><button class="btn peligro" id="dc-ok">Cerrar sin operación</button><button class="btn" id="dlg-no">Cancelar</button></div></div></div>`;
+}
+function activarOperacion(id, recargar) {
+  $("#op-estado")?.addEventListener("click", () => { OPV = !OPV; pintar(); });
+  $("#op-cerrar-panel")?.addEventListener("click", () => { OPV = false; pintar(); });
+  const cambiar = async (estado, extra) => { try { EXP.op = await api("estado_expediente", { expediente: id, estado, extra }); DIALOGO = null; aviso(EXP.op.etiqueta); await recargar(); } catch (e) { aviso(e.message, true); } };
+  document.querySelectorAll("[data-fase]").forEach(b => b.addEventListener("click", () => cambiar(b.dataset.fase)));
+  $("#op-firmar")?.addEventListener("click", () => { DIALOGO = "firmar"; pintar(); });
+  $("#op-cerrar")?.addEventListener("click", () => { DIALOGO = "cerrar"; pintar(); });
+  $("#op-reabrir")?.addEventListener("click", () => confirm("¿Reabrir el expediente?") && cambiar("reabrir"));
+  $("#dlg-no")?.addEventListener("click", () => { DIALOGO = null; pintar(); });
+  $("#df-ok")?.addEventListener("click", () => cambiar("firmado", { importe_concedido: $("#df-imp").value, entidad: $("#df-ent").value, fecha_firma: $("#df-fecha").value, honorarios_tipo: $("#df-ht").value, honorarios_valor: $("#df-hv").value }));
+  $("#dc-ok")?.addEventListener("click", () => cambiar("cerrado", { motivo: $("#dc-mot").value, fecha: $("#dc-fecha").value, entidad: $("#dc-ent").value, nota: $("#dc-nota").value }));
+  $("#op-ht")?.addEventListener("change", () => { EXP.op.datos.honorarios_tipo = $("#op-ht").value; });
+  $("#op-guardar")?.addEventListener("click", async () => {
+    const datos = {}; document.querySelectorAll("[data-op]").forEach(i => (datos[i.dataset.op] = i.value));
+    try { EXP.op = await api("operacion", { expediente: id, datos }); aviso("Datos de la operación guardados"); await recargar(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#exp-fav")?.addEventListener("click", async () => { await api("marcar_expediente", { expediente: id, favorito: !EXP.e.marcas?.favorito }); await recargar(); });
+  $("#exp-prio")?.addEventListener("click", async () => { const p = SIG_PRIO[EXP.e.marcas?.prioridad || ""]; await api("marcar_expediente", { expediente: id, prioridad: p }); aviso(PRIO[p]); await recargar(); });
+  $("#exp-carpeta")?.addEventListener("click", () => abrirRuta(S.info.carpetas.documentos + (S.info.carpetas.documentos.includes("\\") ? "\\" : "/") + EXP.e.carpeta));
+  $("#exp-exportar")?.addEventListener("click", async () => {
+    const hayPriv = (EXP.docs || []).some(d => d.privado);
+    const privados = hayPriv && confirm("Este expediente tiene documentos PRIVADOS (No compartir).\n\nAceptar: incluirlos en el zip.\nCancelar: dejarlos fuera.");
+    try { const r = await api("exportar_expediente", { expediente: id, privados }); aviso(`Exportado: ${r.archivos} archivo(s)${r.privados_fuera ? ` (${r.privados_fuera} privados fuera)` : ""}`); abrirRuta(r.ruta, true); } catch (e) { aviso(e.message, true); }
+  });
+  $("#exp-eliminar")?.addEventListener("click", async () => {
+    if (!confirm(`¿Enviar el expediente «${EXP.e.nombre}» a la Papelera?\n\nSe mueven sus carpetas de documentos y originales a la Papelera, con un archivo para recuperarlo. Se puede restaurar.`)) return;
+    try { await api("eliminar", { expediente: id }); aviso("Expediente en la Papelera"); S.expedientes = await api("expedientes"); location.hash = "expedientes"; } catch (e) { aviso(e.message, true); }
+  });
+  document.querySelectorAll("[data-eliminar-doc]").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("¿Enviar este documento (y su original) a la Papelera? Se puede restaurar.")) return;
+    try { await api("eliminar", { documento: +b.dataset.eliminarDoc }); aviso("Documento en la Papelera"); await recargar(); } catch (e) { aviso(e.message, true); }
+  }));
+  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc, true)));
+  document.querySelectorAll("[data-papel]").forEach(s => s.addEventListener("change", async () => { await api("papel", { expediente: id, persona: +s.dataset.papel, papel: s.value }); aviso("Papel cambiado"); await recargar(); }));
+}
+
+// ---------------- personas (25) y ficha de persona (15)
+let PERS = null, FILTRO_P = "";
+function vistaPersonas() {
+  if (!PERS) return '<div class="tarjeta vacio">Cargando…</div>';
+  const f = normaliza(FILTRO_P), lista = PERS.filter(p => !f || normaliza(`${p.nombre} ${p.apellido1} ${p.apellido2} ${p.dni || ""}`).includes(f));
+  return `<div class="cab"><div><h1>Personas</h1><div class="sub">Todas las personas fichadas, con sus expedientes y papeles. Una persona puede estar en varios expedientes.</div></div></div>
+  <div class="neg-nueva"><input id="p-filtro" placeholder="Buscar por nombre o DNI…" value="${esc(FILTRO_P)}"></div>
+  <section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Persona</th><th>DNI / NIE</th><th>Expedientes</th><th>Documentos</th></tr></thead><tbody>
+  ${lista.map(p => `<tr class="clic" data-persona-ir="${p.id}"><td><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></td><td class="mono">${esc(p.dni || "sin DNI")}</td>
+    <td>${p.expedientes.map(e => `${esc(e.nombre)} <span class="muted">(${esc(e.papel)})</span>`).join("<br>") || '<span class="muted">Ninguno</span>'}</td><td>${p.documentos}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">Nadie coincide.</td></tr>'}
+  </tbody></table></section>`;
+}
+function vistaPersona(id) {
+  const p = (PERS || []).find(x => x.id === id);
+  if (!p) return '<div class="tarjeta vacio">Cargando…</div>';
+  return `<div class="cab"><div><small><a href="#personas">Personas</a></small><h1>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</h1><div class="sub">Ficha de la persona. Si cambias el nombre o el DNI, sus documentos se renombran con el código nuevo.</div></div></div>
+  <section class="tarjeta"><h2>Datos</h2><div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]]
+    .map(([k, l]) => `<div class="campo"><label for="pf-${k}">${l}</label><input id="pf-${k}" value="${esc(p[k] || "")}"></div>`).join("")}</div>
+    <div class="acciones"><button class="btn pri" id="pf-ok">${ico("check")}Guardar ficha</button></div></section>
+  <section class="tarjeta"><h2>Expedientes</h2>${p.expedientes.map(e => `<div class="dato"><a href="#expediente/${e.id}">${esc(e.nombre)}</a><span>${esc(e.papel)} · ${esc(e.estado)}</span></div>`).join("") || '<span class="sub">No está en ningún expediente.</span>'}</section>`;
+}
+function activarPersonas() {
+  $("#p-filtro")?.addEventListener("input", e => { FILTRO_P = e.target.value; const pos = e.target.selectionStart; pintar(); const i = $("#p-filtro"); i.focus(); i.setSelectionRange(pos, pos); });
+  document.querySelectorAll("[data-persona-ir]").forEach(tr => tr.addEventListener("click", () => (location.hash = "persona/" + tr.dataset.personaIr)));
+}
+function activarPersona(id) {
+  $("#pf-ok")?.addEventListener("click", async () => {
+    const c = {}; ["nombre", "apellido1", "apellido2", "dni"].forEach(k => (c[k] = $("#pf-" + k).value));
+    try { await api("persona", { id, ...c }); aviso("Ficha guardada"); PERS = await api("personas"); S.expedientes = await api("expedientes"); pintar(); } catch (e) { aviso(e.message, true); }
+  });
+}
+
+// ---------------- Papelera (17, 18)
+let PAP = null;
+function vistaPapelera() {
+  return `<div class="cab"><div><h1>Papelera</h1><div class="sub">Lo eliminado desde el programa: documentos y expedientes, con sus originales y un archivo de recuperación. Carpeta <code>${esc(S.info.carpetas.papelera)}</code>. Para borrarlo del todo, vacía esa carpeta desde Windows.</div></div>
+    <div class="acciones"><button class="btn" id="pap-abrir">Abrir la carpeta Papelera</button></div></div>
+  ${!PAP ? '<div class="tarjeta vacio">Cargando…</div>' : !PAP.length ? '<div class="tarjeta vacio">La Papelera está vacía.</div>' : `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Qué</th><th>Nombre</th><th>Eliminado</th><th></th></tr></thead><tbody>
+  ${PAP.map(x => `<tr><td>${x.tipo === "expediente" ? "Expediente" : "Documento"}</td><td><b>${esc(x.nombre)}</b></td><td>${fmtF(x.fecha)} ${x.fecha.slice(11, 16)}</td>
+    <td class="der"><button class="btn peq" data-abrir="${esc(x.carpeta)}">Ver</button> <button class="btn peq pri" data-restaurar="${x.id}">Restaurar</button></td></tr>`).join("")}</tbody></table></section>`}`;
+}
+function activarPapelera() {
+  $("#pap-abrir")?.addEventListener("click", () => abrirRuta(S.info.carpetas.papelera));
+  document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrir)));
+  document.querySelectorAll("[data-restaurar]").forEach(b => b.addEventListener("click", async () => {
+    try { await api("restaurar", { id: +b.dataset.restaurar }); aviso("Restaurado"); PAP = await api("papelera"); refrescar(true); } catch (e) { aviso(e.message, true); }
+  }));
+}
+
+// ---------------- Estadísticas (22)
+let EST = null;
+function vistaEstadisticas() {
+  if (!EST) return '<div class="tarjeta vacio">Cargando…</div>';
+  const s = EST, tarjeta = (n, t, sub = "") => `<div class="kpi"><b>${n}</b><span>${t}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
+  const barras = (obj, val, fmt = x => x) => { const max = Math.max(1, ...Object.values(obj).map(val)); return Object.entries(obj).map(([k, v]) => `<div class="barra-h"><span>${esc(k)}</span><i style="width:${Math.round(100 * val(v) / max)}%"></i><b>${fmt(val(v))}</b></div>`).join("") || '<span class="sub">Sin datos todavía.</span>'; };
+  return `<div class="cab"><div><h1>Estadísticas</h1><div class="sub">Con los estados y datos de la operación de cada expediente.</div></div></div>
+  <div class="kpis">${tarjeta(s.cuenta.en_curso, "En curso")}${tarjeta(s.cuenta.firmados, "Firmados")}${tarjeta(s.cuenta.cerrados, "Cerrados sin operación")}
+    ${tarjeta(eur(s.importe_solicitado), "Importe solicitado")}${tarjeta(eur(s.importe_firmado), "Importe firmado", "media " + eur(s.media_firmada))}
+    ${tarjeta(s.dias_hasta_firmar ?? "—", "Días hasta firmar (media)")}${tarjeta(eur(s.honorarios_facturados), "Honorarios", "media " + eur(s.honorarios_medios))}${tarjeta(eur(s.honorarios_pendientes), "Pendiente de cobro")}</div>
+  <div class="exp-notas"><section class="tarjeta"><h2>Por finalidad</h2>${barras(s.por_finalidad, v => v.total)}<span class="sub">${Object.entries(s.por_finalidad).map(([k, v]) => `${esc(k)}: ${v.firmados} firmados, ${v.cerrados} cerrados, ${eur(v.importe_firmado)}`).join(" · ")}</span></section>
+    <section class="tarjeta"><h2>Por entidad</h2>${barras(s.por_entidad, v => v.firmados)}<span class="sub">${Object.entries(s.por_entidad).map(([k, v]) => `${esc(k)}: ${eur(v.importe)}${v.cerrados ? `, ${v.cerrados} cerrados` : ""}`).join(" · ")}</span></section>
+    <section class="tarjeta"><h2>Motivos de cierre</h2>${barras(s.motivos_cierre, v => v)}</section>
+    <section class="tarjeta"><h2>Documentos que más cuesta conseguir</h2>${barras(Object.fromEntries(s.documentos_que_faltan), v => v)}<span class="sub">Pendientes en los expedientes en curso.</span></section></div>`;
+}
+
+// ---------------- Buscar en documentos (30)
+let BUS = { q: "", res: null };
+function vistaBuscar() {
+  return `<div class="cab"><div><h1>Buscar en documentos</h1><div class="sub">Busca en el texto leído de todos los documentos (no en los PRIVADOS). Sin tildes ni mayúsculas.</div></div></div>
+  <div class="neg-nueva"><input id="b-q" placeholder="Por ejemplo: Mercadona, 46013, IBAN, nombre…" value="${esc(BUS.q)}"><button class="btn pri" id="b-ir">${ico("search", 16)}Buscar</button></div>
+  ${BUS.res === null ? "" : !BUS.res.length ? '<div class="tarjeta vacio">No se ha encontrado nada.</div>' : `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Documento</th><th>Expediente</th><th>Texto</th><th></th></tr></thead><tbody>
+  ${BUS.res.map(r => `<tr><td><b>${esc(r.nombre)}</b><div class="sub">${esc(nombreTipo(r.tipo))} · ${esc(r.estado)}</div></td><td>${r.expediente_id ? `<a href="#expediente/${r.expediente_id}">${esc(r.expediente)}</a>` : '<span class="muted">—</span>'}</td>
+    <td class="trozo">…${esc(r.trozo)}…</td><td class="der">${["espera_emparejar", "parado"].includes(r.estado) ? `<a class="btn peq" href="#revision/${r.id}">Revisar</a>` : `<button class="btn peq" data-abrir-doc="${esc(r.ruta)}">Abrir</button>`}</td></tr>`).join("")}</tbody></table></section>`}`;
+}
+function activarBuscar() {
+  const ir = async () => { BUS.q = $("#b-q").value; try { BUS.res = await api("buscar?q=" + encodeURIComponent(BUS.q)); } catch (e) { aviso(e.message, true); } pintar(); };
+  $("#b-ir")?.addEventListener("click", ir);
+  $("#b-q")?.addEventListener("keydown", e => e.key === "Enter" && ir());
+  $("#b-q")?.focus();
+  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc, true)));
+}
+
+// ---------------- Reglas de nombres (6) y Tipos de documento (8)
+let REG = null, FILTRO_T = "";
+function vistaReglas() {
+  if (!REG) return '<div class="tarjeta vacio">Cargando…</div>';
+  const n = REG.nombres, f = normaliza(FILTRO_T);
+  const tipos = REG.tipos.filter(t => !f || normaliza(`${t.nombre} ${t.corto} ${t.familia}`).includes(f));
+  return `<div class="cab"><div><small><a href="#ajustes">Ajustes</a></small><h1>Reglas de nombres y tipos de documento</h1><div class="sub">Son de la variante ${esc(S.info.variante.nombre)}: se actualizan con ella.</div></div></div>
+  <section class="tarjeta"><h2>Reglas de nombres</h2>
+    <div class="dato"><span>Patrón</span><span class="mono">YYYXXX_nombrecorto_ZZZZ.pdf · p. ej. IMG678_nomina_1026.pdf</span></div>
+    <div class="dato"><span>YYY</span><span>Iniciales de todos los nombres y apellidos</span></div>
+    <div class="dato"><span>XXX</span><span>Últimas 3 cifras del DNI/NIE (empresas: siglas + S.L./S.A.)</span></div>
+    <div class="dato"><span>ZZZZ</span><span>${Object.entries(n.dato_distintivo || {}).map(([k, v]) => `<code>${esc(k)}</code> = ${esc(v)}`).join(" · ")}</span></div>
+    <div class="dato"><span>Sin DNI</span><span class="mono">${esc(n.sin_dni || "NOINFORMADO")}</span></div>
+    <div class="dato"><span>Privado</span><span class="mono">${esc(n.prefijo_privado || "PRIVADO_NO_COMPARTIR_")}</span></div>
+    <div class="dato"><span>Repetido / sustituido</span><span class="mono">-2, -3… / -ant</span></div>
+    <div class="dato"><span>Carpeta de expediente</span><span class="mono">nombre1apellido1_DNI5_MMAA · IvanMorales_45678_1126</span></div></section>
+  <section class="tarjeta sinp"><div class="tcab"><h2>Tipos de documento · ${REG.tipos.length}</h2><input id="t-filtro" class="filtro" placeholder="Filtrar…" value="${esc(FILTRO_T)}"></div>
+    <table class="tabla"><thead><tr><th>Tipo</th><th>Nombre corto</th><th>Familia</th><th>Dato distintivo</th><th>Idiomas</th><th>También se llama</th></tr></thead><tbody>
+    ${tipos.map(t => `<tr><td><b>${esc(t.nombre)}</b></td><td class="mono">${esc(t.corto)}</td><td>${esc(t.familia || "")}</td><td class="mono">${esc(t.zzzz || "")}</td><td>${esc(t.idiomas.join(", "))}</td><td class="sub">${esc(t.otros_nombres.join(" · "))}</td></tr>`).join("")}</tbody></table></section>`;
+}
+function activarReglas() {
+  $("#t-filtro")?.addEventListener("input", e => { FILTRO_T = e.target.value; const pos = e.target.selectionStart; pintar(); const i = $("#t-filtro"); i.focus(); i.setSelectionRange(pos, pos); });
+}
+
+// ---------------- Primer arranque (31)
+function vistaBienvenida() {
+  const c = S.info.carpetas;
+  return `<div class="bienvenida tarjeta"><img src="/api/logo" alt="" width="72" height="72"><h1>Bienvenido a ${esc(S.info.variante.nombre)}</h1>
+    <p class="sub">Todo funciona en este equipo, sin internet (salvo el correo, si lo activas). Tres pasos y listo:</p>
+    <ol class="pasos-bien"><li><b>Carpetas.</b> Los documentos entran por <code>${esc(c.entrada)}</code>; los ordenados van a <code>${esc(c.documentos)}</code> y los originales, sin tocar, a <code>${esc(c.originales)}</code>. Puedes cambiarlas en Ajustes.</li>
+      <li><b>Finalidades.</b> Revisa qué documentos pide cada tipo de operación en Ajustes → Finalidades.</li>
+      <li><b>Correo (opcional).</b> Si quieres que recoja los adjuntos de tu correo, configúralo en Ajustes → Recibir por correo.</li></ol>
+    <div class="acciones"><button class="btn pri" id="bien-ok">${ico("check")}Empezar: arrastrar documentos</button><a class="btn" href="#ajustes" id="bien-aj">Ir a Ajustes</a></div></div>`;
+}
+function activarBienvenida() {
+  const hecho = async () => { await api("ajustes", { bienvenida_vista: true }); S.ajustes.bienvenida_vista = true; };
+  $("#bien-ok")?.addEventListener("click", async () => { await hecho(); location.hash = "motor"; });
+  $("#bien-aj")?.addEventListener("click", hecho);
+}
+
+// ---------------- Separar un PDF a mano (5)
+let SEP = null;
+function vistaSeparar(id) {
+  if (!SEP || SEP.id !== id) return '<div class="tarjeta vacio">Cargando…</div>';
+  const d = SEP.doc, n = d.paginas_lista.length;
+  let g = 1;
+  return `<div class="cab"><div><small><a href="#revision/${id}">Centro de revisión</a></small><h1>Separar «${esc(d.nombre_recibido)}»</h1><div class="sub">Pulsa la tijera entre dos páginas para cortar ahí. Cada grupo será un documento distinto y se volverá a clasificar.</div></div>
+    <div class="acciones"><a class="btn" href="#revision/${id}">Cancelar</a><button class="btn pri" id="sep-ok" ${SEP.cortes.size ? "" : "disabled"}>${ico("check")}Separar en ${SEP.cortes.size + 1} documentos</button></div></div>
+  <section class="tarjeta"><div class="pags separar">${d.paginas_lista.map((p, i) => `${i && SEP.cortes.has(i) ? `<span class="grupo-ini">Documento ${++g}</span>` : i === 0 ? '<span class="grupo-ini">Documento 1</span>' : ""}<figure class="pag">
+      <button type="button" class="miniatura" data-zoom-pos="${i + 1}"><img src="/api/vista/${id}/${i + 1}" alt="" loading="lazy"></button><figcaption>Página ${i + 1}</figcaption></figure>
+      ${i < n - 1 ? `<button type="button" class="tijera ${SEP.cortes.has(i + 1) ? "on" : ""}" data-corte="${i + 1}" title="Cortar aquí">✂</button>` : ""}`).join("")}</div></section>${zoomModal()}`;
+}
+function activarSeparar(id) {
+  document.querySelectorAll("[data-corte]").forEach(b => b.addEventListener("click", () => { const k = +b.dataset.corte; SEP.cortes.has(k) ? SEP.cortes.delete(k) : SEP.cortes.add(k); pintar(); }));
+  const abrir = activarZoomModal();
+  document.querySelectorAll("[data-zoom-pos]").forEach(b => b.addEventListener("click", () => abrir(`/api/vista/${id}/${b.dataset.zoomPos}?grande=1`)));
+  $("#sep-ok")?.addEventListener("click", async () => {
+    const sel = SEP.doc.paginas_lista, grupos = [[]];
+    sel.forEach((p, i) => { if (i && SEP.cortes.has(i)) grupos.push([]); grupos[grupos.length - 1].push(p); });
+    try { const r = await api("separar", { documento: id, grupos }); aviso(`Separado en ${r.documentos.length} documentos`); SEP = null; S.doc = null; S.docId = null; await refrescar(false); location.hash = "revision/" + r.documentos[0]; }
+    catch (e) { aviso(e.message, true); }
+  });
+}

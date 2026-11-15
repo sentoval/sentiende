@@ -25,7 +25,7 @@ PREDEFINIDOS = {
     "otro": {"nombre": "Otro (IMAP)", "servidor": "", "puerto": 993, "nota": "Los datos IMAP los da tu proveedor de correo."},
 }
 POR_DEFECTO = {"activo": False, "proveedor": "otro", "servidor": "", "puerto": 993, "usuario": "", "clave": "",
-               "carpeta": "INBOX", "dias": 15, "remitentes": "", "cada_minutos": 0}
+               "carpeta": "INBOX", "dias": 15, "remitentes": "", "cada_minutos": 0, "revisar_nuevos": True}
 PELIGROSOS = re.compile(r"\.(docm|xlsm|pptm|dotm|xltm|xlam|exe|bat|cmd|com|scr|js|vbs|ps1|msi|jar|lnk|hta|zip|rar|7z)$", re.I)
 
 
@@ -84,7 +84,7 @@ class Correo:
 
     def guardar(self, nuevos):
         a = self.ajustes(con_clave=True)
-        for k in ("activo", "proveedor", "servidor", "puerto", "usuario", "carpeta", "dias", "remitentes", "cada_minutos"):
+        for k in ("activo", "proveedor", "servidor", "puerto", "usuario", "carpeta", "dias", "remitentes", "cada_minutos", "revisar_nuevos"):
             if k in nuevos:
                 a[k] = nuevos[k]
         if nuevos.get("clave"):
@@ -128,14 +128,15 @@ class Correo:
             _cerrar(im)
 
     # ------------------------------------------------------------ recoger
-    def recoger(self, destino, recibir_lote):
+    def recoger(self, destino, recibir_lote, decidir=None, cuarentena=None):
         """Descarga los adjuntos admitidos de los correos nuevos.
         recibir_lote(rutas, descripcion) recibe los adjuntos de cada correo (un lote por correo).
-        Devuelve un resumen."""
+        decidir(remitente) -> "ok" | "cuarentena" | "bloqueado": los remitentes nuevos van a «Correo por revisar»
+        (cuarentena(rutas, remitente, asunto)) hasta que se aceptan. Devuelve un resumen."""
         a = self.ajustes(con_clave=True)
         vistos = set(json.loads(self.ruta_vistos.read_text(encoding="utf-8"))) if self.ruta_vistos.exists() else set()
         im = self._conectar(a)
-        res = {"correos": 0, "adjuntos": 0, "ignorados": [], "lotes": []}
+        res = {"correos": 0, "adjuntos": 0, "ignorados": [], "lotes": [], "cuarentena": 0, "bloqueados": 0}
         try:
             tipo, datos = im.select(_carpeta(a["carpeta"]), readonly=False)   # escritura solo para la marca
             if tipo != "OK":
@@ -161,6 +162,11 @@ class Correo:
                     vistos.add(clave)
                     continue
                 asunto = _texto(msg.get("Subject", "")) or "(sin asunto)"
+                email_de = (re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", de) or [de])[0].lower()
+                decision = decidir(email_de) if decidir and a.get("revisar_nuevos", True) else "ok"
+                if decision == "bloqueado":
+                    res["bloqueados"] += 1; vistos.add(clave)
+                    continue
                 rutas = []
                 for parte in msg.walk():
                     nombre = parte.get_filename()
@@ -177,7 +183,10 @@ class Correo:
                     f = libre(Path(destino) / nombre)
                     f.write_bytes(cuerpo)
                     rutas.append(f)
-                if rutas:
+                if rutas and decision == "cuarentena" and cuarentena:
+                    cuarentena(rutas, email_de, asunto)
+                    res["cuarentena"] += 1
+                elif rutas:
                     res["lotes"].append(recibir_lote(rutas, f"correo «{asunto}» de {de}"))
                     res["adjuntos"] += len(rutas)
                 res["correos"] += 1

@@ -46,30 +46,30 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.1_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.2_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v1.1_windows
-          path: SeFinancia_v1.1_windows.zip
+          name: SeFinancia_v1.2_windows
+          path: SeFinancia_v1.2_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1
-          name: SeFinancia v1.1
+          tag_name: v1.2
+          name: SeFinancia v1.2
           prerelease: false
           make_latest: true
-          files: SeFinancia_v1.1_windows.zip
+          files: SeFinancia_v1.2_windows.zip
           body: |
-            SeFinancia 1.1 · motor Sentiende 2.1.0 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v1.1_windows.zip, descomprímelo y abre SeFinancia\SeFinancia.exe.
-            Para actualizar una versión anterior, copia la carpeta nueva encima de la vieja: la carpeta Datos (expedientes, ajustes y finalidades) no se toca.
+            SeFinancia 1.2 · motor Sentiende 2.2.0 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v1.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
 
             Novedades:
-            - Recibir por correo (IMAP; solo lectura + etiqueta «SeFinancia») y por Bluetooth (asistente de Windows).
-            - Arreglar lo guardado: mover un documento a otro expediente, unir expedientes y unir fichas de personas repetidas.
-            - Centro de revisión en alto contraste, con Individual / Colectivo, «Como el resto del lote», destino con opciones escritas y «PRIVADO, No compartir».
-            - Limbo dentro de Motor de proceso, con «Revisar y asignar expediente».
-            - Títulos sin repetir; la explicación aparece al pasar el ratón.
+            - Expediente como en el diseño: Negociación banco (varios bancos, con estado, contactos y notas) y Negociación cliente; checklist por titular y familia con Solicitado / Sin pedir e informe de lo que falta.
+            - Estado y datos de la operación: fases, firmado, cerrado sin operación, importes, honorarios y cobro; favorito y prioridad; pestañas En curso / Firmados / Cerrados.
+            - Tarjetas de visita (siempre pregunta), escrituras sin persona preseleccionada, terceros recordados por lote, confirmar cotitular, quitar persona.
+            - Personas y ficha de persona, Papelera (eliminar y restaurar), Buscar en documentos, Estadísticas, Reglas de nombres y tipos.
+            - Separar un PDF a mano, girar páginas, segunda aportación (-ant), discrepancias de DNI, mover a otro expediente desde la revisión.
+            - Ajustes: carpetas, OCR, tamaño del texto, copia de seguridad; correo por revisar (remitentes nuevos); escanear (WIA); exportar expediente en zip; primer arranque.

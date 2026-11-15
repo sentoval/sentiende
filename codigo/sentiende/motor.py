@@ -43,6 +43,9 @@ class Motor:
         self.nombrador = Nombrador(self.variante)
         self._cargar_finalidades()
         self.negociacion = Negociacion(self.almacen)
+        from .gestion import Gestion
+        self.gestion = Gestion(self)
+        self.gestion.aplicar()
         aprender_personas([dict(r) for r in self.almacen.db.execute("SELECT * FROM personas")])   # nombres ya confirmados
 
     # ------------------------------------------------------------ finalidades (editables por el usuario)
@@ -619,19 +622,31 @@ class Motor:
             shutil.copy2(origen, destino); return
         if d["extension"] in (".docx", ".xlsx"):
             raise MotorError("Convertir Word o Excel a PDF aún no está disponible: se guardará con su extensión original.")
-        if d["extension"] == ".pdf" and not any(p.get("imagen") for p in pags) and not d.get("paginas_sel"):
+        if d["extension"] == ".pdf" and not any(p.get("imagen") or p.get("giro") for p in pags) and not d.get("paginas_sel"):
             shutil.copy2(origen, destino); return
         from pypdf import PdfReader, PdfWriter
+        from PIL import ImageOps
         w = PdfWriter()
         reader = PdfReader(str(origen)) if d["extension"] == ".pdf" else None
-        for p in pags:
+        def de_imagen(img):
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, "PDF", resolution=300)
+            buf.seek(0)
+            return PdfReader(buf).pages[0]
+        for p in pags or [{"n": 1}]:
+            giro = int(p.get("giro") or 0)          # giro hecho a mano en la revisión
             if p.get("imagen") and Path(p["imagen"]).exists():
-                buf = io.BytesIO()
-                Image.open(p["imagen"]).convert("RGB").save(buf, "PDF", resolution=300)
-                buf.seek(0)
-                w.add_page(PdfReader(buf).pages[0])
+                img = Image.open(p["imagen"])
+                w.add_page(de_imagen(img.rotate(-giro, expand=True) if giro else img))
             elif reader:
-                w.add_page(reader.pages[p["n"] - 1])
+                pg = reader.pages[p["n"] - 1]
+                if giro:
+                    pg.rotate(giro)
+                w.add_page(pg)
+            else:                                   # foto sin copia de trabajo (p. ej. sacada del Limbo)
+                img = ImageOps.exif_transpose(Image.open(origen))
+                total = (int(p.get("rotacion") or 0) + giro) % 360
+                w.add_page(de_imagen(img.rotate(-total, expand=True) if total else img))
         with open(destino, "wb") as f:
             w.write(f)
 

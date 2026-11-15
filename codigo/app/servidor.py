@@ -14,6 +14,7 @@ from sentiende.motor import Motor, MotorError
 from sentiende import checklist, arreglos
 from sentiende.carpetas import libre
 from sentiende.negociacion import ErrorNegociacion
+from sentiende.gestion import ErrorGestion
 
 WEB = Path(__file__).resolve().parent / "web"
 CERROJO = threading.RLock()
@@ -46,7 +47,13 @@ class App:
                     with CERROJO:
                         self.motor.almacen.evento(f"Recibido por {descripcion}: {len(ids)} adjunto(s)", lote_id=l, fase=1)
                     return l
-                self.correo_estado["resumen"] = self.correo.recoger(self.motor.carpetas.entrada, lote)
+                def decidir(email):
+                    with CERROJO:
+                        return self.motor.gestion.decidir_remitente(email)
+                def cuarentena(rutas, de, asunto):
+                    with CERROJO:
+                        self.motor.gestion.poner_en_cuarentena(rutas, de, asunto)
+                self.correo_estado["resumen"] = self.correo.recoger(self.motor.carpetas.entrada, lote, decidir, cuarentena)
                 for x in self.correo_estado["resumen"]["ignorados"]:
                     with CERROJO:
                         self.motor.almacen.evento(f"Correo: adjunto ignorado (tipo no admitido o con macros): {x}", fase=1, nivel="se")
@@ -127,7 +134,8 @@ class App:
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
         return {"trabajando": self.trabajando, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
-                            "limbo": cuenta("limbo"), "avisos": len(a.avisos_cliente()) + len(a.eventos(nivel="se"))}}
+                            "limbo": cuenta("limbo"), "avisos": len(a.avisos_cliente()) + len(a.eventos(nivel="se")),
+                            "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0]}}
 
     def documento(self, did):
         m, a = self.motor, self.motor.almacen
@@ -156,9 +164,14 @@ class App:
     def expedientes(self):
         a = self.motor.almacen
         out = []
-        for r in a.db.execute("SELECT * FROM expedientes ORDER BY id DESC"):
+        marcas = self.motor.gestion.marcas()
+        for r in a.db.execute("SELECT * FROM expedientes WHERE estado != 'papelera' ORDER BY id DESC"):
             e = dict(r)
             e["personas"] = a.personas_de(e["id"])
+            op = a.db.execute("SELECT datos FROM operacion WHERE expediente_id = ?", (e["id"],)).fetchone()
+            e["operacion"] = json.loads(op["datos"]) if op else {}
+            e["etiqueta"] = self.motor.gestion.etiqueta(e["estado"], e["operacion"])
+            e["marcas"] = marcas.get(e["id"], {"favorito": False, "prioridad": ""})
             try:
                 c = checklist.evaluar(self.motor.variante, a, e["id"])
                 e["checklist"] = {"recibidos": c["recibidos"], "total": c["total"]}
@@ -211,6 +224,9 @@ class App:
                 img = ImageOps.exif_transpose(Image.open(ruta))
                 if rot.get("rotacion") and not final:
                     img = img.rotate(-rot["rotacion"], expand=True)
+        giro = int(rot.get("giro") or 0)
+        if giro and not (d["ruta_final"] and Path(d["ruta_final"]).exists()):
+            img = img.rotate(-giro, expand=True)
         img = img.convert("RGB")
         img.thumbnail((2600, 3600) if grande else (1100, 1500))
         buf = io.BytesIO(); img.save(buf, "PNG"); return buf.getvalue()
@@ -233,7 +249,7 @@ def crear_manejador(app):
             return self.rfile.read(n) if n else b""
 
         def _error(self, e):
-            conocido = isinstance(e, (MotorError, ErrorNegociacion))
+            conocido = isinstance(e, (MotorError, ErrorNegociacion, ErrorGestion, RuntimeError))
             self._json({"error": str(e)}, 400 if conocido else 500)
             if not conocido:
                 traceback.print_exc()
@@ -268,13 +284,28 @@ def crear_manejador(app):
                         return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
                     if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
                     if m := re.fullmatch(r"/api/negociacion/(\d+)", p): return self._json(app.motor.negociacion.de_expediente(int(m.group(1))))
+                    g = app.motor.gestion
+                    q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
+                    if m := re.fullmatch(r"/api/operacion/(\d+)", p): return self._json(g.operacion(int(m.group(1))))
+                    if p == "/api/estadisticas": return self._json(g.estadisticas())
+                    if p == "/api/papelera": return self._json(g.papelera())
+                    if p == "/api/personas": return self._json(g.personas())
+                    if p == "/api/ajustes": return self._json(g.ajustes())
+                    if p == "/api/cuarentena": return self._json(g.cuarentena())
+                    if p == "/api/buscar": return self._json(g.buscar(unquote(q.get("q", "")).replace("+", " ")))
+                    if p == "/api/reglas":
+                        v = app.motor.variante
+                        return self._json({"nombres": v.nombres, "tipos": [{"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia"),
+                                           "corto": d.get("nombre_corto") or d["id"], "zzzz": d.get("zzzz"), "importancia": d.get("importancia"),
+                                           "idiomas": sorted((d.get("nombres") or {}).keys()), "otros_nombres": (d.get("nombres") or {}).get("es", [])[1:6]}
+                                          for d in v.base["documentos"]]})
                     if p == "/api/personas_repetidas": return self._json(arreglos.personas_repetidas(app.motor))
                     if m := re.fullmatch(r"/api/documentos_expediente/(\d+)", p):
                         a = app.motor.almacen
                         out = []
                         for d in a.documentos("expediente_id = ? AND estado = 'guardado'", (int(m.group(1)),)):
                             per = a.persona(d["persona_id"]) or {}
-                            out.append({k: d[k] for k in ("id", "nombre_final", "tipo", "nombre_recibido", "persona_id", "de_expediente", "privado")}
+                            out.append({k: d[k] for k in ("id", "nombre_final", "tipo", "nombre_recibido", "persona_id", "de_expediente", "privado", "ruta_final")}
                                        | {"persona": f'{per.get("nombre", "")} {per.get("apellido1", "")}'.strip()})
                         return self._json(sorted(out, key=lambda x: x["nombre_final"] or ""))
                     if m := re.fullmatch(r"/api/checklist/(\d+)", p): return self._json(checklist.evaluar(app.motor.variante, app.motor.almacen, int(m.group(1))))
@@ -304,6 +335,28 @@ def crear_manejador(app):
                 if p == "/api/correo/revisar":
                     if not app.correo.ajustes()["servidor"]: raise MotorError("Primero configura el correo en Ajustes.")
                     return self._json(app.revisar_correo())
+                if p == "/api/escanear":
+                    from app.escaner import escanear
+                    try:
+                        f = escanear(app.motor.carpetas.entrada)
+                    except RuntimeError as e:
+                        raise MotorError(str(e))
+                    if not f:
+                        return self._json({"cancelado": True})
+                    lote, ids = app.encolar([f], "escáner")
+                    return self._json({"lote": lote, "documentos": ids, "archivo": f.name})
+                if p == "/api/abrir":
+                    import os, subprocess, sys
+                    ruta = Path(datos.get("ruta") or "")
+                    raices = [Path(x).resolve() for x in app.motor.carpetas.rutas.values()]
+                    if not ruta.exists() or not any(r == ruta.resolve() or r in ruta.resolve().parents for r in raices):
+                        raise MotorError("Esa carpeta o archivo no es del programa.")
+                    if sys.platform == "win32":
+                        if datos.get("seleccionar") and ruta.is_file():
+                            subprocess.Popen(["explorer", "/select,", str(ruta)])
+                        else:
+                            os.startfile(str(ruta))
+                    return self._json({"ok": True})
                 if p == "/api/bluetooth":
                     try: return self._json(app.bluetooth.empezar())
                     except RuntimeError as e: raise MotorError(str(e))
@@ -328,6 +381,13 @@ def crear_manejador(app):
                         if datos.get("persona_datos") and not datos.get("persona"):
                             pe = datos["persona_datos"]
                             datos["persona"] = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), pe.get("dni") or None)
+                        segunda = datos.get("segunda")
+                        if segunda == "duplicado":
+                            return self._json(m.gestion.eliminar_documento(int(datos["documento"])) | {"nombre_final": "a la Papelera (duplicado)"})
+                        if segunda == "limbo":
+                            return self._json(m.al_limbo(int(datos["documento"])))
+                        if segunda == "sustituir" and datos.get("nombre_previsto"):
+                            m.gestion.sustituir_previo(int(datos["expediente"]), datos["nombre_previsto"])
                         if datos.get("otros"):
                             m.vincular_personas(int(datos["expediente"]), datos["otros"], int(datos["documento"]))
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
@@ -348,6 +408,42 @@ def crear_manejador(app):
                         if datos.get("no"):
                             m.no_es_tarjeta(int(datos["documento"])); return self._json({"ok": True})
                         return self._json(m.guardar_tarjeta(int(datos["documento"]), int(datos["expediente"]), datos.get("entidad"), datos.get("contacto") or {}))
+                    g = m.gestion
+                    if p == "/api/estado_expediente":
+                        return self._json(g.cambiar_estado(int(datos["expediente"]), datos["estado"], datos.get("extra")))
+                    if p == "/api/operacion":
+                        return self._json(g.guardar_operacion(int(datos["expediente"]), datos.get("datos") or {}))
+                    if p == "/api/marcar_expediente":
+                        return self._json(g.marcar(int(datos["expediente"]), datos.get("favorito"), datos.get("prioridad")))
+                    if p == "/api/eliminar":
+                        if datos.get("expediente"):
+                            return self._json(g.eliminar_expediente(int(datos["expediente"])))
+                        return self._json(g.eliminar_documento(int(datos["documento"])))
+                    if p == "/api/restaurar": return self._json(g.restaurar(int(datos["id"])))
+                    if p == "/api/nombre_previsto":
+                        return self._json(g.nombre_previsto(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), datos.get("tipo"),
+                                                            datos.get("fecha"), bool(datos.get("privado")), bool(datos.get("comun"))))
+                    if p == "/api/separar": return self._json({"documentos": g.separar_manual(int(datos["documento"]), datos["grupos"])})
+                    if p == "/api/girar": return self._json({"giro": g.girar(int(datos["documento"]), int(datos["pos"]), int(datos["grados"]))})
+                    if p == "/api/persona": return self._json(g.editar_persona(int(datos["id"]), datos))
+                    if p == "/api/papel": return self._json(g.cambiar_papel(int(datos["expediente"]), int(datos["persona"]), datos["papel"]))
+                    if p == "/api/copia": return self._json(g.copia_seguridad())
+                    if p == "/api/exportar_expediente": return self._json(g.exportar_expediente(int(datos["expediente"]), bool(datos.get("privados"))))
+                    if p == "/api/ajustes": return self._json(g.guardar_ajustes(datos))
+                    if p == "/api/expediente_manual":
+                        pe = datos["persona"]
+                        pid = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), (pe.get("dni") or "").upper() or None)
+                        eid = m.crear_expediente(pid, datos["finalidad"])
+                        for o in datos.get("otras") or []:
+                            if o.get("nombre") and o.get("apellido1"):
+                                oid = m.nueva_persona(o["nombre"], o.get("apellido1", ""), o.get("apellido2", ""), (o.get("dni") or "").upper() or None)
+                                m.almacen.anadir_persona(eid, oid, o.get("papel") or "Cotitular")
+                        return self._json({"expediente": eid})
+                    if p == "/api/cuarentena":
+                        rutas = g.resolver_cuarentena(int(datos["id"]), datos["accion"])
+                        if rutas:
+                            app.encolar(rutas, "correo")
+                        return self._json({"ok": True, "aceptados": len(rutas)})
                     if p == "/api/arreglo":
                         acc = datos.get("accion")
                         if acc == "mover":
