@@ -134,7 +134,8 @@ class App:
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
         return {"trabajando": self.trabajando, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
-                            "limbo": cuenta("limbo"), "avisos": len(a.avisos_cliente()) + len(a.eventos(nivel="se")),
+                            "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
+                            "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
                             "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0]}}
 
     def documento(self, did):
@@ -259,6 +260,13 @@ def crear_manejador(app):
             try:
                 if p == "/" or not p.startswith("/api/"):
                     return self._estatico(p)
+                if p == "/api/escaneres":          # fuera del cerrojo: buscar en la red tarda un par de segundos
+                    from app.escaner import lista_wia, buscar_escl
+                    with CERROJO:
+                        guardados = app.motor.gestion.ajustes().get("escaneres", [])
+                    encontrados = lista_wia() + buscar_escl()
+                    urls = {x.get("url") for x in encontrados}
+                    return self._json(encontrados + [x | {"guardado": True} for x in guardados if x.get("url") not in urls])
                 with CERROJO:
                     if p == "/api/info": return self._json(app.info())
                     if p in ("/api/logo", "/api/icono"):
@@ -335,16 +343,30 @@ def crear_manejador(app):
                 if p == "/api/correo/revisar":
                     if not app.correo.ajustes()["servidor"]: raise MotorError("Primero configura el correo en Ajustes.")
                     return self._json(app.revisar_correo())
-                if p == "/api/escanear":
-                    from app.escaner import escanear
+                if p == "/api/escaner_ip":
+                    from app.escaner import probar_escl
                     try:
-                        f = escanear(app.motor.carpetas.entrada)
+                        e = probar_escl(datos.get("direccion") or "")
+                    except RuntimeError as ex:
+                        raise MotorError(str(ex))
+                    with CERROJO:
+                        aj = app.motor.gestion.ajustes()
+                        lista = [x for x in aj.get("escaneres", []) if x.get("url") != e["url"]] + [e]
+                        app.motor.gestion.guardar_ajustes({"escaneres": lista})
+                    return self._json(e)
+                if p == "/api/escanear":
+                    from app.escaner import escanear_wia, escanear_escl
+                    try:
+                        if datos.get("via") == "escl":
+                            fs = escanear_escl(app.motor.carpetas.entrada, datos["url"], int(datos.get("dpi") or 300), datos.get("color", True), bool(datos.get("alimentador")))
+                        else:
+                            fs = escanear_wia(app.motor.carpetas.entrada, datos.get("id"), int(datos.get("dpi") or 300), datos.get("color", True))
                     except RuntimeError as e:
                         raise MotorError(str(e))
-                    if not f:
+                    if not fs:
                         return self._json({"cancelado": True})
-                    lote, ids = app.encolar([f], "escáner")
-                    return self._json({"lote": lote, "documentos": ids, "archivo": f.name})
+                    lote, ids = app.encolar(fs, "escáner")
+                    return self._json({"lote": lote, "documentos": ids, "archivo": ", ".join(f.name for f in fs)})
                 if p == "/api/abrir":
                     import os, subprocess, sys
                     ruta = Path(datos.get("ruta") or "")
@@ -409,6 +431,9 @@ def crear_manejador(app):
                             m.no_es_tarjeta(int(datos["documento"])); return self._json({"ok": True})
                         return self._json(m.guardar_tarjeta(int(datos["documento"]), int(datos["expediente"]), datos.get("entidad"), datos.get("contacto") or {}))
                     g = m.gestion
+                    if p == "/api/avisos_se_vistos":
+                        ultimo = m.almacen.db.execute("SELECT COALESCE(MAX(id), 0) FROM eventos WHERE nivel = 'se'").fetchone()[0]
+                        return self._json(g.guardar_ajustes({"avisos_se_visto": ultimo}))
                     if p == "/api/estado_expediente":
                         return self._json(g.cambiar_estado(int(datos["expediente"]), datos["estado"], datos.get("extra")))
                     if p == "/api/operacion":

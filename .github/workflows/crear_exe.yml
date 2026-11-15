@@ -46,30 +46,29 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.2_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.3_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v1.2_windows
-          path: SeFinancia_v1.2_windows.zip
+          name: SeFinancia_v1.3_windows
+          path: SeFinancia_v1.3_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2
-          name: SeFinancia v1.2
+          tag_name: v1.3
+          name: SeFinancia v1.3
           prerelease: false
           make_latest: true
-          files: SeFinancia_v1.2_windows.zip
+          files: SeFinancia_v1.3_windows.zip
           body: |
-            SeFinancia 1.2 · motor Sentiende 2.2.0 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v1.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 1.3 · motor Sentiende 2.3.0 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v1.3_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
 
-            Novedades:
-            - Expediente como en el diseño: Negociación banco (varios bancos, con estado, contactos y notas) y Negociación cliente; checklist por titular y familia con Solicitado / Sin pedir e informe de lo que falta.
-            - Estado y datos de la operación: fases, firmado, cerrado sin operación, importes, honorarios y cobro; favorito y prioridad; pestañas En curso / Firmados / Cerrados.
-            - Tarjetas de visita (siempre pregunta), escrituras sin persona preseleccionada, terceros recordados por lote, confirmar cotitular, quitar persona.
-            - Personas y ficha de persona, Papelera (eliminar y restaurar), Buscar en documentos, Estadísticas, Reglas de nombres y tipos.
-            - Separar un PDF a mano, girar páginas, segunda aportación (-ant), discrepancias de DNI, mover a otro expediente desde la revisión.
-            - Ajustes: carpetas, OCR, tamaño del texto, copia de seguridad; correo por revisar (remitentes nuevos); escanear (WIA); exportar expediente en zip; primer arranque.
+            Novedades sobre la 1.2:
+            - La misma persona aunque falte un apellido; «Es la misma que…» en la revisión y en el expediente (con alias).
+            - Checklist más ligera (grupos con barrita de color) y «Generar informe de lo que falta y enviar» por correo o WhatsApp con texto amable.
+            - Avisos: «Avisos cliente» dentro de Expedientes; campanita de avisos del programa arriba solo si hay algo nuevo.
+            - Menú: Ajustes a la izquierda, lupa a la derecha.
+            - Escanear: escáneres USB, de red instalados en Windows y AirScan/eSCL por red o Wi-Fi (búsqueda automática o por IP), color, resolución y alimentador.

@@ -64,25 +64,25 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
+    ${c.avisos_se ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos Se: problemas del programa">${ico("bell", 18)}<span>Avisos del programa</span><b>${c.avisos_se}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("revision", "check", "Centro de revisión", c.revisar)}
       ${item("motor", "motor", "Motor de proceso", (c.pendientes - (c.revisar || 0)) + (c.cuarentena || 0))}
-      ${item("avisos", "bell", "Avisos", c.avisos)}
       ${item("personas", "user", "Personas")}
       ${item("estadisticas", "chart", "Estadísticas")}
     </div>
     <div class="nav-iconos">
-      <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
-      <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
       <a href="#ajustes" title="Ajustes" aria-label="Ajustes" ${r === "ajustes" ? 'aria-current="page"' : ""}>${ico("gear", 20)}</a>
+      <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
+      <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
     </div>
     <div class="lat-zona" id="zona">
       <span class="ico">${ico("upload", 20)}</span>
@@ -105,11 +105,7 @@ function activarZona() {
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
   $("#b-correo").addEventListener("click", revisarCorreo);
-  $("#b-scan").addEventListener("click", async ev => {
-    const b = ev.currentTarget; b.disabled = true; aviso("Abriendo el escáner de Windows…");
-    try { const r = await api("escanear", {}); aviso(r.cancelado ? "Escaneo cancelado" : "Escaneado: " + r.archivo); refrescar(true); } catch (e) { aviso(e.message, true); }
-    b.disabled = false;
-  });
+  $("#b-scan").addEventListener("click", abrirEscaner);
   $("#b-bt").addEventListener("click", async () => {
     try { BT = await api("bluetooth", {}); aviso("Asistente de Bluetooth de Windows abierto: envía los archivos desde el móvil. Lo recibido entra solo."); vigilarBT(); }
     catch (e) { aviso(e.message, true); }
@@ -254,9 +250,15 @@ function fichadas() {
   }));
   return [...m.values()];
 }
+const aliasDe = x => { try { return JSON.parse(x.alias || "[]").map(normaliza); } catch { return []; } };
 function buscarFichada(P) {
-  const f = fichadas(), n = normaliza(`${P.nombre} ${P.ap1} ${P.ap2}`);
-  return f.find(x => P.dni && x.dni && x.dni.toUpperCase() === P.dni.toUpperCase()) || f.find(x => normaliza(`${x.nombre} ${x.apellido1} ${x.apellido2}`) === n) || null;
+  const f = fichadas(), n = normaliza(`${P.nombre} ${P.ap1} ${P.ap2 || ""}`), dni = (P.dni || "").toUpperCase();
+  return f.find(x => dni && x.dni && x.dni.toUpperCase() === dni)
+    || f.find(x => normaliza(`${x.nombre} ${x.apellido1} ${x.apellido2 || ""}`) === n)
+    || f.find(x => aliasDe(x).includes(n))                         // otras formas de escribirla ya confirmadas
+    // mismo nombre y primer apellido y a uno de los dos le falta el segundo (sin DNI distinto): es la misma
+    || f.find(x => !(dni && x.dni && x.dni.toUpperCase() !== dni) && normaliza(x.nombre) === normaliza(P.nombre) && normaliza(x.apellido1) === normaliza(P.ap1)
+         && (!normaliza(P.ap2) || !normaliza(x.apellido2))) || null;
 }
 function parecidas(P, menos) {
   return fichadas().filter(x => (!menos || x.id !== menos.id) && normaliza(x.nombre) === normaliza(P.nombre) && normaliza(x.apellido1) === normaliza(P.ap1));
@@ -299,8 +301,10 @@ function vistaRevision() {
     + `<button type="button" class="chip peq ${R.persona === -1 ? "sel" : ""}" data-persona="-1">Otra persona…</button>`;
   const lm = loteMayoritario(d);
   const chipLote = lm ? `<button type="button" class="chip peq lote ${R.persona === -2 ? "sel" : ""}" id="r-lote" title="Lo que más se repite en los documentos ya confirmados de este lote">Como el resto del lote: ${esc(`${lm.per.nombre} ${lm.per.apellido1}`)}<small>${lm.n} de ${lm.total}</small></button>` : "";
-  const estadoPersona = R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
-    : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`;
+  const reconocidaComo = fich && normaliza(`${fich.nombre} ${fich.apellido1} ${fich.apellido2 || ""}`) !== normaliza(`${P.nombre} ${P.ap1} ${P.ap2}`)
+    ? `<span class="ok-txt">≈ Reconocida como <b>${esc(`${fich.nombre} ${fich.apellido1} ${fich.apellido2 || ""}`)}</b> (ya fichada)</span>` : "";
+  const estadoPersona = reconocidaComo + (R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
+    : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`);
   // discrepancia: la ficha coincide por nombre pero el DNI leído es otro (pantalla 14)
   const discrepa = fich && P.dni && fich.dni && P.dni.toUpperCase() !== fich.dni.toUpperCase() && !R.discrepanciaVista;
   const avisoDiscrepancia = discrepa ? `<div class="dup discrepancia" role="alert"><b>Discrepancia: ¿es la misma persona?</b>
@@ -366,7 +370,7 @@ function vistaRevision() {
   const filaOtras = otras.length ? `<div class="fila-rev otras"><span class="lab">Más personas en el documento</span><div class="otras-lista">
       ${otras.map(x => `<div class="otra"><span><b>${esc(x.p.completo)}</b>${x.p.dni ? ` <span class="mono muted">${esc(x.p.dni)}</span>` : ""}</span>
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
-          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}</span>`}</div>`).join("")}</div></div>` : "";
+          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}${expSel ? `<select class="misma ${String((R.otros || {})[x.i] || "").startsWith("misma:") ? "sel" : ""}" data-misma="${x.i}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${expSel.personas.map(q => `<option value="${q.id}" ${(R.otros || {})[x.i] === "misma:" + q.id ? "selected" : ""}>${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}</span>`}</div>`).join("")}</div></div>` : "";
   const pendientesOtras = otras.filter(x => !x.yaEsta).length;
   const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a></div>` : ""; })();
   // ¿tarjeta de visita? Se pregunta siempre, arriba y en grande: no se puede confirmar sin responder
@@ -509,6 +513,11 @@ function activarRevision() {
     else R.nuevo = { nombre: "", ap1: "", ap2: "", dni: "" };
     R.destino = undefined; R.dupOk = false; pintar();
   }));
+  document.querySelectorAll("[data-misma]").forEach(s => s.addEventListener("change", () => {
+    const i = +s.dataset.misma; R.otros = { ...(R.otros || {}) };
+    if (s.value) R.otros[i] = "misma:" + s.value; else delete R.otros[i];
+    pintar();
+  }));
   document.querySelectorAll("[data-otro]").forEach(b => b.addEventListener("click", () => { R.otros = { ...(R.otros || {}), [b.dataset.otro]: b.dataset.acc }; pintar(); }));
   $("#todos-terceros")?.addEventListener("click", () => { R.otros = {}; (S.doc.datos.personas || []).forEach((p, i) => { if (i !== R.persona) R.otros[i] = "tercero"; }); pintar(); });
   document.querySelectorAll("[data-fecha]").forEach(b => b.addEventListener("click", () => { R.fecha = b.dataset.fecha; pintar(); }));
@@ -536,7 +545,8 @@ async function confirmar() {
     return !(f && expSel && expSel.personas.some(q => q.id === f.id));
   });
   if (pendientes.some(x => !(R.otros || {})[x.i])) return aviso("Hay más personas en el documento: indica qué es cada una.", true);
-  const otrosEnvio = pendientes.map(x => ({ persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: R.otros[x.i] }));
+  const otrosEnvio = pendientes.map(x => { const acc = R.otros[x.i], misma = String(acc).startsWith("misma:");
+    return { persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: misma ? "misma" : acc, persona_id: misma ? +acc.slice(6) : null }; });
   const persona_datos = { nombre: P.nombre.trim(), apellido1: P.ap1.trim(), apellido2: P.ap2.trim(), dni: P.dni.trim().toUpperCase() || null };
   const fich = R.ignorarFicha ? null : buscarFichada(P);
   let expediente, persona = null;
@@ -741,32 +751,44 @@ function tarjetaChecklist(e) {
   const solicitados = ck.filas.filter(f => marcas[f.clave]?.estado === "solicitado").length;
   const cuenta = gr => `${gr.filas.filter(f => f.estado === "Recibido").length}/${gr.filas.length}`;
   const fila = f => { const [txt, cls, ic] = estadoCheck(f); const libre = f.estado !== "Recibido";
-    return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><b>${esc(f.documento)}</b>${f.importancia === "imprescindible" ? ' <span class="ck-imp">Imprescindible</span>' : ""}
-      <small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small></div>
+    return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><span class="ck-nom">${esc(f.documento)}${f.importancia === "imprescindible" ? ' <span class="ck-imp" title="Imprescindible">•</span>' : ""}</span>
+      ${f.archivos.length || f.detalle || ["sol", "nop"].includes(cls) ? `<small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small>` : ""}</div>
       ${libre ? `<span class="ck-acc"><button type="button" class="${marcas[f.clave]?.estado === "solicitado" ? "sel" : ""}" data-marca="${f.clave}" data-estado="solicitado" title="Ya se lo he pedido al cliente">Solicitado</button><button type="button" class="${marcas[f.clave]?.estado === "sin_pedir" ? "sel" : ""}" data-marca="${f.clave}" data-estado="sin_pedir" title="No hace falta pedirlo en este expediente">Sin pedir</button></span>` : `<span class="ck-estado">${txt}</span>`}</div>`; };
   return `<section class="tarjeta checklist"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
     ${solicitados ? `<div class="progreso fino"><i style="width:${Math.round(100 * ck.recibidos / Math.max(1, ck.recibidos + solicitados))}%"></i></div>` : ""}
-    <div class="pestanas ck-tabs">${grupos.map(x => `<a href="javascript:void 0" data-ck-tab="${x.id}" ${x.id === CK_TAB ? 'aria-current="page"' : ""}>${esc(x.nombre)} <span class="num">${cuenta(x)}</span></a>`).join("")}</div>
+    <div class="ck-tabs2">${grupos.map(x => `<button type="button" data-ck-tab="${x.id}" class="${x.id === CK_TAB ? "sel" : ""}">${esc(x.id === "exp" ? "Comunes" : x.nombre)} <small>${cuenta(x)}</small></button>`).join("")}</div>
     ${g ? (() => { const fam = {}; g.filas.forEach(f => (fam[f.familia || "Otros"] = fam[f.familia || "Otros"] || []).push(f));
-        return Object.entries(fam).map(([k, fs]) => `<div class="ck-familia">${esc(k)}</div>` + fs.map(fila).join("")).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
+        return Object.entries(fam).map(([k, fs], n) => `<div class="ck-grupo g${n % 6}" title="${esc(k)}">${fs.map(fila).join("")}</div>`).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
     ${ck.avisos_cliente.length ? `<div class="ck-avisos"><b>Avisos al cliente</b>${ck.avisos_cliente.map(a => `<span>${esc(a)}</span>`).join("")}</div>` : ""}
-    <button class="btn" id="ck-informe">Generar informe de lo que falta</button></section>`;
+    <button class="btn" id="ck-informe">${ico("mail", 16)}Generar informe de lo que falta y enviar</button></section>`;
 }
 function textoInforme() {
   const { e, ck } = EXP, falta = ck.filas.filter(f => f.estado !== "Recibido" && (EXP.neg?.marcas || {})[f.clave]?.estado !== "sin_pedir");
-  const por = {}; falta.forEach(f => (por[f.quien] = por[f.quien] || []).push(`- ${f.documento}${f.detalle && f.estado !== "Pendiente" ? " (" + f.detalle + ")" : ""}`));
-  return `Documentación pendiente · ${e.nombre}\n\n` + Object.entries(por).map(([q, l]) => `${q === "Expediente" ? "De la operación" : q}:\n${l.join("\n")}`).join("\n\n") + (falta.length ? "" : "No falta nada.");
+  const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel));
+  const saludo = titulares.length > 1 ? `Hola, ${titulares.map(p => p.nombre).join(" y ")}:` : `Hola, ${(titulares[0] || e.personas[0] || {}).nombre || ""}:`;
+  const fin = (S.info.variante.finalidades[e.finalidad] || "operación").toLowerCase();
+  const por = {}; falta.forEach(f => (por[f.quien] = por[f.quien] || []).push(`  · ${f.documento}${f.detalle && f.estado !== "Pendiente" ? " (" + f.detalle + ")" : ""}`));
+  const lista = Object.entries(por).map(([q, l]) => (Object.keys(por).length > 1 || q === "Expediente" ? `${q === "Expediente" ? "De la operación" : "De " + q}:\n` : "") + l.join("\n")).join("\n\n");
+  if (!falta.length) return `${saludo}\n\n¡Buenas noticias! Ya tenemos toda la documentación para tu ${fin}. En cuanto haya novedades te lo contamos.\n\nMuchas gracias y un saludo.`;
+  return `${saludo}\n\nEspero que estés muy bien. Para seguir avanzando con tu ${fin}, todavía nos falta la siguiente documentación:\n\n${lista}\n\nPuedes enviárnosla respondiendo a este mensaje; valen fotos con el móvil o PDF, siempre que se lean bien y se vean enteros. Si tienes cualquier duda con algún documento, dímelo y te ayudo.\n\nMuchas gracias y un saludo.`;
 }
 function modalInforme() {
-  return `<div class="zoom informe"><div class="tarjeta"><h2>Lo que falta</h2><textarea id="inf-txt" rows="16">${esc(INFORME)}</textarea>
-    <div class="acciones"><button class="btn pri" id="inf-copiar">${ico("check")}Copiar</button><button class="btn" id="inf-cerrar">Cerrar</button></div></div></div>`;
+  const c = EXP.op?.datos || {};
+  return `<div class="zoom informe"><div class="tarjeta"><h2>Enviar lo que falta</h2>
+    <div class="op-campos"><div class="campo"><label for="inf-mail">Correo del cliente</label><input id="inf-mail" type="email" value="${esc(c.contacto_email || "")}" placeholder="cliente@correo.es"></div>
+      <div class="campo"><label for="inf-tel">Móvil (WhatsApp)</label><input id="inf-tel" value="${esc(c.contacto_tel || "")}" placeholder="600 000 000"></div>
+      <div class="campo"><label for="inf-asunto">Asunto</label><input id="inf-asunto" value="Documentación pendiente · ${esc(EXP.e.nombre)}"></div></div>
+    <textarea id="inf-txt" rows="15">${esc(INFORME)}</textarea>
+    <span class="sub">Puedes cambiar el texto. «Correo» abre tu programa de correo con el mensaje preparado; «WhatsApp» abre WhatsApp con el texto listo. No se envía nada sin que tú lo pulses allí.</span>
+    <div class="acciones"><button class="btn pri" id="inf-correo">${ico("mail")}Enviar por correo</button><button class="btn pri" id="inf-wa">Enviar por WhatsApp</button><button class="btn" id="inf-copiar">${ico("check")}Copiar</button><button class="btn" id="inf-cerrar">Cerrar</button></div></div></div>`;
 }
 function tarjetaPersonasExp(e) {
   const docsDe = id => (EXP.docs || []).filter(d => d.persona_id === id && !d.de_expediente).length;
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Personas del expediente · ${e.personas.length}</h2></div>
     <table class="tabla"><tbody>${e.personas.map(p => { const n = docsDe(p.id);
       return `<tr><td><a href="#persona/${p.id}"><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></a></td><td><select data-papel="${p.id}" aria-label="Papel">${PAPELES.map(x => `<option ${x === p.papel ? "selected" : ""}>${x}</option>`).join("")}</select></td><td class="mono">${esc(p.dni || "sin DNI")}</td><td>${n} documento(s)</td>
-      <td class="der">${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
+      <td class="der">${e.personas.length > 1 ? `<select class="misma" data-misma-exp="${p.id}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${e.personas.filter(q => q.id !== p.id).map(q => `<option value="${q.id}">${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}
+        ${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
 }
 // ---------------- arreglar lo ya guardado (v1.1)
 const ARR = { unir: false, destino: "", mover: null, exp: "", persona: "", comun: false };
@@ -840,7 +862,25 @@ function activarExpediente(id) {
   }));
   $("#ck-informe")?.addEventListener("click", () => { INFORME = textoInforme(); pintar(); });
   $("#inf-cerrar")?.addEventListener("click", () => { INFORME = null; pintar(); });
+  const enviar = async via => {
+    const email = $("#inf-mail").value.trim(), tel = $("#inf-tel").value.replace(/\D/g, ""), texto = $("#inf-txt").value, asunto = $("#inf-asunto").value;
+    if (via === "correo" && !email && !confirm("No has puesto el correo del cliente. ¿Abrir el mensaje igualmente?")) return;
+    if (via === "wa" && !tel) return aviso("Pon el móvil del cliente.", true);
+    try { await api("operacion", { expediente: EXP.e.id, datos: { contacto_email: email, contacto_tel: $("#inf-tel").value.trim() } }); } catch {}
+    const url = via === "correo" ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(texto)}`
+                                 : `https://wa.me/${tel.length === 9 ? "34" + tel : tel}?text=${encodeURIComponent(texto)}`;
+    try { await api("abrir_url", { url }); aviso(via === "correo" ? "Abriendo el correo…" : "Abriendo WhatsApp…"); } catch (e) { aviso(e.message, true); }
+  };
+  $("#inf-correo")?.addEventListener("click", () => enviar("correo"));
+  $("#inf-wa")?.addEventListener("click", () => enviar("wa"));
   $("#inf-copiar")?.addEventListener("click", async () => { const tx = $("#inf-txt"); tx.select(); try { await navigator.clipboard.writeText(tx.value); } catch { document.execCommand("copy"); } aviso("Copiado: pégalo en el correo o el WhatsApp del cliente"); });
+  document.querySelectorAll("[data-misma-exp]").forEach(s => s.addEventListener("change", async () => {
+    if (!s.value) return;
+    const quita = EXP.e.personas.find(x => x.id === +s.dataset.mismaExp), queda = EXP.e.personas.find(x => x.id === +s.value);
+    const dniDistinto = quita.dni && queda.dni && quita.dni.toUpperCase() !== queda.dni.toUpperCase();
+    if (!confirm(`¿${quita.nombre} ${quita.apellido1} ${quita.apellido2 || ""} es la misma persona que ${queda.nombre} ${queda.apellido1} ${queda.apellido2 || ""}?\n\nSus documentos pasarán a ${queda.nombre} ${queda.apellido1} y se renombrarán; la ficha sobrante desaparece.` + (dniDistinto ? `\n\nOJO: tienen DNI distintos (${quita.dni} y ${queda.dni}). Se quedará ${queda.dni}.` : ""))) { s.value = ""; return; }
+    try { await api("arreglo", { accion: "unir_personas", quitar: quita.id, quedar: queda.id, forzar: !!dniDistinto }); aviso("Unidas: es la misma persona"); await recargar(); } catch (e) { aviso(e.message, true); s.value = ""; }
+  }));
   document.querySelectorAll("[data-quitar-persona]").forEach(b => b.addEventListener("click", async () => {
     const p = EXP.e.personas.find(x => x.id === +b.dataset.quitarPersona);
     if (!confirm(`¿Quitar a ${p.nombre} ${p.apellido1} (${p.papel}) del expediente «${EXP.e.nombre}»?`)) return;
@@ -881,11 +921,20 @@ async function cargarExpediente(id, suave) {
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
 let AV = null, TMP = null;
-function vistaAvisos() {
+function vistaAvisosCliente() {
   if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
-  return `<div class="cab"><div><small>Avisos</small><h1>Avisos</h1><div class="sub">Avisos Cliente: lo que falta o caducó. Avisos Se: problemas del programa o de los archivos.</div></div></div>
-  <section class="tarjeta"><h2>Avisos Cliente</h2>${AV.cliente.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">expediente ${a.expediente_id}</span></div>`).join("") || '<span class="sub">Nada pendiente.</span>'}</section>
-  <section class="tarjeta"><h2>Avisos Se</h2>${AV.se.slice().reverse().map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Nada pendiente.</span>'}</section>`;
+  const exps = Object.fromEntries(S.expedientes.map(e => [e.id, e]));
+  const por = {}; AV.cliente.forEach(a => (por[a.expediente_id] = por[a.expediente_id] || []).push(a));
+  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>Avisos cliente</h1><div class="sub">Lo que falta o ha caducado en cada expediente. Desaparecen solos cuando llega el documento.</div></div></div>
+  ${Object.keys(por).length ? Object.entries(por).map(([eid, l]) => `<section class="tarjeta"><div class="neg-cab"><h2><a href="#expediente/${eid}">${esc(exps[eid]?.nombre || "Expediente " + eid)}</a></h2><span class="sub">${l.length} aviso(s)</span></div>
+    ${l.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">desde ${fmtF(a.creado)}</span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}`;
+}
+function vistaAvisosSe() {
+  if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
+  const nuevos = S.estado.cuentas.avisos_se || 0;
+  return `<div class="cab"><div><h1>Avisos del programa</h1><div class="sub">Problemas del motor, de la versión o de los archivos (Avisos Se). La campanita del menú solo aparece cuando hay alguno nuevo.</div></div>
+    <div class="acciones">${nuevos ? `<button class="btn pri" id="se-vistos">${ico("check")}Marcar como vistos</button>` : ""}</div></div>
+  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
 }
 function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
@@ -1080,7 +1129,8 @@ function pintar() {
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, () => {}], avisos_se: [vistaAvisosSe, () => $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); })],
+    avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
     bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)] };
@@ -1103,7 +1153,7 @@ async function ir() {
   if (r === "expediente") return cargarExpediente(+id);
   if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
   if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
-  if (r === "avisos") AV = await api("avisos");
+  if (["avisos", "avisos_se", "avisos_cliente"].includes(r)) AV = await api("avisos");
   if (r === "cuarentena") CUA = await api("cuarentena");
   if (r === "personas" || r === "persona") PERS = await api("personas");
   if (r === "papelera") PAP = await api("papelera");
@@ -1174,7 +1224,7 @@ function vistaExpedientes() {
   const peso = e => (e.marcas.prioridad === "alta" ? 0 : e.marcas.prioridad === "media" ? 1 : e.marcas.prioridad === "baja" ? 2 : 4) - (e.marcas.favorito ? 0.5 : 0);
   const lista = S.expedientes.filter(grupos[EXP_TAB]).sort((a, b) => peso(a) - peso(b) || b.id - a.id);
   return `<div class="cab"><div><h1>Expedientes</h1><div class="sub">Se crean desde el Centro de revisión al emparejar el primer documento, o aquí a mano. Primero los de campanita, luego los favoritos.</div></div>
-    <div class="acciones"><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
+    <div class="acciones"><a class="btn avisos-cli" href="#avisos_cliente">${ico("bell", 16)}Avisos cliente${S.estado.cuentas.avisos_cliente ? `<span class="num">${S.estado.cuentas.avisos_cliente}</span>` : ""}</a><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
   ${NUEVO_EXP ? formNuevoExp() : ""}
   <nav class="pestanas">${Object.entries(nombres).map(([k, n]) => `<a href="javascript:void 0" data-exp-tab="${k}" ${k === EXP_TAB ? 'aria-current="page"' : ""}>${n}<span class="num">${S.expedientes.filter(grupos[k]).length}</span></a>`).join("")}</nav>
   ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th></tr></thead><tbody>
@@ -1436,5 +1486,47 @@ function activarSeparar(id) {
     sel.forEach((p, i) => { if (i && SEP.cortes.has(i)) grupos.push([]); grupos[grupos.length - 1].push(p); });
     try { const r = await api("separar", { documento: id, grupos }); aviso(`Separado en ${r.documentos.length} documentos`); SEP = null; S.doc = null; S.docId = null; await refrescar(false); location.hash = "revision/" + r.documentos[0]; }
     catch (e) { aviso(e.message, true); }
+  });
+}
+
+// ---------------- Escanear: USB, red/Wi-Fi instalados en Windows (WIA) y AirScan/eSCL por red sin instalar nada
+const ESC = { lista: null, sel: null, dpi: 300, color: true, alimentador: false, ocupado: false };
+async function abrirEscaner() {
+  ESC.lista = null; pintarEscaner();
+  try { ESC.lista = await fetch("/api/escaneres").then(r => r.json()); } catch { ESC.lista = []; }
+  if (ESC.sel === null && ESC.lista.length) ESC.sel = 0;
+  pintarEscaner();
+}
+function pintarEscaner() {
+  let caja = $("#escaner"); if (!caja) { caja = document.createElement("div"); caja.id = "escaner"; caja.className = "zoom informe"; document.body.appendChild(caja); }
+  const L = ESC.lista, opciones = L ? [...L, { via: "wia", id: null, nombre: "Cuadro de escaneo de Windows", conexion: "elige el escáner en Windows" }] : [];
+  const s = opciones[ESC.sel ?? 0] || {};
+  caja.innerHTML = `<div class="tarjeta escaner"><h2>${ico("scan")} Escanear</h2>
+    ${!L ? '<span class="sub">Buscando escáneres: USB, red y Wi-Fi…</span>' : `<div class="destinos">${opciones.map((x, i) => `<label class="dest ${i === ESC.sel ? "sel" : ""}"><input type="radio" name="esc" value="${i}" ${i === ESC.sel ? "checked" : ""}><span><b>${esc(x.nombre)}</b><small>${esc(x.conexion || "")}${x.url ? " · " + esc(x.url.replace(/^https?:\/\//, "").split("/")[0]) : ""}</small></span></label>`).join("")}</div>
+      ${L.length ? "" : '<span class="warn-txt">No se ha encontrado ningún escáner. Comprueba que está encendido y en la misma red (o Wi-Fi Direct), o escribe su IP.</span>'}`}
+    <div class="op-campos"><div class="campo"><label>Color</label><select id="esc-color"><option value="1" ${ESC.color ? "selected" : ""}>Color</option><option value="0" ${!ESC.color ? "selected" : ""}>Grises</option></select></div>
+      <div class="campo"><label>Resolución</label><select id="esc-dpi">${[200, 300, 600].map(d => `<option ${d === ESC.dpi ? "selected" : ""}>${d}</option>`).join("")}</select></div>
+      ${s.via === "escl" ? `<div class="campo"><label>Origen</label><select id="esc-ali"><option value="0">Cristal (una hoja)</option><option value="1" ${ESC.alimentador ? "selected" : ""}>Alimentador (varias hojas)</option></select></div>` : ""}</div>
+    <div class="fila-arreglo"><input id="esc-ip" placeholder="IP del escáner en la red, p. ej. 192.168.1.40"><button class="btn peq" id="esc-ip-ok">Añadir por IP</button><button class="btn peq" id="esc-buscar">Buscar otra vez</button><button class="btn peq" id="esc-win">Añadir en Windows…</button></div>
+    <span class="sub">Salen los escáneres USB, los de red o Wi-Fi que Windows ya tiene instalados y los que tienen AirScan (eSCL), que se usan sin instalar nada. Para Wi-Fi Direct, conecta antes el equipo a la Wi-Fi del escáner.</span>
+    <div class="acciones"><button class="btn pri" id="esc-ok" ${!L || ESC.ocupado ? "disabled" : ""}>${ico("scan")}${ESC.ocupado ? "Escaneando…" : "Escanear"}</button><button class="btn" id="esc-cerrar">Cerrar</button></div></div>`;
+  caja.querySelectorAll('input[name="esc"]').forEach(r => r.addEventListener("change", () => { ESC.sel = +r.value; pintarEscaner(); }));
+  caja.querySelector("#esc-color").addEventListener("change", e => (ESC.color = e.target.value === "1"));
+  caja.querySelector("#esc-dpi").addEventListener("change", e => (ESC.dpi = +e.target.value));
+  caja.querySelector("#esc-ali")?.addEventListener("change", e => (ESC.alimentador = e.target.value === "1"));
+  caja.querySelector("#esc-cerrar").addEventListener("click", () => caja.remove());
+  caja.querySelector("#esc-buscar").addEventListener("click", abrirEscaner);
+  caja.querySelector("#esc-win").addEventListener("click", () => api("abrir_url", { url: "ms-settings:printers" }).catch(e => aviso(e.message, true)));
+  caja.querySelector("#esc-ip-ok").addEventListener("click", async () => {
+    const ip = caja.querySelector("#esc-ip").value.trim(); if (!ip) return;
+    aviso("Buscando el escáner en " + ip + "…");
+    try { const e = await api("escaner_ip", { direccion: ip }); aviso("Escáner añadido: " + e.nombre); ESC.sel = null; await abrirEscaner(); ESC.sel = ESC.lista.findIndex(x => x.url === e.url); pintarEscaner(); } catch (e) { aviso(e.message, true); }
+  });
+  caja.querySelector("#esc-ok").addEventListener("click", async () => {
+    ESC.ocupado = true; pintarEscaner();
+    try { const r = await api("escanear", { via: s.via, id: s.id, url: s.url, dpi: ESC.dpi, color: ESC.color, alimentador: ESC.alimentador });
+      aviso(r.cancelado ? "Escaneo cancelado" : "Escaneado: " + r.archivo); if (!r.cancelado) { caja.remove(); refrescar(true); } }
+    catch (e) { aviso(e.message, true); }
+    ESC.ocupado = false; if ($("#escaner")) pintarEscaner();
   });
 }

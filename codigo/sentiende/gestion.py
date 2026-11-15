@@ -88,6 +88,10 @@ class Gestion:
             aj["apariencia"] = {"tamano": max(80, min(140, int(nuevos["apariencia"].get("tamano", 100))))}
         if "bienvenida_vista" in nuevos:
             aj["bienvenida_vista"] = bool(nuevos["bienvenida_vista"])
+        if "escaneres" in nuevos:
+            aj["escaneres"] = [{k: x.get(k) for k in ("via", "nombre", "url", "conexion")} for x in nuevos["escaneres"] if x.get("url")]
+        if "avisos_se_visto" in nuevos:
+            aj["avisos_se_visto"] = int(nuevos["avisos_se_visto"])
         self.m.carpetas.datos.mkdir(parents=True, exist_ok=True)
         self._ruta_ajustes.write_text(json.dumps(aj, ensure_ascii=False, indent=1), encoding="utf-8")
         self.aplicar()
@@ -142,7 +146,7 @@ class Gestion:
         op = self.operacion(eid)
         d = op["datos"]
         campos = ("importe_solicitado", "importe_concedido", "entidad", "fecha_envio", "fecha_aprobacion", "fecha_firma",
-                  "honorarios_tipo", "honorarios_valor", "factura_num", "factura_fecha", "fecha_cobro", "nota")
+                  "honorarios_tipo", "honorarios_valor", "factura_num", "factura_fecha", "fecha_cobro", "nota", "contacto_email", "contacto_tel")
         for k in campos:
             if k in nuevos:
                 d[k] = nuevos[k]

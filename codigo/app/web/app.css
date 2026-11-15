@@ -520,3 +520,30 @@ tr.apagada td { opacity: .55; }
 .cua .chips .chip { cursor: default; }
 .cab-exp { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
 select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; height: 32px; padding: 0 6px; }
+
+/* checklist más ligera: pestañas finas, sin títulos de familia (barrita de color entre grupos) */
+.ck-tabs2 { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.ck-tabs2 button { background: none; border: 1px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+.ck-tabs2 button small { font-size: 11px; opacity: .8; margin-left: 2px; }
+.ck-tabs2 button.sel { color: var(--text); border-color: var(--gris); }
+.ck-grupo { border-left: 3px solid var(--g, #4A5869); padding-left: 8px; margin-top: 8px; }
+.ck-grupo .ck-fila:first-child { border-top: 0; }
+.ck-grupo.g0 { --g: #60A5FA; } .ck-grupo.g1 { --g: #C4B5FD; } .ck-grupo.g2 { --g: #5EEAD4; } .ck-grupo.g3 { --g: #FDBA74; } .ck-grupo.g4 { --g: #F9A8D4; } .ck-grupo.g5 { --g: #A3E635; }
+.ck-fila { padding: 5px 0; gap: 7px; grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ck-ico { width: 18px; height: 18px; font-size: 10.5px; }
+.ck-nom { font-size: 13px; font-weight: 500; }
+.ck-imp { color: #FBBF24; font-weight: 700; text-transform: none; font-size: 14px; letter-spacing: 0; }
+.ck-txt small { font-size: 11.5px; }
+.ck-acc button { font-size: 11px; padding: 2px 6px; font-weight: 500; }
+.checklist .neg-cab h2 { font-size: 15px; }
+select.misma { height: 28px; font-size: 12.5px; max-width: 220px; }
+select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-color: var(--selFondo); }
+
+/* Avisos: «Avisos cliente» dentro de Expedientes; campanita de Avisos Se arriba del todo solo si hay algo nuevo */
+.campana-se { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #3A2C0B; border: 1px solid #FBBF24; color: #FDE68A; text-decoration: none; font-weight: 600; font-size: 13px; animation: latido-se 2s ease-in-out infinite; }
+.campana-se b { margin-left: auto; background: #FBBF24; color: #1A1406; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.campana-se svg { color: #FBBF24; }
+@keyframes latido-se { 50% { box-shadow: 0 0 0 4px rgba(251,191,36,.18); } }
+.avisos-cli .num { margin-left: 6px; background: var(--warn); color: #1A1406; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.dato.nuevo span:first-child { color: var(--text); font-weight: 600; }
+.escaner input { height: 32px; flex: 1; min-width: 220px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 10px; } .escaner { width: min(680px, 94vw); }

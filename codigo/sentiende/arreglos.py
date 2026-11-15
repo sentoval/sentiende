@@ -4,7 +4,7 @@ y unir dos fichas de la misma persona.
 
 Nunca se borra un documento ni un original: los archivos se mueven (y se renombran si cambia
 la persona); todo queda en el historial de eventos."""
-import datetime, shutil
+import datetime, json, shutil
 from pathlib import Path
 from . import checklist, textos
 from .carpetas import libre
@@ -170,6 +170,12 @@ def unir_personas(m, quitar_id, quedar_id, forzar=False):
             a.db.execute("UPDATE expediente_personas SET persona_id = ? WHERE expediente_id = ? AND persona_id = ?", (quedar_id, eid, quitar_id))
     docs = a.documentos("persona_id = ?", (quitar_id,))
     a.db.execute("UPDATE documentos SET persona_id = ? WHERE persona_id = ?", (quedar_id, quitar_id))
+    from .extraer import norm
+    alias = json.loads(k.get("alias") or "[]") + json.loads(q.get("alias") or "[]")
+    for x in [norm(f'{q["nombre"]} {q["apellido1"]} {q["apellido2"] or ""}').strip()]:
+        if x not in alias:
+            alias.append(x)
+    a.db.execute("UPDATE personas SET alias = ? WHERE id = ?", (json.dumps(sorted(set(alias)), ensure_ascii=False), quedar_id))
     a.db.execute("DELETE FROM personas WHERE id = ?", (quitar_id,))
     if not k["dni"] and q["dni"]:
         a.db.execute("UPDATE personas SET dni = ? WHERE id = ?", (q["dni"], quedar_id))
