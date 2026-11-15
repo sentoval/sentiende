@@ -40,27 +40,36 @@ jobs:
           $env:PATH = "$env:GITHUB_WORKSPACE\salida\SeFinancia\Motor\tesseract;$env:PATH"
           $env:TESSDATA_PREFIX = "$env:GITHUB_WORKSPACE\salida\SeFinancia\Motor\tesseract\tessdata"
           cd codigo
-          python -m unittest pruebas.test_motor -v
+          python -m unittest discover -s pruebas -t . -v
 
       - name: Comprimir
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.0_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.1_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v1.0_windows
-          path: SeFinancia_v1.0_windows.zip
+          name: SeFinancia_v1.1_windows
+          path: SeFinancia_v1.1_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0-prueba-${{ github.run_number }}
-          name: SeFinancia v1.0 (prueba ${{ github.run_number }})
-          prerelease: true
-          files: SeFinancia_v1.0_windows.zip
+          tag_name: v1.1
+          name: SeFinancia v1.1
+          prerelease: false
+          make_latest: true
+          files: SeFinancia_v1.1_windows.zip
           body: |
-            Descarga SeFinancia_v1.0_windows.zip, descomprímelo y abre SeFinancia\SeFinancia.exe.
-            Prueba con copias: lo que entra se mueve a Entrada\ y luego a Doc_original\.
+            SeFinancia 1.1 · motor Sentiende 2.1.0 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v1.1_windows.zip, descomprímelo y abre SeFinancia\SeFinancia.exe.
+            Para actualizar una versión anterior, copia la carpeta nueva encima de la vieja: la carpeta Datos (expedientes, ajustes y finalidades) no se toca.
+
+            Novedades:
+            - Recibir por correo (IMAP; solo lectura + etiqueta «SeFinancia») y por Bluetooth (asistente de Windows).
+            - Arreglar lo guardado: mover un documento a otro expediente, unir expedientes y unir fichas de personas repetidas.
+            - Centro de revisión en alto contraste, con Individual / Colectivo, «Como el resto del lote», destino con opciones escritas y «PRIVADO, No compartir».
+            - Limbo dentro de Motor de proceso, con «Revisar y asignar expediente».
+            - Títulos sin repetir; la explicación aparece al pasar el ratón.

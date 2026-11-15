@@ -107,6 +107,8 @@ class Almacen:
     # ---------------- texto permanente de cada documento guardado (M-68)
     def fijar_textos(self, doc):
         """Copia el texto de la memoria temporal al documento: vaciar la memoria no lo borra."""
+        if self.textos_de(doc["id"]):
+            return          # ya fijados (p. ej. documento rescatado del Limbo): no se pisan
         sel = doc.get("paginas_sel") or list(range(1, (doc["paginas"] or 1) + 1))
         for pos, n in enumerate(sel, 1):
             c = self.texto_cache(f'{doc["huella"]}:{n}')
