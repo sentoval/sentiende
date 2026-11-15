@@ -187,7 +187,7 @@ const fmtM = iso => iso ? iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
 
 function iniciarRevision(d) {
   const datos = d.datos || {}, p0 = (datos.personas || [])[0] || {};
-  const fin = Object.keys(S.info.variante.finalidades)[0];
+  const fin = (S.info.finalidades_visibles || Object.keys(S.info.variante.finalidades))[0];
   S.rev = { tipo: d.tipo || "", persona: p0.completo ? 0 : -1, fecha: null, finalidad: fin,
     nuevo: { nombre: p0.nombre || "", ap1: p0.apellido1 || "", ap2: p0.apellido2 || "", dni: p0.dni || (datos.dni || [])[0] || "" } };
 }
@@ -220,7 +220,7 @@ function vistaRevision() {
   const otrosDatos = [["Ejercicio", datos.ejercicio], ["IBAN", (datos.iban || []).join(", ")], ["Entidad", d.entidad]].filter(([, x]) => x)
     .map(([a, b]) => `<div class="dato"><span>${a}</span><span class="mono">${esc(b)}</span></div>`).join("");
   const N = R.nuevo;
-  const finalidades = Object.entries(v.finalidades).map(([k, n]) => `<button type="button" class="fin ${R.finalidad === k ? "sel" : ""}" data-fin="${k}" aria-pressed="${R.finalidad === k}">
+  const finalidades = Object.entries(v.finalidades).filter(([k]) => (S.info.finalidades_visibles || [k]).includes(k)).map(([k, n]) => `<button type="button" class="fin ${R.finalidad === k ? "sel" : ""}" data-fin="${k}" aria-pressed="${R.finalidad === k}">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${FIN_ICO[k] || IC.folder}</svg><span>${esc(n)}</span></button>`).join("");
   return `
   <div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1><div class="sub">${cola.length} pendiente(s). Comprueba lo leído, elige con un clic y confirma; el resto lo hace el motor.</div></div>
@@ -452,21 +452,31 @@ function tarjetaFinalidades() {
   const opTipos = sel => S.info.tipos.map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.nombre)}</option>`).join("");
   return `<section class="tarjeta"><div><h2>Finalidades de los expedientes</h2><span class="sub">Las que se eligen al crear un expediente, con los documentos que pide cada una. Son tuyas: las actualizaciones no las cambian.</span></div>
     ${FIN.map(f => `<div class="fin-ed ${FIN_ABIERTA === f.id ? "abierta" : ""}">
-      <button type="button" class="fin-cab" data-abrir="${f.id}"><b>${esc(f.nombre)}</b><span class="sub">${f.documentos.length} documento(s) · ${f.documentos.filter(d => d.importancia === "imprescindible").length} imprescindible(s) · ${f.expedientes} expediente(s)</span></button>
+      <button type="button" class="fin-cab" data-abrir="${f.id}"><b>${esc(f.nombre)}${f.oculta ? ' <span class="pill p-todo">Oculta</span>' : ""}</b><span class="sub">${f.documentos.length} documento(s) · ${f.documentos.filter(d => d.importancia === "imprescindible").length} imprescindible(s) · ${f.expedientes} expediente(s)</span></button>
       ${FIN_ABIERTA === f.id ? `<div class="fin-cuerpo">
         <div class="campo"><label for="fn-${f.id}">Nombre</label><input id="fn-${f.id}" value="${esc(f.nombre)}"></div>
-        <table class="tabla"><thead><tr><th>Documento</th><th>De</th><th>Imprescindible</th><th></th></tr></thead><tbody>
+        <table class="tabla"><thead><tr><th>Documento</th><th>De</th><th>Condición</th><th>Imprescindible</th><th></th></tr></thead><tbody>
         ${f.documentos.map((d, i) => `<tr><td><select data-ed="${i}" data-campo="tipo">${opTipos(d.tipo)}</select></td>
           <td><select data-ed="${i}" data-campo="por"><option value="titular" ${d.por === "titular" ? "selected" : ""}>Cada titular</option><option value="expediente" ${d.por === "expediente" ? "selected" : ""}>Todo el expediente</option></select></td>
+          <td>${condicionEd(d, i)}</td>
           <td><input type="checkbox" data-ed="${i}" data-campo="importancia" ${d.importancia === "imprescindible" ? "checked" : ""} aria-label="Imprescindible"></td>
-          <td><button type="button" class="btn peq" data-quitar-doc="${i}" aria-label="Quitar">${ico("x", 14)}</button></td></tr>`).join("") || '<tr><td colspan="4" class="muted">Sin documentos todavía: añade los que pide esta finalidad.</td></tr>'}
+          <td><button type="button" class="btn peq" data-quitar-doc="${i}" aria-label="Quitar">${ico("x", 14)}</button></td></tr>`).join("") || '<tr><td colspan="5" class="muted">Sin documentos todavía: añade los que pide esta finalidad.</td></tr>'}
         </tbody></table>
         <div class="acciones"><button type="button" class="btn" id="fin-add">Añadir documento</button><button type="button" class="btn pri" id="fin-guardar">Guardar</button>
-          <button type="button" class="btn peligro" id="fin-quitar" ${f.expedientes ? `disabled title="La usan ${f.expedientes} expediente(s)"` : ""}>Quitar finalidad</button></div>
+          ${f.expedientes ? `<button type="button" class="btn" id="fin-ocultar" data-oculta="${f.oculta ? 0 : 1}">${f.oculta ? "Mostrar otra vez" : "Ocultar"}</button>
+            <span class="sub">La usan ${f.expedientes} expediente(s): no se puede quitar, pero sí ocultar (no saldrá al crear expedientes; los que la tienen la conservan).</span>`
+            : `<button type="button" class="btn peligro" id="fin-quitar">Quitar finalidad</button>`}</div>
       </div>` : ""}</div>`).join("")}
     <div class="fila" style="align-items:flex-end"><div class="campo" style="flex:1 1 240px"><label for="fin-nueva">Nueva finalidad</label><input id="fin-nueva" placeholder="Por ejemplo: Reunificación de deudas"></div>
       <button type="button" class="btn" id="fin-crear" style="flex:0 0 auto">Añadir finalidad</button></div>
-    <span class="sub">Una finalidad nueva empieza sin documentos. Solo se puede quitar si ningún expediente la usa.</span></section>`;
+    <span class="sub">Una finalidad nueva empieza sin documentos. Si ningún expediente la usa se puede quitar; si la usan, se puede ocultar.</span></section>`;
+}
+const CONDICIONES = [["", "Sin condición"], ["en_vigor", "En vigor (no caducado)"], ["ultimos_meses", "Últimos N meses"], ["ultimo_ejercicio", "Último ejercicio"], ["max_dias", "Antigüedad máxima (días)"]];
+function condicionEd(d, i) {
+  const c = d.condicion || {}, k = Object.keys(c)[0] || "";
+  const num = k === "ultimos_meses" || k === "max_dias";
+  return `<span class="fila" style="gap:6px;flex-wrap:nowrap"><select data-cond="${i}" aria-label="Condición">${CONDICIONES.map(([v, n]) => `<option value="${v}" ${v === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+    ${num ? `<input type="number" min="1" data-condn="${i}" value="${c[k]}" aria-label="${k === "max_dias" ? "Días" : "Meses"}" style="width:70px;height:34px;border-radius:6px;border:1px solid var(--border);background:var(--bg);padding:0 6px">` : ""}</span>`;
 }
 function activarFinalidades() {
   const f = (FIN || []).find(x => x.id === FIN_ABIERTA);
@@ -475,6 +485,17 @@ function activarFinalidades() {
     const d = f.documentos[+el.dataset.ed];
     if (el.dataset.campo === "importancia") d.importancia = el.checked ? "imprescindible" : "recomendable"; else d[el.dataset.campo] = el.value;
   }));
+  document.querySelectorAll("[data-cond]").forEach(el => el.addEventListener("change", () => {
+    const d = f.documentos[+el.dataset.cond], k = el.value;
+    d.condicion = !k ? {} : { [k]: k === "ultimos_meses" ? 3 : k === "max_dias" ? 90 : true }; pintar();
+  }));
+  document.querySelectorAll("[data-condn]").forEach(el => el.addEventListener("change", () => {
+    const d = f.documentos[+el.dataset.condn], k = Object.keys(d.condicion)[0]; d.condicion = { [k]: Math.max(1, +el.value || 1) };
+  }));
+  $("#fin-ocultar")?.addEventListener("click", async e => {
+    const ocultar = e.currentTarget.dataset.oculta === "1";
+    try { await api("finalidad", { id: f.id, ocultar }); aviso(ocultar ? "Finalidad oculta" : "Finalidad visible otra vez"); await recargarFinalidades(); } catch (er) { aviso(er.message, true); }
+  });
   document.querySelectorAll("[data-quitar-doc]").forEach(b => b.addEventListener("click", () => { f.documentos.splice(+b.dataset.quitarDoc, 1); pintar(); }));
   $("#fin-add")?.addEventListener("click", () => { f.documentos.push({ tipo: S.info.tipos[0].id, por: "titular", importancia: "imprescindible", condicion: {} }); pintar(); });
   $("#fin-guardar")?.addEventListener("click", async () => {

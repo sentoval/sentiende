@@ -66,7 +66,7 @@ class Motor:
             if k not in fin and k not in quitadas:
                 fin[k] = n
                 chk.setdefault(k, base_c.get(k, []))
-        self._fin = {"finalidades": fin, "checklists": chk, "quitadas": sorted(quitadas)}
+        self._fin = {"finalidades": fin, "checklists": chk, "quitadas": sorted(quitadas), "ocultas": [o for o in datos.get("ocultas", []) if o in fin]}
         v.meta["finalidades"] = fin
         v.checklists = chk
 
@@ -77,8 +77,20 @@ class Motor:
 
     def finalidades(self):
         uso = dict(self.almacen.db.execute("SELECT finalidad, COUNT(*) FROM expedientes GROUP BY finalidad").fetchall())
-        return [{"id": k, "nombre": n, "documentos": self._fin["checklists"].get(k, []), "expedientes": uso.get(k, 0)}
-                for k, n in self._fin["finalidades"].items()]
+        return [{"id": k, "nombre": n, "documentos": self._fin["checklists"].get(k, []), "expedientes": uso.get(k, 0),
+                 "oculta": k in self._fin["ocultas"]} for k, n in self._fin["finalidades"].items()]
+
+    def finalidades_visibles(self):
+        """Las que se ofrecen al crear un expediente (las ocultas solo las conservan los expedientes que ya las tienen)."""
+        return [k for k in self._fin["finalidades"] if k not in self._fin["ocultas"]]
+
+    def ocultar_finalidad(self, fid, oculta=True):
+        if fid not in self._fin["finalidades"]:
+            raise MotorError(f"No existe la finalidad {fid}.")
+        s = set(self._fin["ocultas"])
+        s.add(fid) if oculta else s.discard(fid)
+        self._fin["ocultas"] = sorted(s)
+        self._guardar_finalidades()
 
     def guardar_finalidad(self, nombre, documentos=None, fid=None):
         """Crea (sin fid; checklist vacía) o cambia una finalidad. documentos: [{tipo, por, importancia, condicion}]."""
@@ -103,9 +115,19 @@ class Motor:
             for dct in documentos:
                 if dct.get("tipo") not in tipos:
                     raise MotorError(f"Tipo de documento desconocido: {dct.get('tipo')}")
+                c = dct.get("condicion") or {}
+                cond = {}
+                if c.get("en_vigor"):
+                    cond["en_vigor"] = True
+                elif c.get("ultimos_meses"):
+                    cond["ultimos_meses"] = max(1, min(60, int(c["ultimos_meses"])))
+                elif c.get("ultimo_ejercicio"):
+                    cond["ultimo_ejercicio"] = True
+                elif c.get("max_dias"):
+                    cond["max_dias"] = max(1, min(3650, int(c["max_dias"])))
                 limpio.append({"tipo": dct["tipo"], "por": "expediente" if dct.get("por") == "expediente" else "titular",
                                "importancia": "imprescindible" if dct.get("importancia") == "imprescindible" else "recomendable",
-                               "condicion": dct.get("condicion") or {}})
+                               "condicion": cond})
             self._fin["checklists"][fid] = limpio
         self._fin["quitadas"] = [q for q in self._fin["quitadas"] if q != fid]
         self._guardar_finalidades()
@@ -114,7 +136,7 @@ class Motor:
     def quitar_finalidad(self, fid):
         n = self.almacen.db.execute("SELECT COUNT(*) FROM expedientes WHERE finalidad = ?", (fid,)).fetchone()[0]
         if n:
-            raise MotorError(f"No se puede quitar: la usan {n} expediente(s).")
+            raise MotorError(f"No se puede quitar: la usan {n} expediente(s). Se puede ocultar.")
         self._fin["finalidades"].pop(fid, None)
         self._fin["checklists"].pop(fid, None)
         self._fin["quitadas"] = sorted(set(self._fin["quitadas"]) | {fid})
@@ -286,6 +308,8 @@ class Motor:
     def crear_expediente(self, persona_id, finalidad, fecha=None, nombre=None):
         if finalidad not in self.variante.meta.get("finalidades", {}):
             raise MotorError(f"Finalidad desconocida en {self.variante.nombre}: {finalidad}")
+        if finalidad in self._fin["ocultas"]:
+            raise MotorError("Esa finalidad está oculta: muéstrala en Ajustes para usarla en expedientes nuevos.")
         p = self.almacen.persona(persona_id)
         fecha = fecha or datetime.date.today()
         carpeta = carpeta_expediente(p, fecha, self.variante.nombres["sin_dni"])

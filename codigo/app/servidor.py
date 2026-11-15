@@ -61,7 +61,7 @@ class App:
         v = self.motor.variante
         tipos = sorted(({"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["nombre"])
         return {"motor": {"version": VERSION, "contrato": CONTRATO}, "variante": {k: v.meta.get(k) for k in ("id", "nombre", "version", "colores", "vocabulario", "finalidades", "papeles", "modulos")},
-                "compatibilidad": v.compat.mensaje, "fases": FASES, "tipos": tipos,
+                "compatibilidad": v.compat.mensaje, "finalidades_visibles": self.motor.finalidades_visibles(), "fases": FASES, "tipos": tipos,
                 "carpetas": {k: str(p) for k, p in self.motor.carpetas.rutas.items()}}
 
     def estado(self):
@@ -257,6 +257,8 @@ def crear_manejador(app):
                         nuevo = m.unir(datos["documentos"]); app._arrancar()
                         return self._json({"documento": nuevo})
                     if p == "/api/finalidad":
+                        if "ocultar" in datos:
+                            m.ocultar_finalidad(datos["id"], bool(datos["ocultar"])); return self._json({"ok": True})
                         if datos.get("quitar"):
                             m.quitar_finalidad(datos["quitar"]); return self._json({"ok": True})
                         return self._json({"id": m.guardar_finalidad(datos.get("nombre"), datos.get("documentos"), datos.get("id"))})
