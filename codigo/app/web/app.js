@@ -67,7 +67,7 @@ function lateral() {
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
-    <div class="marca"><span class="logo">${ico("logo", 22)}</span><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
+    <div class="marca"><img class="logo" src="/api/logo" alt="" width="60" height="60"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("bandeja", "inbox", "Bandeja de entrada", c.pendientes)}
@@ -177,46 +177,80 @@ function activarMotor() { $("#reanudar")?.addEventListener("click", async () => 
 function colaRevision() {
   return S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "espera_emparejar" || d.estado === "parado");
 }
+const FECHA_TXT = { periodo: ["Mes del documento", "Se usa el mes: elige cualquier día de ese mes."], emision: ["Fecha de emisión", "La fecha en que se hizo el documento."], caducidad: ["Válido hasta", "Fecha de caducidad."] };
+const FIN_ICO = { hipotecario: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  pyme: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 13h18"/>',
+  licencia_taxi: '<path d="M5 16 6.5 10h11L19 16"/><rect x="3" y="16" width="18" height="4" rx="1"/><path d="M10 10V7h4v3"/><circle cx="7.5" cy="20" r="1"/><circle cx="16.5" cy="20" r="1"/>' };
+const fmtF = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
+const fmtM = iso => iso ? iso.slice(5, 7) + "/" + iso.slice(0, 4) : "";
+
+function iniciarRevision(d) {
+  const datos = d.datos || {}, p0 = (datos.personas || [])[0] || {};
+  const fin = Object.keys(S.info.variante.finalidades)[0];
+  S.rev = { tipo: d.tipo || "", persona: p0.completo ? 0 : -1, fecha: null, finalidad: fin,
+    nuevo: { nombre: p0.nombre || "", ap1: p0.apellido1 || "", ap2: p0.apellido2 || "", dni: p0.dni || (datos.dni || [])[0] || "" } };
+}
+function fechaAuto(d, clave) { const x = d.datos || {}; return clave ? x[clave] || (clave === "emision" ? (x.fechas || [])[0] : null) : null; }
+
 function vistaRevision() {
   const cola = colaRevision();
   if (!cola.length) return `<div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1></div></div><div class="tarjeta vacio">No hay nada pendiente de revisar. ${S.estado.trabajando ? "El motor sigue trabajando: aparecerá aquí lo que necesite tu respuesta." : ""}</div>`;
   const d = S.doc;
   const lista = cola.map(x => `<a href="#revision/${x.id}" ${S.docId === x.id ? 'aria-current="true"' : ""}><b>${esc(x.archivo)}</b><small>${x.estado === "parado" ? esc(x.motivo) : x.tipo ? esc(nombreTipo(x.tipo)) + " · " + Math.round((x.confianza || 0) * 100) + " %" + (x.motivo ? " · revisar" : "") : "No reconocido"}</small></a>`).join("");
-  if (!d) return `<div class="rev"><nav class="cola" aria-label="Pendientes">${lista}</nav><div class="tarjeta vacio">Cargando…</div></div>`;
-  const datos = d.datos || {}, v = S.info.variante;
-  const tipos = S.info.tipos.map(t => `<option value="${t.id}" ${t.id === d.tipo ? "selected" : ""}>${esc(t.nombre)}</option>`).join("");
+  if (!d || !S.rev) return `<div class="rev"><nav class="cola" aria-label="Pendientes">${lista}</nav><div class="tarjeta vacio">Cargando…</div></div>`;
+  const datos = d.datos || {}, v = S.info.variante, R = S.rev;
+  const tipos = S.info.tipos.map(t => `<option value="${t.id}" ${t.id === R.tipo ? "selected" : ""}>${esc(t.nombre)}</option>`).join("");
   const leidas = datos.personas || [];
   const sug = d.sugerencias || [];
   const expsSug = sug.flatMap(s => s.expedientes.map(e => ({ ...e, persona: s.persona, por: s.por })));
   const otros = S.expedientes.filter(e => e.estado === "abierto" && !expsSug.some(x => x.id === e.id));
   const opExp = expsSug.map((e, i) => `<label class="opcion"><input type="radio" name="destino" value="e:${e.id}:${e.persona.id}" ${i === 0 ? "checked" : ""}><span><b>${esc(e.nombre)}</b><br><span class="sub">${esc(e.persona.nombre)} ${esc(e.persona.apellido1)} · ${esc(e.papel)} · coincide por ${esc(e.por)}</span></span></label>`).join("");
-  const p0 = leidas[0] || {};
   const pags = d.paginas_lista.length;
+  // persona leída: se elige con un clic
+  const chipsPersona = leidas.map((p, i) => `<button type="button" class="chip ${R.persona === i ? "sel" : ""}" data-persona="${i}">${esc(p.completo)}${p.dni ? ` <span class="mono">${esc(p.dni)}</span>` : ""}<small>${esc(p.por)}</small></button>`).join("");
+  const dnisSueltos = (datos.dni || []).filter(x => !leidas.some(p => p.dni === x));
+  // fecha del documento según el tipo elegido
+  const clave = R.tipo ? (d.fecha_claves || {})[R.tipo] : null;
+  const auto = fechaAuto(d, clave), elegida = R.fecha || auto;
+  const fmt = clave === "periodo" ? fmtM : fmtF;
+  const candidatas = [...new Set([auto, datos.periodo, datos.emision, datos.caducidad, ...(datos.fechas || [])].filter(Boolean))];
+  const vistas = new Set(), chipsFecha = candidatas.filter(f => { const k = fmt(f); if (vistas.has(k)) return false; vistas.add(k); return true; })
+    .map(f => `<button type="button" class="chip ${elegida && fmt(f) === fmt(elegida) ? "sel" : ""}" data-fecha="${f}">${fmt(f)}${f === auto ? "<small>la que ha cogido</small>" : ""}</button>`).join("");
+  const otrosDatos = [["Ejercicio", datos.ejercicio], ["IBAN", (datos.iban || []).join(", ")], ["Entidad", d.entidad]].filter(([, x]) => x)
+    .map(([a, b]) => `<div class="dato"><span>${a}</span><span class="mono">${esc(b)}</span></div>`).join("");
+  const N = R.nuevo;
+  const finalidades = Object.entries(v.finalidades).map(([k, n]) => `<button type="button" class="fin ${R.finalidad === k ? "sel" : ""}" data-fin="${k}" aria-pressed="${R.finalidad === k}">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${FIN_ICO[k] || IC.folder}</svg><span>${esc(n)}</span></button>`).join("");
   return `
-  <div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1><div class="sub">${cola.length} pendiente(s). Confirma el tipo y a qué expediente va; el resto lo hace el motor.</div></div>
+  <div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1><div class="sub">${cola.length} pendiente(s). Comprueba lo leído, elige con un clic y confirma; el resto lo hace el motor.</div></div>
     <div class="acciones"><a class="btn" href="#motor">${ico("motor")}Ver en el motor</a></div></div>
   <div class="rev">
     <nav class="cola" aria-label="Pendientes">${lista}</nav>
     <section class="visor" aria-label="Documento">
-      <div class="lienzo"><img alt="Página ${S.pag} de ${esc(d.nombre_recibido)}" src="/api/vista/${d.id}/${S.pag}?t=${Date.now()}"></div>
+      <div class="lienzo"><img alt="Página ${S.pag} de ${esc(d.nombre_recibido)}" src="/api/vista/${d.id}/${S.pag}?t=${d.actualizado}"></div>
       <div class="pie-v"><span>${esc(d.nombre_recibido)} · página ${S.pag} de ${pags}</span>
-        <span class="acciones"><button class="btn peq" id="pant" ${S.pag <= 1 ? "disabled" : ""}>${ico("left", 15)}</button><button class="btn peq" id="psig" ${S.pag >= pags ? "disabled" : ""}>${ico("right", 15)}</button></span></div>
+        <span class="acciones"><button class="btn peq" id="pant" ${S.pag <= 1 ? "disabled" : ""} aria-label="Página anterior">${ico("left", 15)}</button><button class="btn peq" id="psig" ${S.pag >= pags ? "disabled" : ""} aria-label="Página siguiente">${ico("right", 15)}</button></span></div>
       <details style="padding:0 14px 14px"><summary class="muted" style="cursor:pointer;padding:10px 0">Ver el texto leído de esta página</summary><div class="campo"><textarea readonly>${esc(d.texto_paginas[S.pag - 1] || "")}</textarea></div></details>
     </section>
     <section class="tarjeta" aria-label="Revisar">
-      <div><h2>Revisar</h2><span class="sub">${d.motivo ? esc(d.motivo) : "Clasificado con " + Math.round((d.confianza || 0) * 100) + " %"}${d.entidad ? " · entidad " + esc(d.entidad) : ""}</span></div>
-      <div class="campo"><label for="r-tipo">Tipo de documento</label><select id="r-tipo">${d.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
-        ${(d.alternativas || []).length ? `<span class="sub">Alternativas: ${d.alternativas.map(a => esc(nombreTipo(a.tipo))).join(", ")}</span>` : ""}</div>
-      <div>${[["DNI/NIE", (datos.dni || []).join(", ")], ["Periodo", datos.periodo ? datos.periodo.slice(5, 7) + "/" + datos.periodo.slice(0, 4) : ""], ["Ejercicio", datos.ejercicio], ["Caducidad", datos.caducidad],
-        ["Fechas", (datos.fechas || []).slice(0, 3).join(", ")], ["IBAN", (datos.iban || []).join(", ")], ["Personas leídas", leidas.map(p => p.completo + (p.dni ? " (" + p.dni + ")" : "")).join("; ")]]
-        .filter(([, x]) => x).map(([a, b]) => `<div class="dato"><span>${a}</span><span class="mono">${esc(b)}</span></div>`).join("")}</div>
-      <div class="campo"><span class="lab">¿A qué expediente va?</span>
+      <div><h2>Revisar</h2><span class="sub">${d.motivo ? esc(d.motivo) : "Clasificado con " + Math.round((d.confianza || 0) * 100) + " %"}</span></div>
+      <div class="campo"><label for="r-tipo">1 · Tipo de documento</label><select id="r-tipo">${R.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
+        ${(d.alternativas || []).length ? `<span class="chips">${d.alternativas.map(a => `<button type="button" class="chip peq" data-tipo="${a.tipo}">${esc(nombreTipo(a.tipo))}</button>`).join("")}</span>` : ""}</div>
+      <div class="campo"><span class="lab">2 · ¿De quién es?</span>
+        ${leidas.length ? `<span class="chips">${chipsPersona}</span><span class="sub">${leidas.length > 1 ? "Ha leído varios nombres: pulsa el del titular." : "Si no es correcto, cámbialo abajo en «Expediente nuevo»."}</span>` : '<span class="sub">No ha encontrado ningún nombre: escríbelo abajo en «Expediente nuevo».</span>'}
+        ${dnisSueltos.length ? `<span class="chips">${dnisSueltos.map(x => `<button type="button" class="chip peq ${N.dni === x ? "sel" : ""}" data-dni="${x}">DNI ${x}</button>`).join("")}</span>` : ""}</div>
+      ${clave ? `<div class="campo"><span class="lab">3 · ${FECHA_TXT[clave][0]}</span>
+        ${chipsFecha ? `<span class="chips">${chipsFecha}</span>` : '<span class="sub">No ha encontrado ninguna fecha.</span>'}
+        <span class="fila" style="align-items:center"><span class="sub" style="flex:0 0 auto">u otra:</span><input type="date" id="r-fecha" value="${R.fecha && !candidatas.includes(R.fecha) ? R.fecha : ""}" style="height:34px;border-radius:6px;border:1px solid var(--border);background:var(--bg);padding:0 8px;flex:0 1 180px"></span>
+        <span class="sub">${FECHA_TXT[clave][1]}</span></div>` : ""}
+      ${otrosDatos ? `<div>${otrosDatos}</div>` : ""}
+      <div class="campo"><span class="lab">${clave ? 4 : 3} · ¿A qué expediente va?</span>
         ${opExp}
         ${otros.length ? `<div class="opcion"><input type="radio" name="destino" value="otro" id="d-otro" ${opExp ? "" : "checked"}><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="d-otro"><b>Otro expediente abierto</b></label><div class="campo"><select id="r-otro" aria-label="Otro expediente abierto">${otros.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("")}</select></div></div></div>` : ""}
-        <div class="opcion"><input type="radio" name="destino" value="nuevo" id="d-nuevo" ${!opExp && !otros.length ? "checked" : ""}><div style="flex:1;display:flex;flex-direction:column;gap:8px"><label for="d-nuevo"><b>Expediente nuevo</b>${p0.completo ? ` <span class="sub">· datos leídos en el documento</span>` : ""}</label>
-          <div class="fila"><div class="campo"><label for="n-nom">Nombre</label><input id="n-nom" value="${esc(p0.nombre || "")}"></div><div class="campo"><label for="n-dni">DNI / NIE</label><input id="n-dni" value="${esc(p0.dni || (datos.dni || [])[0] || "")}"></div></div>
-          <div class="fila"><div class="campo"><label for="n-ap1">Primer apellido</label><input id="n-ap1" value="${esc(p0.apellido1 || "")}"></div><div class="campo"><label for="n-ap2">Segundo apellido</label><input id="n-ap2" value="${esc(p0.apellido2 || "")}"></div></div>
-          <div class="campo"><label for="n-fin">Finalidad</label><select id="n-fin">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("")}</select></div></div></div>
+        <div class="opcion"><input type="radio" name="destino" value="nuevo" id="d-nuevo" ${!opExp && !otros.length ? "checked" : ""}><div style="flex:1;display:flex;flex-direction:column;gap:10px"><label for="d-nuevo"><b>Expediente nuevo</b></label>
+          <div class="fila"><div class="campo"><label for="n-nom">Nombre</label><input id="n-nom" data-n="nombre" value="${esc(N.nombre)}"></div><div class="campo"><label for="n-dni">DNI / NIE</label><input id="n-dni" data-n="dni" value="${esc(N.dni)}"></div></div>
+          <div class="fila"><div class="campo"><label for="n-ap1">Primer apellido</label><input id="n-ap1" data-n="ap1" value="${esc(N.ap1)}"></div><div class="campo"><label for="n-ap2">Segundo apellido</label><input id="n-ap2" data-n="ap2" value="${esc(N.ap2)}"></div></div>
+          <div class="campo"><span class="lab">Finalidad</span><div class="fines">${finalidades}</div></div></div></div>
       </div>
       <label class="check"><input type="checkbox" id="r-comun"><span><b>Es de todo el expediente</b><br><span class="sub">Arras, tasación, nota simple… Se nombra con el código del primer titular.</span></span></label>
       <label class="check"><input type="checkbox" id="r-priv"><span><b>No compartir</b><br><span class="sub">Añade PRIVADO_NO_COMPARTIR_ y lo deja fuera de los envíos.</span></span></label>
@@ -225,41 +259,63 @@ function vistaRevision() {
   </div>`;
 }
 async function cargarDoc(id) {
-  if (S.docId !== id) S.pag = 1;
+  if (S.docId !== id) { S.pag = 1; S.rev = null; }
   S.docId = id;
-  try { S.doc = await api("documento/" + id); } catch (e) { S.doc = null; aviso(e.message, true); }
+  try { S.doc = await api("documento/" + id); if (!S.rev) iniciarRevision(S.doc); } catch (e) { S.doc = null; aviso(e.message, true); }
   pintar();
 }
+function marcarDestinoNuevo() { const r = $("#d-nuevo"); if (r) { r.checked = true; S.rev.destino = "nuevo"; } }
 function activarRevision() {
+  if (S.rev?.destino) { const r = document.querySelector(`input[name="destino"][value="${S.rev.destino}"]`); if (r) r.checked = true; }
+  document.querySelectorAll('input[name="destino"]').forEach(r => r.addEventListener("change", () => (S.rev.destino = r.value)));
+  $("#r-otro")?.addEventListener("change", () => { const r = $("#d-otro"); r.checked = true; S.rev.destino = "otro"; });
   $("#pant")?.addEventListener("click", () => { S.pag--; pintar(); });
   $("#psig")?.addEventListener("click", () => { S.pag++; pintar(); });
   $("#r-ok")?.addEventListener("click", confirmar);
   $("#r-limbo")?.addEventListener("click", async () => {
     try { const r = await api("limbo", { documento: S.docId }); aviso("Al Limbo: " + r.nombre_final); siguiente(); } catch (e) { aviso(e.message, true); }
   });
+  $("#r-tipo")?.addEventListener("change", e => { S.rev.tipo = e.target.value; S.rev.fecha = null; pintar(); });
+  document.querySelectorAll("[data-tipo]").forEach(b => b.addEventListener("click", () => { S.rev.tipo = b.dataset.tipo; S.rev.fecha = null; pintar(); }));
+  document.querySelectorAll("[data-persona]").forEach(b => b.addEventListener("click", () => {
+    const p = S.doc.datos.personas[+b.dataset.persona];
+    S.rev.persona = +b.dataset.persona;
+    S.rev.nuevo = { nombre: p.nombre || "", ap1: p.apellido1 || "", ap2: p.apellido2 || "", dni: p.dni || S.rev.nuevo.dni };
+    pintar(); if (!document.querySelector('input[name="destino"][value^="e:"]')) marcarDestinoNuevo();
+  }));
+  document.querySelectorAll("[data-dni]").forEach(b => b.addEventListener("click", () => { S.rev.nuevo.dni = b.dataset.dni; pintar(); }));
+  document.querySelectorAll("[data-fecha]").forEach(b => b.addEventListener("click", () => { S.rev.fecha = b.dataset.fecha; pintar(); }));
+  $("#r-fecha")?.addEventListener("change", e => { if (e.target.value) { S.rev.fecha = e.target.value; pintar(); } });
+  document.querySelectorAll("[data-fin]").forEach(b => b.addEventListener("click", () => {
+    S.rev.finalidad = b.dataset.fin;
+    document.querySelectorAll("[data-fin]").forEach(x => { x.classList.toggle("sel", x === b); x.setAttribute("aria-pressed", x === b); });
+    marcarDestinoNuevo();
+  }));
+  document.querySelectorAll("[data-n]").forEach(i => i.addEventListener("input", () => { S.rev.nuevo[i.dataset.n] = i.value; marcarDestinoNuevo(); }));
   document.querySelectorAll("#vista .tarjeta input, #vista .tarjeta select").forEach(el => {
     el.addEventListener("focus", () => (S.editando = true)); el.addEventListener("blur", () => (S.editando = false));
   });
 }
 async function confirmar() {
-  const tipo = $("#r-tipo").value;
+  const R = S.rev, tipo = R.tipo;
   if (!tipo) return aviso("Elige el tipo de documento.", true);
   const dest = (document.querySelector('input[name="destino"]:checked') || {}).value;
   if (!dest) return aviso("Elige a qué expediente va.", true);
   let expediente, persona = null;
   try {
     if (dest === "nuevo") {
-      const nom = $("#n-nom").value.trim(), ap1 = $("#n-ap1").value.trim();
-      if (!nom || !ap1) return aviso("Escribe al menos el nombre y el primer apellido.", true);
-      const r = await api("expediente", { persona: { nombre: nom, apellido1: ap1, apellido2: $("#n-ap2").value.trim(), dni: $("#n-dni").value.trim().toUpperCase() || null }, finalidad: $("#n-fin").value });
+      const N = R.nuevo;
+      if (!N.nombre.trim() || !N.ap1.trim()) return aviso("Escribe al menos el nombre y el primer apellido.", true);
+      const r = await api("expediente", { persona: { nombre: N.nombre.trim(), apellido1: N.ap1.trim(), apellido2: N.ap2.trim(), dni: N.dni.trim().toUpperCase() || null }, finalidad: R.finalidad });
       expediente = r.expediente; persona = r.persona; aviso("Expediente creado: " + r.carpeta);
     } else if (dest === "otro") expediente = +$("#r-otro").value;
     else { const [, e, p] = dest.split(":"); expediente = +e; persona = +p; }
-    const g = await api("emparejar", { documento: S.docId, expediente, persona, comun: $("#r-comun").checked, tipo, privado: $("#r-priv").checked });
+    const g = await api("emparejar", { documento: S.docId, expediente, persona, comun: $("#r-comun").checked, tipo, privado: $("#r-priv").checked, fecha: R.fecha });
     aviso("Guardado: " + g.nombre_final);
     siguiente();
   } catch (e) { aviso(e.message, true); }
 }
+
 async function siguiente() {
   await refrescar(false);
   const cola = colaRevision();

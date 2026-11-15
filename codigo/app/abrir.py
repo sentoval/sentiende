@@ -45,6 +45,31 @@ def desbloquear():
             pass
     return n
 
+_MUTEX = None
+
+def ya_abierto(raiz, titulo):
+    """Una sola copia del programa (por carpeta). Si ya está abierto, lo trae delante y devuelve True."""
+    global _MUTEX
+    if os.name != "nt":
+        return False
+    import ctypes, hashlib
+    k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+    nombre = "Local\\Sentiende_" + hashlib.sha1(str(Path(raiz).resolve()).lower().encode()).hexdigest()[:16]
+    _MUTEX = k32.CreateMutexW(None, False, nombre)
+    if k32.GetLastError() != 183:          # ERROR_ALREADY_EXISTS
+        return False
+    h = u32.FindWindowW(None, titulo)
+    if h:
+        u32.ShowWindow(h, 9)               # SW_RESTORE: si estaba minimizada
+        u32.SetForegroundWindow(h)
+    else:                                  # abierto en el navegador: se vuelve a mostrar ahí
+        try:
+            url = json.loads((Path(raiz) / "Datos" / "instancia.json").read_text(encoding="utf-8"))["url"]
+            webbrowser.open(url)
+        except Exception:
+            pass
+    return True
+
 def preparar_ocr():
     """Pone Tesseract al alcance del motor. Devuelve la ruta de tesseract.exe o None."""
     candidatos = [AQUI / "tesseract" / "tesseract.exe", AQUI / "tesseract" / "tesseract",
@@ -124,6 +149,19 @@ def main(argv=None, lanzador=None):
         n = desbloquear()
         if n:
             print(f"Desbloqueadas {n} DLL marcadas como descargadas de internet")
+    if not a.comprobar:
+        try:
+            nombre_var = json.loads((variante / "variante.json").read_text(encoding="utf-8")).get("nombre", "SeFinancia")
+        except Exception:
+            nombre_var = "SeFinancia"
+        if ya_abierto(raiz, f"{nombre_var} · con Sentiende"):
+            return 0
+        if os.name == "nt":                # icono propio en la barra de tareas
+            try:
+                import ctypes
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"Sentiende.{nombre_var}")
+            except Exception:
+                pass
     tesseract = preparar_ocr()
     if a.comprobar:
         r = comprobar(raiz, variante, tesseract)
@@ -148,11 +186,20 @@ def main(argv=None, lanzador=None):
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     titulo = f"{app.motor.variante.nombre} · con Sentiende"
     print(f"{titulo} · {url} · carpeta {raiz}")
+    try:
+        (raiz / "Datos" / "instancia.json").write_text(json.dumps({"url": url, "pid": os.getpid()}), encoding="utf-8")
+    except Exception:
+        pass
+    icono = variante / "imagenes" / "icono.ico"
     if not a.navegador:
         try:
             import webview
             webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680))
-            webview.start()
+            import inspect
+            if icono.is_file() and "icon" in inspect.signature(webview.start).parameters:
+                webview.start(icon=str(icono))
+            else:
+                webview.start()
             return 0
         except Exception:
             traceback.print_exc()          # sin ventana propia: se usa el navegador

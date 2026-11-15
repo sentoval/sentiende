@@ -214,8 +214,15 @@ class Motor:
         return eid
 
     # ------------------------------------------------------------ fases 7 a 10
-    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False):
-        """Respuesta a la fase 7. tipo: confirma o corrige la clasificación provisional."""
+    def clave_fecha(self, tipo):
+        """Qué fecha da nombre a este tipo de documento: 'periodo', 'emision', 'caducidad' o None."""
+        doc = self.variante.docs.get(tipo) or {}
+        regla = self.nombrador.r["dato_distintivo"].get(doc.get("zzzz")) or ""
+        return next((c for c in (p.partition(":")[0] for p in regla.split("+")) if c in ("periodo", "emision", "caducidad")), None)
+
+    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False, fecha=None):
+        """Respuesta a la fase 7. tipo: confirma o corrige la clasificación provisional.
+        fecha: la fecha del documento elegida en la revisión (AAAA-MM-DD); manda sobre la leída."""
         a = self.almacen
         d = a.documento(doc_id)
         if not d:
@@ -229,6 +236,14 @@ class Motor:
         tipo = tipo or d["tipo"]
         if not tipo:
             raise MotorError("Hay que indicar el tipo: el documento no se ha reconocido.")
+        if fecha:
+            clave = self.clave_fecha(tipo)
+            f = datetime.date.fromisoformat(fecha)
+            datos = d["datos"] or {}
+            if clave:
+                datos[clave] = (f.replace(day=1) if clave == "periodo" else f).isoformat()
+                a.actualizar(doc_id, datos=datos)
+                a.evento(f"Fecha elegida a mano ({clave}): {f:%d/%m/%Y}", doc_id, d["lote_id"], 7)
         personas = a.personas_de(expediente_id)
         if de_expediente or not persona_id:
             persona = personas[0]          # documento común o sin persona indicada: primer titular

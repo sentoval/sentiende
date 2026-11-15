@@ -16,7 +16,8 @@
   "lateral_tenue": "#A7C4B5"
  },
  "imagenes": {
-  "logo": "imagenes/logo.png",
+  "logo": "imagenes/logo.svg",
+  "logo_png": "imagenes/logo.png",
   "icono": "imagenes/icono.ico"
  },
  "vocabulario": {

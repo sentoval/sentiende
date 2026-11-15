@@ -19,9 +19,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #lateral { flex: 0 0 260px; background: var(--lateral); border-right: 1px solid var(--lateralBorde); padding: 16px 12px;
   display: flex; flex-direction: column; gap: 18px; overflow-y: auto; color: #F1F4F9; }
 .marca { display: flex; gap: 10px; align-items: center; padding: 4px 6px 14px; border-bottom: 1px solid var(--lateralBorde); }
-.marca .logo { width: 36px; height: 36px; border-radius: 9px; background: #0B0F14; border: 1px solid var(--lateralBorde);
-  display: inline-flex; align-items: center; justify-content: center; color: var(--marco); }
-.marca b { display: block; font-size: 18px; color: var(--marco); line-height: 1.1; }
+.marca .logo { width: 60px; height: 60px; flex: none; border-radius: 14px; }
+.marca b { display: block; font-size: 22px; color: var(--marco); line-height: 1.1; }
 .marca span { font-size: 12.5px; color: var(--lateralTenue); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 4px; color: #F1F4F9;
@@ -140,3 +139,18 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhe
 .lotes a { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600; }
 .lotes a[aria-current="true"] { border-color: var(--accent); background: var(--accentSoft); }
 .opcion .campo { flex: 1 1 140px; }
+
+/* revisión: elegir con un clic */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text); font-weight: 600; cursor: pointer; text-align: left; }
+.chip:hover { border-color: var(--accent); }
+.chip small { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.chip.sel { border-color: var(--accent); background: var(--accentSoft); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip.sel small { color: var(--accent); }
+.chip.peq { padding: 4px 10px; font-size: 13px; }
+.fines { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.fin { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 4px; line-height: 1.25; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--muted); font-weight: 600; cursor: pointer; text-align: center; font-size: 13px; }
+.fin:hover { border-color: var(--accent); color: var(--text); }
+.fin.sel { border: 2px solid var(--accent); background: var(--accentSoft); color: var(--accent); padding: 11px 7px; }

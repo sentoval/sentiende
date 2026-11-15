@@ -92,6 +92,8 @@ class App:
         d["eventos"] = a.eventos(did)
         d["sugerencias"] = m.sugerencias(did)
         d["paginas_lista"] = sel
+        d["fecha_clave"] = m.clave_fecha(d["tipo"]) if d["tipo"] else None
+        d["fecha_claves"] = {t["id"]: m.clave_fecha(t["id"]) for t in m.variante.base["documentos"]}
         return d
 
     def expedientes(self):
@@ -185,6 +187,15 @@ def crear_manejador(app):
                     return self._estatico(p)
                 with CERROJO:
                     if p == "/api/info": return self._json(app.info())
+                    if p in ("/api/logo", "/api/icono"):
+                        v = app.motor.variante
+                        im = v.meta.get("imagenes", {})
+                        f = (Path(v.carpeta) / im.get("logo" if p == "/api/logo" else "icono", "")) if im else None
+                        if not f or not f.is_file():
+                            return self._json({"error": "Sin logo"}, 404)
+                        b = f.read_bytes()
+                        self.send_response(200); self.send_header("Content-Type", mimetypes.guess_type(str(f))[0] or "image/png")
+                        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
                     if p == "/api/estado": return self._json(app.estado())
                     if p == "/api/expedientes": return self._json(app.expedientes())
                     if p == "/api/temporales": return self._json(app.motor.temporales())
@@ -226,7 +237,7 @@ def crear_manejador(app):
                         return self._json({"expediente": eid, "persona": pid, "carpeta": m.almacen.expediente(eid)["carpeta"]})
                     if p == "/api/emparejar":
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
-                                        datos.get("tipo") or None, bool(datos.get("privado")))
+                                        datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
                         return self._json(d)
                     if p == "/api/limbo":
                         return self._json(m.al_limbo(int(datos["documento"])))

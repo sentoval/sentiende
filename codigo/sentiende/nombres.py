@@ -77,7 +77,8 @@ def dato_distintivo(regla, datos, entidad_abrev=None):
         elif clave == "periodo":
             v = _fmt(datos.get("periodo"), formato)
         elif clave == "emision":
-            v = _fmt(datos["fechas"][0], formato) if datos.get("fechas") else None
+            f = datos.get("emision") or (datos["fechas"][0] if datos.get("fechas") else None)
+            v = _fmt(f, formato) if f else None
         elif clave == "caducidad":
             v = _fmt(datos.get("caducidad"), formato)
         elif clave == "ejercicio":

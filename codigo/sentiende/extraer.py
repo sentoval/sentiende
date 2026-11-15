@@ -113,6 +113,18 @@ def caducidad(texto):
         return _fecha(*m.group(2, 3, 4))
     return None
 
+def emision(texto, todas):
+    """Fecha de emisión o del documento: la que va junto a su etiqueta; si no hay etiqueta, la más
+    reciente que no sea futura (las de nacimiento, alta o antigüedad suelen ser antiguas)."""
+    t = norm(texto)
+    m = re.search(r"(FECHA DE EMISION|FECHA EMISION|FECHA DE EXPEDICION|EXPEDIDO|EXPEDICION|EMITIDO|EMISION|FECHA DEL DOCUMENTO|"
+                  r"FECHA DE EXPEDICIO|DATA D.EMISSIO|A FECHA DE|[A-Z]+, A)\s*:?[^\n\d]{0,12}(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})", t)
+    if m and (f := _fecha(*m.group(2, 3, 4))):
+        return f
+    hoy = datetime.date.today()
+    validas = [f for f in todas if f <= hoy]
+    return max(validas) if validas else None
+
 def trimestre(texto):
     t = norm(texto)
     m = re.search(r"\b([1-4])\s?T\b|\b([1-4])[ºO]?\s?TRIMESTRE\b", t)
@@ -151,6 +163,7 @@ def extraer(texto, base=None):
         "periodo": (p.isoformat() if (p := periodo(texto)) else None),
         "ejercicio": ejercicio(texto),
         "caducidad": (c.isoformat() if (c := caducidad(texto)) else None),
+        "emision": (e.isoformat() if (e := emision(texto, fs)) else None),
         "trimestre": list(tri) if tri else None,
         "matricula": (m.group(0).replace(" ", "").replace("-", "") if (m := re.search(r"\b\d{4}[ -]?[BCDFGHJKLMNPRSTVWXYZ]{3}\b", t)) else None),
         "ref_catastral": (m.group(0) if (m := re.search(r"\b\d{7}[A-Z]{2}\d{4}[A-Z]\d{4}[A-Z]{2}\b", t)) else None),
@@ -161,6 +174,13 @@ def extraer(texto, base=None):
 # ------------------------------------------------------------------ personas (nombre y apellidos)
 PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y", "I", "DA", "DAS", "DO", "DOS", "SAN", "SANTA"}
 CORTE = r"(?=\s+(?:NIF|N\.I\.F|DNI|D\.N\.I|NIE|N\.A\.F|NAF|SEXO|NACIONALIDAD|FECHA|DOMICILIO|CON\s+DNI|PROVISTO|MAYOR|VECIN|CIF|IBAN|CATEGORIA|GRUPO|ANTIG|NUM)\b|\s*[,;:\n(]|\s{2,}|$)"
+NO_NOMBRE = set("""DNI NIF NIE CIF NAF NUM NUMERO DOCUMENTO NACIONAL IDENTIDAD ESPANA ESPANOLA ESP SEXO NACIONALIDAD FECHA
+NACIMIENTO VALIDO HASTA DOMICILIO CALLE AVDA AVENIDA PLAZA PASEO CTRA CAMINO PISO PUERTA BAJO PROVINCIA MUNICIPIO
+BANCO CAJA RURAL SL SA SLU SAU S.L. S.A. SOCIEDAD LIMITADA ANONIMA EMPRESA TRABAJADOR TRABAJADORA EMPLEADO TITULAR
+TITULARES DECLARANTE CONTRIBUYENTE SOLICITANTE NOMBRE APELLIDOS APELLIDO CON PROVISTO MAYOR EDAD VECINO VECINA
+SEGURIDAD SOCIAL TESORERIA GENERAL AGENCIA TRIBUTARIA INFORME VIDA LABORAL CERTIFICADO NOMINA RECIBO PERIODO
+CUENTA IBAN SWIFT BIC CODIGO POSTAL TELEFONO TEL CORREO EMAIL DATOS PERSONALES CATEGORIA GRUPO ANTIGUEDAD
+REGISTRO PROPIEDAD FINCA NOTA SIMPLE INFORMATIVA HOJA PAGINA DE A EL EN POR PARA""".split())
 NOMBRE_RE = r"([A-Z][A-Z'\-]+(?: [A-Z][A-Z'\-]+){0,5}?)"
 
 def _agrupar(tokens):
@@ -198,7 +218,7 @@ def personas(texto):
         dn = [dni_valido(m.group(0)) for m in re.finditer(r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b", cerca)]
         p["dni"] = next((x for x in dn if x), None)
         clave = frozenset(p["completo"].upper().split())
-        if not any(frozenset(q["completo"].upper().split()) == clave for q in encontradas):
+        if not any(clave <= frozenset(q["completo"].upper().split()) for q in encontradas):   # ni repetido ni un trozo de otro
             encontradas.append(p)
     # Tarjeta del DNI: APELLIDOS ... / NOMBRE ...
     m = re.search(r"APELLIDOS\s+" + NOMBRE_RE + CORTE + r"[\s\S]{0,80}?\bNOMBRE\s+" + NOMBRE_RE + CORTE, t)
@@ -217,4 +237,33 @@ def personas(texto):
     for m in re.finditer(r"(?:TITULAR(?:ES)?|DECLARANTE|APELLIDOS Y NOMBRE)\s*:?\s+" + NOMBRE_RE + CORTE, t):
         if "," not in t[m.end(): m.end() + 2]:
             add(_completo(m.group(1), "titular (apellidos primero)", apellidos_primero=True), m.start())
+    # Sin etiqueta conocida: el nombre suele estar junto a su DNI (misma línea o la de arriba)
+    for m in re.finditer(r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b", t):
+        if not dni_valido(m.group(0)):
+            continue
+        ini = t.rfind("\n", 0, m.start()) + 1
+        fin = t.find("\n", m.end()); fin = len(t) if fin < 0 else fin
+        previa = t[t.rfind("\n", 0, max(ini - 1, 0)) + 1: max(ini - 1, 0)] if ini > 0 else ""
+        if re.search(r"\bS\.? ?[LA]\.?U?\b|\bCIF\b|SOCIEDAD|BANCO", previa):
+            previa = ""                                   # la línea de arriba es una empresa
+        for trozo in (t[ini:m.start()], t[m.end():fin], previa):
+            if (c := re.match(r"\s*([A-Z][A-Z' \-]{3,50}?),\s*([A-Z][A-Z' \-]{1,30}?)\s*(?:$|\s{2,}|[;(])", trozo)):
+                add(_persona(c.group(2).strip(), c.group(1).strip(), "junto al DNI (apellidos, nombre)"), m.start())
+                break
+            for g in re.finditer(r"[A-Z][A-Z'\-]+(?: [A-Z][A-Z'\-]+){1,5}", trozo):
+                tramos, act = [], []
+                for w in g.group(0).split() + ["DNI"]:          # tramos sin palabras de etiqueta
+                    if w in NO_NOMBRE and w not in PARTICULAS:
+                        if act: tramos.append(act)
+                        act = []
+                    else:
+                        act.append(w)
+                tramos = [x for x in tramos if len([w for w in x if w not in PARTICULAS]) >= 2]
+                if tramos:
+                    mejor = max(tramos, key=len)
+                    while mejor and mejor[0] in PARTICULAS: mejor = mejor[1:]
+                    while mejor and mejor[-1] in PARTICULAS: mejor = mejor[:-1]
+                    if len(mejor) >= 2:
+                        add(_completo(" ".join(mejor), "junto al DNI"), m.start())
+                        break
     return encontradas

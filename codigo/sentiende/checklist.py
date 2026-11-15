@@ -59,7 +59,7 @@ def _condicion(cond, docs, hoy):
         ej = {d["datos"].get("ejercicio") for d in docs if d["datos"]}
         return ("Recibido", f"ejercicio {hoy.year - 1}") if (hoy.year - 1) in ej else ("Incompleto", f"falta el ejercicio {hoy.year - 1}")
     if dias := cond.get("max_dias"):
-        fechas = [datetime.date.fromisoformat(d["datos"]["fechas"][0]) for d in docs if d["datos"] and d["datos"].get("fechas")]
+        fechas = [datetime.date.fromisoformat(d["datos"].get("emision") or d["datos"]["fechas"][0]) for d in docs if d["datos"] and (d["datos"].get("emision") or d["datos"].get("fechas"))]
         if not fechas:
             return "Recibido", "Fecha no leída: revisar"
         f = max(fechas)
