@@ -459,6 +459,28 @@ class Motor:
         p = persona or {"nombre": "", "apellido1": "", "dni": None}
         return self._renombrar_y_guardar(doc_id, limbo=True, persona=p)
 
+    def sacar_del_limbo(self, doc_id):
+        """Devuelve un documento del Limbo a la revisión. El PDF que estaba en _Limbo (ya con sus
+        páginas y giros) pasa a ser la copia de trabajo; el original sigue donde está hasta guardarlo."""
+        a, c = self.almacen, self.carpetas
+        d = a.documento(doc_id)
+        if not d or d["estado"] != "limbo":
+            raise MotorError(f"El documento {doc_id} no está en el Limbo.")
+        f = Path(d["ruta_final"] or "")
+        if not f.exists():
+            raise MotorError(f"No encuentro el archivo en el Limbo: {f}")
+        w = libre(c.trabajo(d["lote_id"]) / f"limbo_{doc_id}{f.suffix.lower()}")
+        shutil.move(f, w)
+        paginas = 1
+        if w.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            paginas = len(PdfReader(str(w)).pages)
+        a.actualizar(doc_id, estado="espera_emparejar", fase=7, ruta_original=str(w), extension=w.suffix.lower(),
+                     paginas=paginas, paginas_sel=None, rotaciones=[{"n": i} for i in range(1, paginas + 1)],
+                     ruta_trabajo=str(w.parent), ruta_final=None, nombre_final=None, motivo="Sacado del Limbo")
+        a.evento("Sacado del Limbo: vuelve a la revisión", doc_id, d["lote_id"], 7)
+        return a.documento(doc_id)
+
     def _renombrar_y_guardar(self, doc_id, limbo=False, persona=None):
         a, c = self.almacen, self.carpetas
         d = a.documento(doc_id)
@@ -488,7 +510,20 @@ class Motor:
             self._documento_editado(d, destino)
             orig_destino = None
             hermanos = a.documentos("padre_id = ? AND id != ? AND estado NOT IN ('guardado', 'limbo')", (d["padre_id"], doc_id)) if d["padre_id"] else []
-            if hermanos:
+            rescatado = Path(d["ruta_original"]).name.startswith("limbo_") and Path(d["ruta_original"]).parent.parent == c.trabajo_raiz
+            if rescatado:         # venía del Limbo: la copia de trabajo sobra; el original real pasa de _Limbo a su sitio
+                Path(d["ruta_original"]).unlink(missing_ok=True)
+                if not limbo:
+                    real = Path(d["ruta_original_final"] or "")
+                    if real.is_file() and c.originales_limbo in real.parents:
+                        orig_destino = libre(orig_dir / real.name)
+                        compartido = a.documentos("ruta_original_final = ? AND id != ? AND estado = 'limbo'", (str(real), doc_id))
+                        (shutil.copy2 if compartido else shutil.move)(real, orig_destino)
+                        if not compartido and d["padre_id"]:
+                            for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
+                                if h["ruta_original_final"] == str(real):
+                                    a.actualizar(h["id"], ruta_original_final=str(orig_destino))
+            elif hermanos:
                 a.evento(f"El original se moverá a Doc_original cuando se guarden las otras {len(hermanos)} parte(s) del archivo.", doc_id, lote, 10)
             else:
                 fuentes = a.documentos("unido_en = ?", (doc_id,))

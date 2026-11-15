@@ -255,6 +255,8 @@ def crear_manejador(app):
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
                                         datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
                         return self._json(d)
+                    if p == "/api/sacar_limbo":
+                        return self._json(m.sacar_del_limbo(int(datos["documento"])))
                     if p == "/api/limbo":
                         return self._json(m.al_limbo(int(datos["documento"])))
                     if p == "/api/vaciar":

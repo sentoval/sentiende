@@ -295,3 +295,22 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhe
 .dest select { margin-top: 4px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); padding: 0 6px; max-width: 100%; }
 .chip.lote { border-style: dashed; border-color: var(--accent); }
 .chip.lote.sel { border-style: solid; }
+
+/* v1.1 · Centro de revisión en alto contraste (elegido por Joan, 15/11/2026):
+   blancos y grises; lo propuesto o elegido se invierte (fondo blanco, letra negra); color solo en «Confirmar y guardar» */
+.barra-rev { border-left-color: #E6EDF3; font-size: 14.5px; }
+.barra-rev .lab { color: #D0D8E0 !important; }
+.barra-rev .chip, .barra-rev .dest, .barra-rev .seg button, .barra-rev .fin-pill { border-color: #4A5869; color: var(--text); }
+.barra-rev .chip:hover, .barra-rev .dest:hover, .barra-rev .seg button:hover, .barra-rev .fin-pill:hover { border-color: #E6EDF3; }
+.barra-rev .chip.sel, .barra-rev .dest.sel, .barra-rev .seg button.sel, .barra-rev .fin-pill.sel {
+  background: #F1F4F8; border-color: #F1F4F8; box-shadow: none; color: #0F141B; }
+.barra-rev .fin-pill.sel { border-width: 1px; padding: 0 12px; }
+.barra-rev .chip.sel small, .barra-rev .dest.sel small { color: #3A4757; }
+.barra-rev .chip.lote { border-style: dashed; border-color: #8A97A6; }
+.barra-rev .dest input { accent-color: #0F141B; }
+.barra-rev .ok-txt { color: #E6EDF3; }
+.barra-rev .ok-txt::before { content: "✓ "; }
+.barra-rev .paso select:has(option:checked:not([value=""])) { background: #F1F4F8; border-color: #F1F4F8; color: #0F141B; font-weight: 600; color-scheme: light; }
+.barra-rev .btn.pri { background: var(--accent); color: var(--onaccent); border-color: var(--accent); }
+.pie-tabla { padding: 10px 14px; border-top: 1px solid var(--border); }
+td.der { text-align: right; white-space: nowrap; }

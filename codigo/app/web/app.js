@@ -535,7 +535,19 @@ function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
   return `<div class="cab"><div><small>Motor de proceso › Limbo</small><h1>Limbo</h1><div class="sub">Documentos sin expediente todavía, guardados en <code>${esc(S.info.carpetas.documentos)}\\_Limbo\\</code>.</div></div></div>
   ${pestanasMotor("limbo")}
-  ${docs.length ? `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Archivo recibido</th><th>Tipo</th><th>Nombre</th></tr></thead><tbody>${docs.map(d => `<tr><td>${esc(d.archivo)}</td><td>${esc(nombreTipo(d.tipo))}</td><td class="mono">${esc(d.nombre_final)}</td></tr>`).join("")}</tbody></table></section>` : '<div class="tarjeta vacio">El Limbo está vacío.</div>'}`;
+  ${docs.length ? `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Archivo recibido</th><th>Tipo</th><th>Nombre en el Limbo</th><th></th></tr></thead><tbody>${docs.map(d => `<tr><td>${esc(d.archivo)}</td><td>${esc(nombreTipo(d.tipo))}</td><td class="mono">${esc(d.nombre_final)}</td>
+    <td class="der"><button type="button" class="btn peq" data-sacar="${d.id}">${ico("check", 14)} Revisar y asignar expediente</button></td></tr>`).join("")}</tbody></table>
+    <div class="pie-tabla sub">«Revisar y asignar expediente» lo devuelve al Centro de revisión con lo que ya se había leído; al confirmar se guarda en su expediente y el original sale de <code>_Limbo</code>.</div></section>` : '<div class="tarjeta vacio">El Limbo está vacío.</div>'}`;
+}
+function activarLimbo() {
+  document.querySelectorAll("[data-sacar]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      await api("sacar_limbo", { documento: +b.dataset.sacar });
+      S.estado = await api("estado"); S.doc = null; S.docId = null;
+      location.hash = "revision/" + b.dataset.sacar;
+    } catch (e) { b.disabled = false; aviso(e.message, true); }
+  }));
 }
 function vistaAjustes() {
   const c = S.info.carpetas, mb = b => (b / 1e6).toFixed(1).replace(".", ",") + " MB";
@@ -637,7 +649,7 @@ function pintar() {
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, () => document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", () => (location.hash = "expediente/" + tr.dataset.exp)))],
     expediente: [vistaExpediente, () => $("#rehacer")?.addEventListener("click", async () => { await api("textos", { expediente: +id }); aviso("Archivo de texto rehecho"); })],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, () => {}], ajustes: [vistaAjustes, activarAjustes] };
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes] };
   const [v, act] = vistas[r] || vistas.motor;
   const y = $("#vista").scrollTop;
   $("#vista").innerHTML = v();
