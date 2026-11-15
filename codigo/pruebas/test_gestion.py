@@ -30,6 +30,7 @@ class TestGestion(unittest.TestCase):
             g.restaurar(g.papelera()[0]["id"])
             self.assertEqual(m.almacen.expediente(eid)["estado"], "firmado")
             self.assertTrue((m.carpetas.documentos / m.almacen.expediente(eid)["carpeta"] / "x.pdf").exists())
+            m.almacen.db.close()          # en Windows, la carpeta temporal no se borra con la base abierta
 
 
 if __name__ == "__main__":

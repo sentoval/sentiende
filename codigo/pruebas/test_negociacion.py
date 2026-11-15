@@ -25,7 +25,7 @@ class TestTarjeta(unittest.TestCase):
 class TestNegociacion(unittest.TestCase):
     def test_bancos_contactos_notas_marcas(self):
         with tempfile.TemporaryDirectory() as t:
-            n = Negociacion(Almacen(Path(t) / "s.db"))
+            alm = Almacen(Path(t) / "s.db"); n = Negociacion(alm)
             b1 = n.banco(1, "CaixaBank"); b2 = n.banco(1, "Banco Sabadell")
             self.assertEqual(n.banco(1, "caixabank"), b1)                  # no se repite
             n.contacto(b1, {"nombre": "Laura Peris", "cargo": "Directora", "movil": "611222333"})
@@ -38,6 +38,7 @@ class TestNegociacion(unittest.TestCase):
             self.assertEqual(r["bancos"][0]["contactos"][0]["nombre"], "Laura Peris")
             self.assertEqual(len(r["notas"]), 2)
             self.assertEqual(r["marcas"]["5:nomina"]["estado"], "solicitado")
+            alm.db.close()
 
 
 if __name__ == "__main__":
