@@ -613,5 +613,6 @@ class Motor:
             else:
                 donde = {"original": d["ruta_original"], "trabajo": d["ruta_trabajo"]}
             out.append({"id": d["id"], "archivo": d["nombre_recibido"], "fase": d["fase"], "fase_nombre": NOMBRE_FASE.get(d["fase"], "Recibir"),
-                        "estado": d["estado"], "tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde})
+                        "estado": d["estado"], "tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde,
+                        "expediente_id": d["expediente_id"], "persona_id": d["persona_id"], "nombre_final": d["nombre_final"]})
         return out
