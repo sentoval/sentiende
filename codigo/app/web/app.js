@@ -80,9 +80,9 @@ function lateral() {
       ${item("estadisticas", "chart", "Estadísticas")}
     </div>
     <div class="nav-iconos">
-      <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
-      <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
       <a href="#ajustes" title="Ajustes" aria-label="Ajustes" ${r === "ajustes" ? 'aria-current="page"' : ""}>${ico("gear", 20)}</a>
+      <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
+      <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
     </div>
     <div class="lat-zona" id="zona">
       <span class="ico">${ico("upload", 20)}</span>
@@ -105,11 +105,7 @@ function activarZona() {
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
   $("#b-correo").addEventListener("click", revisarCorreo);
-  $("#b-scan").addEventListener("click", async ev => {
-    const b = ev.currentTarget; b.disabled = true; aviso("Abriendo el escáner de Windows…");
-    try { const r = await api("escanear", {}); aviso(r.cancelado ? "Escaneo cancelado" : "Escaneado: " + r.archivo); refrescar(true); } catch (e) { aviso(e.message, true); }
-    b.disabled = false;
-  });
+  $("#b-scan").addEventListener("click", abrirEscaner);
   $("#b-bt").addEventListener("click", async () => {
     try { BT = await api("bluetooth", {}); aviso("Asistente de Bluetooth de Windows abierto: envía los archivos desde el móvil. Lo recibido entra solo."); vigilarBT(); }
     catch (e) { aviso(e.message, true); }
@@ -1490,5 +1486,47 @@ function activarSeparar(id) {
     sel.forEach((p, i) => { if (i && SEP.cortes.has(i)) grupos.push([]); grupos[grupos.length - 1].push(p); });
     try { const r = await api("separar", { documento: id, grupos }); aviso(`Separado en ${r.documentos.length} documentos`); SEP = null; S.doc = null; S.docId = null; await refrescar(false); location.hash = "revision/" + r.documentos[0]; }
     catch (e) { aviso(e.message, true); }
+  });
+}
+
+// ---------------- Escanear: USB, red/Wi-Fi instalados en Windows (WIA) y AirScan/eSCL por red sin instalar nada
+const ESC = { lista: null, sel: null, dpi: 300, color: true, alimentador: false, ocupado: false };
+async function abrirEscaner() {
+  ESC.lista = null; pintarEscaner();
+  try { ESC.lista = await fetch("/api/escaneres").then(r => r.json()); } catch { ESC.lista = []; }
+  if (ESC.sel === null && ESC.lista.length) ESC.sel = 0;
+  pintarEscaner();
+}
+function pintarEscaner() {
+  let caja = $("#escaner"); if (!caja) { caja = document.createElement("div"); caja.id = "escaner"; caja.className = "zoom informe"; document.body.appendChild(caja); }
+  const L = ESC.lista, opciones = L ? [...L, { via: "wia", id: null, nombre: "Cuadro de escaneo de Windows", conexion: "elige el escáner en Windows" }] : [];
+  const s = opciones[ESC.sel ?? 0] || {};
+  caja.innerHTML = `<div class="tarjeta escaner"><h2>${ico("scan")} Escanear</h2>
+    ${!L ? '<span class="sub">Buscando escáneres: USB, red y Wi-Fi…</span>' : `<div class="destinos">${opciones.map((x, i) => `<label class="dest ${i === ESC.sel ? "sel" : ""}"><input type="radio" name="esc" value="${i}" ${i === ESC.sel ? "checked" : ""}><span><b>${esc(x.nombre)}</b><small>${esc(x.conexion || "")}${x.url ? " · " + esc(x.url.replace(/^https?:\/\//, "").split("/")[0]) : ""}</small></span></label>`).join("")}</div>
+      ${L.length ? "" : '<span class="warn-txt">No se ha encontrado ningún escáner. Comprueba que está encendido y en la misma red (o Wi-Fi Direct), o escribe su IP.</span>'}`}
+    <div class="op-campos"><div class="campo"><label>Color</label><select id="esc-color"><option value="1" ${ESC.color ? "selected" : ""}>Color</option><option value="0" ${!ESC.color ? "selected" : ""}>Grises</option></select></div>
+      <div class="campo"><label>Resolución</label><select id="esc-dpi">${[200, 300, 600].map(d => `<option ${d === ESC.dpi ? "selected" : ""}>${d}</option>`).join("")}</select></div>
+      ${s.via === "escl" ? `<div class="campo"><label>Origen</label><select id="esc-ali"><option value="0">Cristal (una hoja)</option><option value="1" ${ESC.alimentador ? "selected" : ""}>Alimentador (varias hojas)</option></select></div>` : ""}</div>
+    <div class="fila-arreglo"><input id="esc-ip" placeholder="IP del escáner en la red, p. ej. 192.168.1.40"><button class="btn peq" id="esc-ip-ok">Añadir por IP</button><button class="btn peq" id="esc-buscar">Buscar otra vez</button><button class="btn peq" id="esc-win">Añadir en Windows…</button></div>
+    <span class="sub">Salen los escáneres USB, los de red o Wi-Fi que Windows ya tiene instalados y los que tienen AirScan (eSCL), que se usan sin instalar nada. Para Wi-Fi Direct, conecta antes el equipo a la Wi-Fi del escáner.</span>
+    <div class="acciones"><button class="btn pri" id="esc-ok" ${!L || ESC.ocupado ? "disabled" : ""}>${ico("scan")}${ESC.ocupado ? "Escaneando…" : "Escanear"}</button><button class="btn" id="esc-cerrar">Cerrar</button></div></div>`;
+  caja.querySelectorAll('input[name="esc"]').forEach(r => r.addEventListener("change", () => { ESC.sel = +r.value; pintarEscaner(); }));
+  caja.querySelector("#esc-color").addEventListener("change", e => (ESC.color = e.target.value === "1"));
+  caja.querySelector("#esc-dpi").addEventListener("change", e => (ESC.dpi = +e.target.value));
+  caja.querySelector("#esc-ali")?.addEventListener("change", e => (ESC.alimentador = e.target.value === "1"));
+  caja.querySelector("#esc-cerrar").addEventListener("click", () => caja.remove());
+  caja.querySelector("#esc-buscar").addEventListener("click", abrirEscaner);
+  caja.querySelector("#esc-win").addEventListener("click", () => api("abrir_url", { url: "ms-settings:printers" }).catch(e => aviso(e.message, true)));
+  caja.querySelector("#esc-ip-ok").addEventListener("click", async () => {
+    const ip = caja.querySelector("#esc-ip").value.trim(); if (!ip) return;
+    aviso("Buscando el escáner en " + ip + "…");
+    try { const e = await api("escaner_ip", { direccion: ip }); aviso("Escáner añadido: " + e.nombre); ESC.sel = null; await abrirEscaner(); ESC.sel = ESC.lista.findIndex(x => x.url === e.url); pintarEscaner(); } catch (e) { aviso(e.message, true); }
+  });
+  caja.querySelector("#esc-ok").addEventListener("click", async () => {
+    ESC.ocupado = true; pintarEscaner();
+    try { const r = await api("escanear", { via: s.via, id: s.id, url: s.url, dpi: ESC.dpi, color: ESC.color, alimentador: ESC.alimentador });
+      aviso(r.cancelado ? "Escaneo cancelado" : "Escaneado: " + r.archivo); if (!r.cancelado) { caja.remove(); refrescar(true); } }
+    catch (e) { aviso(e.message, true); }
+    ESC.ocupado = false; if ($("#escaner")) pintarEscaner();
   });
 }

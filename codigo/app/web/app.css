@@ -546,3 +546,4 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 @keyframes latido-se { 50% { box-shadow: 0 0 0 4px rgba(251,191,36,.18); } }
 .avisos-cli .num { margin-left: 6px; background: var(--warn); color: #1A1406; border-radius: 999px; padding: 0 7px; font-size: 12px; }
 .dato.nuevo span:first-child { color: var(--text); font-weight: 600; }
+.escaner input { height: 32px; flex: 1; min-width: 220px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 0 10px; } .escaner { width: min(680px, 94vw); }

@@ -88,6 +88,8 @@ class Gestion:
             aj["apariencia"] = {"tamano": max(80, min(140, int(nuevos["apariencia"].get("tamano", 100))))}
         if "bienvenida_vista" in nuevos:
             aj["bienvenida_vista"] = bool(nuevos["bienvenida_vista"])
+        if "escaneres" in nuevos:
+            aj["escaneres"] = [{k: x.get(k) for k in ("via", "nombre", "url", "conexion")} for x in nuevos["escaneres"] if x.get("url")]
         if "avisos_se_visto" in nuevos:
             aj["avisos_se_visto"] = int(nuevos["avisos_se_visto"])
         self.m.carpetas.datos.mkdir(parents=True, exist_ok=True)
