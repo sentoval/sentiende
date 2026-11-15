@@ -201,3 +201,52 @@ code, .mono { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhe
 .visor #v-img { cursor: zoom-in; }
 .rev-pie .acciones { flex-direction: column; align-items: stretch; }
 .rev-pie .acciones .btn { justify-content: center; }
+
+/* Centro de revisión v3: barra superior compacta */
+.barra-rev { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.barra-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.barra-cab > b { font-size: 16px; }
+.barra-pasos { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.4fr) minmax(170px, .9fr) minmax(240px, 1.3fr) auto; gap: 10px 16px; align-items: start; }
+@media (max-width: 1350px) { .barra-pasos { grid-template-columns: repeat(2, minmax(0, 1fr)); } .acciones-rev { grid-column: 1 / -1; flex-direction: row !important; flex-wrap: wrap; align-items: center !important; } }
+.paso { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.paso > .lab, .fila-rev > .lab { font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--muted); text-transform: uppercase; }
+.paso select, .paso input[type=date] { height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); padding: 0 8px; width: 100%; }
+.paso input[type=date] { width: 170px; }
+.chip.mini { padding: 2px 8px; font-size: 12px; font-weight: 600; }
+.chip.peq small { display: inline; margin-left: 6px; }
+.chip.peq { flex-direction: row; align-items: baseline; }
+.ok-txt { color: var(--ok); font-size: 12.5px; }
+.warn-txt { color: var(--warn); font-size: 12.5px; font-weight: 600; }
+.acciones-rev { align-items: stretch; gap: 6px; }
+.acciones-rev .btn.pri { height: 42px; font-size: 15px; justify-content: center; }
+.acciones-rev .acciones .btn { flex: 1; justify-content: center; }
+.check.mini { font-size: 13px; align-items: center; gap: 6px; }
+.check.mini input { margin: 0; }
+.dup { border: 2px solid var(--bad); background: var(--badSoft); color: var(--text); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.dup > b { color: var(--bad); font-size: 15px; }
+.dup .btn { margin: 2px 4px 2px 0; }
+.fila-rev { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.campos-inline { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.campos-inline .campo { flex: 1 1 150px; }
+.campos-inline .campo input { height: 34px; }
+.campos-inline .campo:last-child:has(.fin-pills) { flex: 2 1 380px; }
+.fin-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.fin-pill { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-weight: 600; cursor: pointer; }
+.fin-pill.sel { border: 2px solid var(--accent); color: var(--accent); background: var(--accentSoft); padding: 0 11px; }
+.otras-lista { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.otra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--warnSoft); }
+.union-mini { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.rev-abajo { margin-top: 2px; }
+.rev-abajo .visor .lienzo { height: calc(100vh - 330px); min-height: 460px; }
+
+/* zona de arrastre en la barra lateral (sustituye a la Bandeja de entrada) */
+.lat-zona { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 14px 12px; border-radius: 10px; border: 2px dashed var(--accent); background: rgba(45,212,191,.08); text-align: center; }
+.lat-zona.encima { background: rgba(45,212,191,.25); border-style: solid; }
+.lat-zona .ico { align-self: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: var(--onaccent); display: inline-flex; align-items: center; justify-content: center; }
+.lat-zona > b { font-size: 15px; }
+.lat-zona .sub { color: var(--lateralTenue); font-size: 12px; }
+.lat-zona code { font-size: 11.5px; }
+.lat-zona .btn { justify-content: center; }
+.lat-btns { display: flex; gap: 6px; }
+.lat-btns .btn { flex: 1; padding: 0 5px; font-size: 11.5px; gap: 4px; }
+.lat-zona .trabajando { color: var(--accent); font-size: 12px; font-weight: 600; }

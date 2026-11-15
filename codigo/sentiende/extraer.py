@@ -305,8 +305,17 @@ def personas(texto):
     def add(p, pos, fuerte):
         if not _valida(p, fuerte):
             return
-        cerca = t[max(0, pos - 80): pos + 200]
-        dn = [dni_valido(m.group(0)) for m in re.finditer(r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b", cerca)]
+        # Su DNI: el primero detrás del nombre, sin pasar a la siguiente persona («…, con DNI X, y DOÑA …»);
+        # si no hay, el de justo antes (p. ej. «NIF: X / Apellidos y nombre: …»), también sin cruzar a otra persona.
+        dni_re = r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b"
+        otra = r"\b(?:DON|DONA|D\.|SR\.|SRA\.|D\s?/\s?D|TRABAJADOR|TITULAR|DECLARANTE|CONYUGE|REPRESENTANTE)\b"
+        despues = t[pos: pos + 220]
+        corte = re.search(otra, despues[12:])
+        despues = despues[: 12 + corte.start()] if corte else despues
+        # hacia atrás solo vale una línea propia del DNI justo encima («NIF: 12345678Z»), nunca el de otra persona
+        lineas_antes = t[max(0, pos - 120): pos].split("\n")[-3:-1]
+        antes = " ".join(l for l in lineas_antes if re.fullmatch(r"\s*(?:N\.?I\.?F\.?|D\.?N\.?I\.?|NIE|DOCUMENTO)[^A-Z]{0,6}(?:" + dni_re + r")\s*", l))
+        dn = [dni_valido(m.group(0)) for m in re.finditer(dni_re, despues)] or [dni_valido(m.group(0)) for m in re.finditer(dni_re, antes)]
         p["dni"] = next((x for x in dn if x), None)
         clave = frozenset(norm(p["completo"]).split())
         for q in encontradas:

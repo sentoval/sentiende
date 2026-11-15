@@ -238,10 +238,18 @@ def crear_manejador(app):
                             pid = m.persona_desde_documento(int(datos["desde_documento"]), int(datos.get("indice", 0)))
                         else:
                             pe = datos["persona"]
+                            dup = [x for x in m.posibles_duplicados(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), pe.get("dni") or None) if x["expedientes"]]
+                            if dup and not datos.get("confirmado"):
+                                x = dup[0]
+                                raise MotorError(f"Ya existe {x['nombre']} {x['apellido1']} {x['apellido2'] or ''} ({x['por']}) en el expediente "
+                                                 f"«{x['expedientes'][0]['nombre']}». Añade el documento a ese expediente o confirma que quieres otro.")
                             pid = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), pe.get("dni") or None)
                         eid = m.crear_expediente(pid, datos["finalidad"])
                         return self._json({"expediente": eid, "persona": pid, "carpeta": m.almacen.expediente(eid)["carpeta"]})
                     if p == "/api/emparejar":
+                        if datos.get("persona_datos") and not datos.get("persona"):
+                            pe = datos["persona_datos"]
+                            datos["persona"] = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), pe.get("dni") or None)
                         if datos.get("otros"):
                             m.vincular_personas(int(datos["expediente"]), datos["otros"], int(datos["documento"]))
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),

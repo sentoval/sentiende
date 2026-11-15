@@ -305,6 +305,23 @@ class Motor:
         aprender_personas([{"nombre": nombre, "apellido1": apellido1, "apellido2": apellido2}])
         return self.almacen.nueva_persona(nombre, apellido1, apellido2, dni, es_empresa)
 
+    def posibles_duplicados(self, nombre, apellido1, apellido2="", dni=None):
+        """Personas ya fichadas que pueden ser la misma: mismo DNI, o mismo nombre y primer apellido."""
+        from .extraer import norm
+        a = self.almacen
+        out = []
+        for r in a.db.execute("SELECT * FROM personas"):
+            p = dict(r)
+            mismo_dni = bool(dni and p["dni"] and p["dni"].upper() == dni.upper())
+            mismo_nombre = norm(p["nombre"]) == norm(nombre) and norm(p["apellido1"]) == norm(apellido1) and \
+                (not apellido2 or not p["apellido2"] or norm(p["apellido2"]) == norm(apellido2))
+            if mismo_dni or mismo_nombre:
+                p["por"] = "mismo DNI" if mismo_dni else "mismo nombre"
+                p["expedientes"] = [dict(x) for x in a.db.execute("SELECT e.id, e.nombre, e.carpeta, e.estado, ep.papel FROM expediente_personas ep "
+                                                                   "JOIN expedientes e ON e.id = ep.expediente_id WHERE ep.persona_id = ?", (p["id"],))]
+                out.append(p)
+        return out
+
     def crear_expediente(self, persona_id, finalidad, fecha=None, nombre=None):
         if finalidad not in self.variante.meta.get("finalidades", {}):
             raise MotorError(f"Finalidad desconocida en {self.variante.nombre}: {finalidad}")
@@ -335,6 +352,8 @@ class Motor:
             if not pe.get("nombre") or not pe.get("apellido1"):
                 raise MotorError(f"Faltan el nombre o el primer apellido de {nombre or 'la otra persona'}.")
             pid = self.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), (pe.get("dni") or None))
+            if accion == "cotitular" and pid in [p["id"] for p in a.personas_de(expediente_id)]:
+                hechos.append(f"{nombre}: ya estaba en este expediente"); continue
             if accion == "cotitular":
                 a.anadir_persona(expediente_id, pid, "Cotitular")
                 hechos.append(f"{nombre}: cotitular de este expediente")
@@ -425,7 +444,9 @@ class Motor:
         else:
             persona = a.persona(persona_id)
             if persona_id not in [p["id"] for p in personas]:
-                a.anadir_persona(expediente_id, persona_id, "Titular")
+                papel = "Cotitular" if any(p["papel"] == "Titular" for p in personas) else "Titular"
+                a.anadir_persona(expediente_id, persona_id, papel)
+                a.evento(f"{persona['nombre']} {persona['apellido1']} añadida al expediente como {papel}", doc_id, d["lote_id"], 7)
         a.actualizar(doc_id, fase=7, tipo=tipo, expediente_id=expediente_id, persona_id=persona["id"],
                      de_expediente=int(de_expediente), privado=int(privado), estado="en_proceso", motivo="")
         a.evento(f"Emparejado con el expediente {expediente_id}" + (" (de todo el expediente)" if de_expediente else f" · {persona['nombre']} {persona['apellido1']}"), doc_id, d["lote_id"], 7)
