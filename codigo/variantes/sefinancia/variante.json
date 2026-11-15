@@ -1,0 +1,57 @@
+{
+ "id": "sefinancia",
+ "nombre": "SeFinancia",
+ "version": "1.0.0",
+ "requiere_motor": {
+  "contrato": 2,
+  "minimo": "2.0.0"
+ },
+ "descripcion": "Documentación de préstamos: hipotecario, pyme y licencia de taxi.",
+ "colores": {
+  "marco": "#4ADE80",
+  "acento": "#2DD4BF",
+  "lateral": "#0F2A22",
+  "lateral_activo": "#17402F",
+  "lateral_borde": "#1E3D31",
+  "lateral_tenue": "#A7C4B5"
+ },
+ "imagenes": {
+  "logo": "imagenes/logo.png",
+  "icono": "imagenes/icono.ico"
+ },
+ "vocabulario": {
+  "expediente": "expediente",
+  "expedientes": "expedientes",
+  "titular": "titular",
+  "persona": "persona"
+ },
+ "finalidades": {
+  "hipotecario": "Préstamo hipotecario",
+  "pyme": "Préstamo pyme",
+  "licencia_taxi": "Préstamo licencia taxi"
+ },
+ "papeles": [
+  "Titular",
+  "Cotitular",
+  "Avalista",
+  "Avalista SGR",
+  "Titular anterior",
+  "Administrador",
+  "Tercero"
+ ],
+ "umbrales": {
+  "revisar": 0.75,
+  "no_reconocido": 0.4
+ },
+ "modulos": {
+  "correo": false,
+  "bluetooth": false,
+  "estadisticas": true,
+  "operacion": true
+ },
+ "archivos": {
+  "base_conocimiento": "base_conocimiento.json",
+  "nombres": "nombres.json",
+  "checklists": "checklists.json"
+ }
+}

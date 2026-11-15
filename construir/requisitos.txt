@@ -1,0 +1,11 @@
+pdfplumber
+pypdf
+pypdfium2
+pytesseract
+pillow
+opencv-python-headless
+numpy
+python-docx
+openpyxl
+pywebview
+pyinstaller

@@ -1,0 +1,14 @@
+{
+ "_explicacion": "F-03 Préstamo hipotecario. 9 tipos: 6 por titular + 3 del expediente (con dos titulares, 15 documentos). Pyme y taxi llegarán en una actualización de la variante.",
+ "hipotecario": [
+  {"tipo": "dni", "por": "titular", "importancia": "imprescindible", "condicion": {"en_vigor": true}},
+  {"tipo": "nomina", "por": "titular", "importancia": "imprescindible", "condicion": {"ultimos_meses": 3}},
+  {"tipo": "renta", "por": "titular", "importancia": "imprescindible", "condicion": {"ultimo_ejercicio": true}},
+  {"tipo": "vidalaboral", "por": "titular", "importancia": "imprescindible", "condicion": {"max_dias": 30}},
+  {"tipo": "contrato", "por": "titular", "importancia": "imprescindible", "condicion": {}},
+  {"tipo": "extracto", "por": "titular", "importancia": "imprescindible", "condicion": {"ultimos_meses": 6}},
+  {"tipo": "arras", "por": "expediente", "importancia": "imprescindible", "condicion": {}},
+  {"tipo": "notasimple", "por": "expediente", "importancia": "imprescindible", "condicion": {"max_dias": 90}},
+  {"tipo": "tasacion", "por": "expediente", "importancia": "imprescindible", "condicion": {"max_dias": 180}}
+ ]
+}

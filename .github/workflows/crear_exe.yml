@@ -1,0 +1,66 @@
+name: Crear SeFinancia.exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Tesseract (OCR)
+        shell: pwsh
+        run: |
+          choco install tesseract --no-progress -y
+          & "C:\Program Files\Tesseract-OCR\tesseract.exe" --version
+
+      - name: Crear el programa
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+        run: python construir/construir.py --destino "$env:GITHUB_WORKSPACE\salida\SeFinancia" --estricto
+
+      - name: Pruebas del motor en Windows
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python -m pip install reportlab
+          $env:PATH = "$env:GITHUB_WORKSPACE\salida\SeFinancia\Motor\tesseract;$env:PATH"
+          $env:TESSDATA_PREFIX = "$env:GITHUB_WORKSPACE\salida\SeFinancia\Motor\tesseract\tessdata"
+          cd codigo
+          python -m unittest pruebas.test_motor -v
+
+      - name: Comprimir
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v1.0_windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SeFinancia_v1.0_windows
+          path: SeFinancia_v1.0_windows.zip
+
+      - name: Publicar para descargar
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0-prueba-${{ github.run_number }}
+          name: SeFinancia v1.0 (prueba ${{ github.run_number }})
+          prerelease: true
+          files: SeFinancia_v1.0_windows.zip
+          body: |
+            Descarga SeFinancia_v1.0_windows.zip, descomprímelo y abre SeFinancia\SeFinancia.exe.
+            Prueba con copias: lo que entra se mueve a Entrada\ y luego a Doc_original\.

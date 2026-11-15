@@ -1,0 +1,397 @@
+# -*- coding: utf-8 -*-
+"""Orquestador del motor: las 10 fases (M-01 a M-13, M-61, M-62).
+
+    recibir()  -> fase 1
+    procesar() -> fases 2 a 6, solas; se para en la 7 esperando respuesta
+    emparejar() / al_limbo() -> fases 7 a 10
+Cada fase deja su resultado en el almacén: si el programa se cierra, se reanuda
+desde la última fase terminada sin repetir nada (M-61). Si algo falla, el documento
+queda «parado» en esa fase con el motivo, y el original no se toca."""
+import datetime, io, shutil
+from pathlib import Path
+
+from . import VERSION, FASES
+from .almacen import Almacen
+from .carpetas import Carpetas, libre
+from .variante import Variante, VarianteError
+from .recibir import huella, tipo_archivo, mover_a_entrada
+from .lectura import leer
+from .separar import separar
+from .extraer import extraer
+from .clasificar import Clasificador
+from .nombres import Nombrador, carpeta_expediente
+from . import checklist, textos
+
+class MotorError(Exception):
+    pass
+
+NOMBRE_FASE = dict(FASES)
+
+class Motor:
+    def __init__(self, raiz, carpeta_variante=None, variante_id="sefinancia"):
+        self.carpetas = Carpetas(raiz)
+        self.carpetas.crear()
+        try:
+            self.variante = Variante(carpeta_variante or self.carpetas.variantes / variante_id)
+        except VarianteError as e:
+            raise MotorError(str(e))
+        if not self.variante.compat.compatible:
+            raise MotorError(self.variante.compat.mensaje)
+        self.almacen = Almacen(self.carpetas.datos / "sentiende.db")
+        self.clasificador = Clasificador(self.variante)
+        self.nombrador = Nombrador(self.variante)
+
+    # ------------------------------------------------------------ fase 1
+    def recibir(self, rutas, origen="arrastrados"):
+        """Mueve a Entrada\\, calcula la huella y detecta duplicados. Devuelve (lote_id, [doc_id])."""
+        a = self.almacen
+        lote = a.nuevo_lote(origen)
+        ids = []
+        for r in rutas:
+            r = Path(r)
+            clase = tipo_archivo(r) if r.exists() else None
+            if not clase:
+                a.evento(f"No se admite «{r.name}»: no es un PDF, imagen, Word o Excel válido. No se ha tocado.", lote_id=lote, fase=1, nivel="se")
+                continue
+            try:
+                en_entrada = mover_a_entrada(r, self.carpetas.entrada)
+            except OSError as e:
+                a.evento(f"No se ha podido mover «{r.name}» a Entrada: {e}", lote_id=lote, fase=1, nivel="se")
+                continue
+            h = huella(en_entrada)
+            previo = a.ya_procesado(h)
+            doc = a.nuevo_documento(lote, r.name, en_entrada, h, en_entrada.suffix.lower())
+            if previo:
+                a.actualizar(doc, fase=1, estado="duplicado", duplicado_de=previo,
+                             motivo=f"Idéntico al documento {previo}: no se vuelve a leer")
+                a.evento(f"«{r.name}» es idéntico a uno ya recibido: no se procesa.", doc, lote, 1, "cliente")
+            else:
+                a.actualizar(doc, fase=1)
+                a.evento(f"Recibido «{r.name}» ({clase}) en Entrada.", doc, lote, 1)
+            ids.append(doc)
+        return lote, ids
+
+    # ------------------------------------------------------------ fases 2 a 6
+    def procesar(self, lote_id=None):
+        """Avanza todo lo pendiente hasta la fase 6. Devuelve los documentos tratados."""
+        where = "estado = 'en_proceso' AND fase < 6" + (" AND lote_id = ?" if lote_id else "")
+        # (las partes de un PDF separado se procesan al separarlo)
+        docs = self.almacen.documentos(where, (lote_id,) if lote_id else ())
+        for d in docs:
+            self._procesar_doc(d)
+        return [self.almacen.documento(d["id"]) for d in docs]
+
+    def _procesar_doc(self, d):
+        a, did, lote = self.almacen, d["id"], d["lote_id"]
+        fase = d["fase"]
+        try:
+            ruta = Path(d["ruta_original"])
+            clase = tipo_archivo(ruta)
+            trabajo = self.carpetas.trabajo(lote)
+            if fase < 4:      # fases 2, 3 y 4: leer, separar y orientar
+                lec = leer(ruta, clase, d["huella"], a, trabajo)
+                for av in lec.avisos:
+                    a.evento(av, did, lote, 2, "se")
+                a.actualizar(did, fase=4, paginas=len(lec.paginas), confianza=round(lec.confianza, 3),
+                             rotaciones=[{"n": p.n, "rotacion": p.rotacion, "inclinacion": p.inclinacion, "origen": p.origen,
+                                          "confianza": p.confianza, "imagen": p.imagen} for p in lec.paginas],
+                             ruta_trabajo=str(trabajo))
+                a.evento(f"Leído: {len(lec.paginas)} página(s) · " + ", ".join(sorted({p.origen for p in lec.paginas})), did, lote, 2)
+                giros = [p for p in lec.paginas if p.rotacion or p.inclinacion]
+                if giros:
+                    a.evento("Orientado: " + ", ".join(f"pág. {p.n} {p.rotacion}°" + (f" y enderezada {p.inclinacion}°" if p.inclinacion else "") for p in giros), did, lote, 4)
+                if len(lec.paginas) > 1 and self._separar(a.documento(did), lec):
+                    return
+                texto = self._texto(a.documento(did))
+            else:
+                texto = self._texto(d)
+            d = a.documento(did)
+            if d["fase"] < 5:
+                datos = extraer(texto)
+                a.actualizar(did, fase=5, datos=datos)
+                a.evento(f"Datos: {len(datos['dni'])} DNI/NIE, {len(datos['iban'])} IBAN, {len(datos['fechas'])} fechas", did, lote, 5)
+            c = self.clasificador.clasificar(texto)
+            a.actualizar(did, fase=6, tipo=c.tipo, confianza=c.confianza,
+                         alternativas=c.alternativas, indicios=c.indicios, entidad=c.entidad, entidad_por=c.entidad_por,
+                         estado="espera_emparejar",
+                         motivo={"ok": "", "revisar": f"Tipo dudoso ({round(c.confianza * 100)} %): revisar",
+                                 "no_reconocido": "No reconocido: revisar"}[c.estado])
+            a.evento(f"Clasificado (provisional): {c.tipo or 'no reconocido'} · {round(c.confianza * 100)} %" + (f" · entidad {c.entidad} por {c.entidad_por}" if c.entidad else ""), did, lote, 6,
+                     "info" if c.estado == "ok" else "revision")
+        except Exception as e:  # el documento se para en su fase; nada se pierde
+            f = a.documento(did)["fase"] + 1
+            a.actualizar(did, estado="parado", motivo=f"Fase {f} · {NOMBRE_FASE.get(f, '')}: {e}")
+            a.evento(f"Parado en la fase {f}: {e}. El original sigue en Entrada.", did, lote, f, "se")
+
+    def _separar(self, d, lec):
+        """Fase 3. Si el PDF trae varios documentos (o páginas en blanco), crea un documento por parte.
+        Devuelve True si el archivo se ha separado (las partes siguen el proceso por su cuenta)."""
+        a, did, lote = self.almacen, d["id"], d["lote_id"]
+        sep = separar([p.texto for p in lec.paginas], self.clasificador)
+        por_n = {p.n: p for p in lec.paginas}
+        if sep.en_blanco:
+            a.evento(f"Páginas en blanco apartadas (no se borran del original): {', '.join(map(str, sep.en_blanco))}", did, lote, 3, "revision")
+        if len(sep.partes) <= 1:
+            if sep.partes and (sep.en_blanco or sep.reordenado):
+                sel = sep.partes[0].paginas
+                a.actualizar(did, paginas_sel=sel, paginas=len(sel), rotaciones=[r for n in sel for r in d["rotaciones"] if r["n"] == n])
+                a.evento(f"Separar: un documento · páginas {', '.join(map(str, sel))}", did, lote, 3)
+            else:
+                a.evento("Separar: un solo documento", did, lote, 3)
+            return False
+        desc = []
+        for i, parte in enumerate(sep.partes, 1):
+            rango = f"pág. {parte.paginas[0]}" if len(parte.paginas) == 1 else "págs. " + ", ".join(map(str, parte.paginas))
+            hijo = a.nuevo_documento(lote, f"{d['nombre_recibido']} ({rango})", d["ruta_original"], d["huella"], d["extension"], padre_id=did)
+            a.actualizar(hijo, fase=4, paginas=len(parte.paginas), paginas_sel=parte.paginas, ruta_trabajo=d["ruta_trabajo"],
+                         rotaciones=[r for n in parte.paginas for r in d["rotaciones"] if r["n"] == n],
+                         confianza=min(por_n[n].confianza for n in parte.paginas))
+            desc.append(f"{rango} ({parte.tipo or '¿?'})")
+            self._procesar_doc(a.documento(hijo))
+        a.actualizar(did, fase=3, estado="separado", motivo=f"Separado en {len(sep.partes)} documentos")
+        a.evento(f"Separado en {len(sep.partes)} documentos: " + " · ".join(desc) + (" · páginas reordenadas por su numeración" if sep.reordenado else ""), did, lote, 3,
+                 "revision" if sep.reordenado else "info")
+        return True
+
+    def _texto(self, d):
+        sel = d.get("paginas_sel") or range(1, (d["paginas"] or 1) + 1)
+        claves = [self.almacen.texto_cache(f'{d["huella"]}:{n}') for n in sel]
+        return "\n\f\n".join(c["texto"] for c in claves if c)
+
+    # ------------------------------------------------------------ fase 7: sugerencias y expedientes
+    def sugerencias(self, doc_id):
+        """Personas y expedientes conocidos que coinciden (M-26): primero por DNI/NIE y,
+        si no hay DNI, por nombre y apellidos en cualquier orden (sin tildes ni mayúsculas)."""
+        from .extraer import norm
+        a = self.almacen
+        d = a.documento(doc_id)
+        datos = d["datos"] or {}
+        out, vistos = [], set()
+        def exps(pid):
+            return [dict(x) for x in a.db.execute("SELECT e.*, ep.papel FROM expediente_personas ep JOIN expedientes e ON e.id = ep.expediente_id "
+                                                   "WHERE ep.persona_id = ? AND e.estado = 'abierto'", (pid,))]
+        for dni in datos.get("dni", []):
+            p = a.persona_por_dni(dni)
+            if p and p["id"] not in vistos:
+                vistos.add(p["id"]); out.append({"persona": p, "expedientes": exps(p["id"]), "por": f"DNI {dni}"})
+        conocidas = [dict(r) for r in a.db.execute("SELECT * FROM personas")]
+        for leida in datos.get("personas", []):
+            clave = set(norm(leida["completo"]).split())
+            for p in conocidas:
+                if p["id"] in vistos:
+                    continue
+                if set(norm(f'{p["nombre"]} {p["apellido1"]} {p["apellido2"]}').split()) == clave:
+                    vistos.add(p["id"])
+                    out.append({"persona": p, "expedientes": exps(p["id"]), "por": f"nombre «{leida['completo']}» (sin DNI: confirmar)"})
+        return out
+
+    def personas_leidas(self, doc_id):
+        """Personas que el documento nombra (para crear la persona sin teclear)."""
+        return (self.almacen.documento(doc_id)["datos"] or {}).get("personas", [])
+
+    def persona_desde_documento(self, doc_id, indice=0):
+        leidas = self.personas_leidas(doc_id)
+        if not leidas:
+            raise MotorError("El documento no tiene ningún nombre reconocido: hay que escribirlo.")
+        p = leidas[indice]
+        return self.nueva_persona(p["nombre"], p["apellido1"], p["apellido2"], p.get("dni"))
+
+    def nueva_persona(self, nombre, apellido1="", apellido2="", dni=None, es_empresa=False):
+        p = self.almacen.persona_por_dni(dni) if dni else None
+        return p["id"] if p else self.almacen.nueva_persona(nombre, apellido1, apellido2, dni, es_empresa)
+
+    def crear_expediente(self, persona_id, finalidad, fecha=None, nombre=None):
+        if finalidad not in self.variante.meta.get("finalidades", {}):
+            raise MotorError(f"Finalidad desconocida en {self.variante.nombre}: {finalidad}")
+        p = self.almacen.persona(persona_id)
+        fecha = fecha or datetime.date.today()
+        carpeta = carpeta_expediente(p, fecha, self.variante.nombres["sin_dni"])
+        (self.carpetas.documentos / carpeta).mkdir(parents=True, exist_ok=True)
+        (self.carpetas.originales / carpeta).mkdir(parents=True, exist_ok=True)
+        nombre = nombre or f'{p["apellido1"]} {p["apellido2"]}'.strip() + " · " + self.variante.meta["finalidades"][finalidad]
+        eid = self.almacen.nuevo_expediente(nombre, finalidad, carpeta)
+        self.almacen.anadir_persona(eid, persona_id, "Titular")
+        return eid
+
+    # ------------------------------------------------------------ fases 7 a 10
+    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False):
+        """Respuesta a la fase 7. tipo: confirma o corrige la clasificación provisional."""
+        a = self.almacen
+        d = a.documento(doc_id)
+        if not d:
+            raise MotorError(f"No existe el documento {doc_id}.")
+        if not a.expediente(expediente_id):
+            raise MotorError(f"No existe el expediente {expediente_id}.")
+        if d["estado"] not in ("espera_emparejar", "parado", "limbo"):
+            raise MotorError(f"El documento {doc_id} no espera emparejar (estado: {d['estado']}).")
+        if tipo:
+            a.evento(f"Tipo corregido a mano: {d['tipo']} → {tipo}", doc_id, d["lote_id"], 7)
+        tipo = tipo or d["tipo"]
+        if not tipo:
+            raise MotorError("Hay que indicar el tipo: el documento no se ha reconocido.")
+        personas = a.personas_de(expediente_id)
+        if de_expediente or not persona_id:
+            persona = personas[0]          # documento común o sin persona indicada: primer titular
+        else:
+            persona = a.persona(persona_id)
+            if persona_id not in [p["id"] for p in personas]:
+                a.anadir_persona(expediente_id, persona_id, "Titular")
+        a.actualizar(doc_id, fase=7, tipo=tipo, expediente_id=expediente_id, persona_id=persona["id"],
+                     de_expediente=int(de_expediente), privado=int(privado), estado="en_proceso", motivo="")
+        a.evento(f"Emparejado con el expediente {expediente_id}" + (" (de todo el expediente)" if de_expediente else f" · {persona['nombre']} {persona['apellido1']}"), doc_id, d["lote_id"], 7)
+        return self._renombrar_y_guardar(doc_id)
+
+    def al_limbo(self, doc_id, persona=None):
+        a = self.almacen
+        if not a.documento(doc_id):
+            raise MotorError(f"No existe el documento {doc_id}.")
+        p = persona or {"nombre": "", "apellido1": "", "dni": None}
+        return self._renombrar_y_guardar(doc_id, limbo=True, persona=p)
+
+    def _renombrar_y_guardar(self, doc_id, limbo=False, persona=None):
+        a, c = self.almacen, self.carpetas
+        d = a.documento(doc_id)
+        lote = d["lote_id"]
+        try:
+            # fase 8 · renombrar
+            if not limbo:
+                persona = a.persona(d["persona_id"])
+                exp = a.expediente(d["expediente_id"])
+            entidad_abrev = self.clasificador.abrev5(d["entidad"]) if d["entidad"] else None
+            fecha_entrada = datetime.date.fromisoformat(d["creado"][:10])
+            tipo = d["tipo"] or "desconocido"
+            if tipo in self.variante.docs:
+                nombre, revisar, motivo = self.nombrador.nombre(tipo, persona, d["datos"] or {}, entidad_abrev, fecha_entrada, bool(d["privado"]), d["extension"])
+            else:
+                nombre, revisar, motivo = f"SINTIPO_{fecha_entrada:%m%y}{d['extension']}", True, "Sin tipo"
+            a.actualizar(doc_id, fase=8)
+            a.evento(f"Nombre: {nombre}" + (f" · {motivo}" if motivo else ""), doc_id, lote, 8, "revision" if revisar else "info")
+            # fase 9 · checklist
+            a.actualizar(doc_id, fase=9)
+            # fase 10 · guardar
+            destino_dir = c.limbo if limbo else c.documentos / exp["carpeta"]
+            orig_dir = c.originales_limbo if limbo else c.originales / exp["carpeta"]
+            destino_dir.mkdir(parents=True, exist_ok=True)
+            orig_dir.mkdir(parents=True, exist_ok=True)
+            destino = libre(destino_dir / nombre)
+            self._documento_editado(d, destino)
+            orig_destino = None
+            hermanos = a.documentos("padre_id = ? AND id != ? AND estado NOT IN ('guardado', 'limbo')", (d["padre_id"], doc_id)) if d["padre_id"] else []
+            if hermanos:
+                a.evento(f"El original se moverá a Doc_original cuando se guarden las otras {len(hermanos)} parte(s) del archivo.", doc_id, lote, 10)
+            else:
+                nombre_orig = a.documento(d["padre_id"])["nombre_recibido"] if d["padre_id"] else d["nombre_recibido"]
+                orig_destino = libre(orig_dir / nombre_orig)
+                shutil.move(d["ruta_original"], orig_destino)
+                if d["padre_id"]:
+                    for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
+                        a.actualizar(h["id"], ruta_original_final=str(orig_destino))
+            self._limpiar_trabajo(d)
+            a.fijar_textos(d)
+            a.actualizar(doc_id, fase=10, estado="limbo" if limbo else "guardado", nombre_final=destino.name,
+                         ruta_final=str(destino), **({"ruta_original_final": str(orig_destino)} if orig_destino else {}))
+            a.evento(f"Guardado en {destino}" + (f" · original en {orig_destino}" if orig_destino else " · original todavía en Entrada"), doc_id, lote, 10)
+            if not limbo:
+                res = checklist.evaluar(self.variante, a, d["expediente_id"])
+                a.poner_avisos_cliente(d["expediente_id"], res["avisos_cliente"])
+                reg = textos.generar(a, c.documentos, d["expediente_id"], self.variante.nombres["sin_dni"])
+                a.evento(f"Registro de texto actualizado: {reg.name}", doc_id, lote, 10)
+            return a.documento(doc_id)
+        except Exception as e:
+            f = min(a.documento(doc_id)["fase"] + 1, 10)
+            a.actualizar(doc_id, estado="parado", motivo=f"Fase {f} · {NOMBRE_FASE.get(f, '')}: {e}")
+            a.evento(f"Parado en la fase {f}: {e}. Nada se ha perdido: el original sigue en Entrada.", doc_id, lote, f, "se")
+            raise MotorError(f"Parado en la fase {f}: {e}")
+
+    def _documento_editado(self, d, destino):
+        """PDF final: páginas digitales tal cual y las leídas por OCR ya giradas y enderezadas."""
+        from PIL import Image
+        origen = Path(d["ruta_original"])
+        pags = d["rotaciones"] or []
+        if destino.suffix.lower() != ".pdf":
+            shutil.copy2(origen, destino); return
+        if d["extension"] in (".docx", ".xlsx"):
+            raise MotorError("Convertir Word o Excel a PDF aún no está disponible: se guardará con su extensión original.")
+        if d["extension"] == ".pdf" and not any(p.get("imagen") for p in pags) and not d.get("paginas_sel"):
+            shutil.copy2(origen, destino); return
+        from pypdf import PdfReader, PdfWriter
+        w = PdfWriter()
+        reader = PdfReader(str(origen)) if d["extension"] == ".pdf" else None
+        for p in pags:
+            if p.get("imagen") and Path(p["imagen"]).exists():
+                buf = io.BytesIO()
+                Image.open(p["imagen"]).convert("RGB").save(buf, "PDF", resolution=300)
+                buf.seek(0)
+                w.add_page(PdfReader(buf).pages[0])
+            elif reader:
+                w.add_page(reader.pages[p["n"] - 1])
+        with open(destino, "wb") as f:
+            w.write(f)
+
+    def _limpiar_trabajo(self, d):
+        for p in d["rotaciones"] or []:
+            if p.get("imagen"):
+                Path(p["imagen"]).unlink(missing_ok=True)
+        t = Path(d["ruta_trabajo"]) if d["ruta_trabajo"] else None
+        if t and t.exists() and not any(t.iterdir()):
+            t.rmdir()
+
+    # ------------------------------------------------------------ datos temporales (M-69)
+    def temporales(self):
+        """Lo que ocupa la memoria temporal: copia de trabajo y textos guardados."""
+        trabajo = [p for p in self.carpetas.trabajo_raiz.rglob("*") if p.is_file()]
+        en_uso = {d["ruta_trabajo"] for d in self.almacen.documentos("estado IN ('en_proceso', 'espera_emparejar', 'parado')") if d["ruta_trabajo"]}
+        huerfanos = [p for p in trabajo if str(p.parent) not in en_uso]
+        n_textos, bytes_textos = self.almacen.db.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(texto)), 0) FROM textos").fetchone()
+        return {"trabajo_archivos": len(trabajo), "trabajo_bytes": sum(p.stat().st_size for p in trabajo),
+                "trabajo_sin_uso": len(huerfanos), "trabajo_sin_uso_bytes": sum(p.stat().st_size for p in huerfanos),
+                "en_proceso": len(en_uso), "textos_paginas": n_textos, "textos_bytes": bytes_textos}
+
+    def vaciar_trabajo(self, todo=False):
+        """Borra la copia de trabajo. Por defecto solo lo que ya no usa ningún documento en proceso;
+        con todo=True también lo de los documentos en proceso, que volverán a leerse."""
+        en_proceso = self.almacen.documentos("estado IN ('en_proceso', 'espera_emparejar', 'parado')")
+        en_uso = {d["ruta_trabajo"] for d in en_proceso if d["ruta_trabajo"]}
+        borrados = 0
+        for p in sorted(self.carpetas.trabajo_raiz.rglob("*"), reverse=True):
+            if p.is_file() and (todo or str(p.parent) not in en_uso):
+                p.unlink(); borrados += 1
+            elif p.is_dir() and not any(p.iterdir()):
+                p.rmdir()
+        if todo:
+            for d in en_proceso:      # vuelven a la fase 1 para releerse
+                self.almacen.actualizar(d["id"], fase=1, estado="en_proceso", ruta_trabajo=None, rotaciones=None, motivo="Copia de trabajo vaciada: se vuelve a leer")
+                self.almacen.db.execute("DELETE FROM textos WHERE clave LIKE ?", (f'{d["huella"]}:%',))
+            self.almacen.db.commit()
+        self.almacen.evento(f"Copia de trabajo vaciada ({borrados} archivos" + (", y documentos en proceso devueltos a la fase 1)" if todo else ")"), nivel="info")
+        return borrados
+
+    def vaciar_textos(self):
+        """Vacía la memoria temporal de textos. El texto de los documentos ya guardados está aparte
+        (y en sus _textos.txt), así que no se pierde; si llega otra vez un archivo ya visto, se volverá
+        a leer. Los documentos en proceso conservan su texto."""
+        en_proceso = {d["huella"] for d in self.almacen.documentos("estado IN ('en_proceso', 'espera_emparejar', 'parado')")}
+        n = 0
+        for (clave,) in self.almacen.db.execute("SELECT clave FROM textos").fetchall():
+            if clave.split(":")[0] not in en_proceso:
+                self.almacen.db.execute("DELETE FROM textos WHERE clave = ?", (clave,)); n += 1
+        self.almacen.db.commit()
+        self.almacen.evento(f"Memoria de textos vaciada ({n} páginas). Los registros de texto de los expedientes se conservan.", nivel="info")
+        return n
+
+    def regenerar_textos(self, expediente_id=None):
+        ids = [expediente_id] if expediente_id else [r["id"] for r in self.almacen.db.execute("SELECT id FROM expedientes")]
+        return [textos.generar(self.almacen, self.carpetas.documentos, e, self.variante.nombres["sin_dni"]) for e in ids]
+
+    # ------------------------------------------------------------ estado (pantalla del motor)
+    def estado(self, lote_id=None):
+        docs = self.almacen.documentos("lote_id = ?" if lote_id else "1", (lote_id,) if lote_id else ())
+        out = []
+        for d in docs:
+            if d["estado"] in ("guardado", "limbo"):
+                donde = {"editado": d["ruta_final"], "original": d["ruta_original_final"]}
+            else:
+                donde = {"original": d["ruta_original"], "trabajo": d["ruta_trabajo"]}
+            out.append({"id": d["id"], "archivo": d["nombre_recibido"], "fase": d["fase"], "fase_nombre": NOMBRE_FASE.get(d["fase"], "Recibir"),
+                        "estado": d["estado"], "tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde})
+        return out

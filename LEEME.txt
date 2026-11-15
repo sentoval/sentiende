@@ -1,0 +1,33 @@
+﻿SeFinancia con Sentiende · v1.0 · kit para crear el programa en tu equipo
+==========================================================================
+
+CÓMO SE HACE (una vez; unos 5-10 minutos, necesita internet)
+1. Descomprime esta carpeta donde quieras tener el programa, por ejemplo en
+   C:\SeFinancia_kit  o en  D:\
+2. Doble clic en  Crear_SeFinancia.bat
+   - Si no tienes Python, lo instala (winget). Cierra la ventana y vuelve a hacer doble clic.
+   - Instala las librerías, el OCR (Tesseract) si falta, con los idiomas español, catalán,
+     euskera y gallego, y crea SeFinancia.exe.
+   - Al final se comprueba solo y te dice LISTO o qué falta. Puede crear un acceso directo.
+3. Abre  SeFinancia\SeFinancia.exe
+
+RESULTADO
+  SeFinancia\
+  ├─ SeFinancia.exe          el programa
+  ├─ Motor\                  motor Sentiende (sentiende\, app\), OCR (tesseract\) y Python
+  ├─ Variantes\sefinancia\   configuración de SeFinancia
+  └─ Entrada\  Doc_original\  SeDocumentos\  Papelera\  Datos\   (se crean al abrirlo)
+
+PARA PROBAR
+- Usa COPIAS de documentos: lo que entra se MUEVE a Entrada\ y después a Doc_original\.
+- Arrastra los archivos a la Bandeja de entrada, o déjalos en la carpeta Entrada\.
+
+ACTUALIZAR
+- Volver a ejecutar Crear_SeFinancia.bat con un kit nuevo solo cambia SeFinancia.exe,
+  Motor\ y Variantes\sefinancia\. Tus documentos y Datos\ no se tocan.
+
+SI ALGO FALLA
+- Copia lo que sale en la ventana negra, o el archivo SeFinancia\Datos\registro.txt,
+  y pásaselo a Claude.
+- Si la ventana del programa no se abre, se abre en el navegador; funciona igual.
+  En ese caso, para cerrarlo usa el Administrador de tareas (SeFinancia.exe).

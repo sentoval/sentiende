@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+construir/_trabajo/
+SeFinancia/
+salida/
+_pruebas_app/
