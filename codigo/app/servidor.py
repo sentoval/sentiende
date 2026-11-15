@@ -108,6 +108,26 @@ class App:
             out.append(e)
         return out
 
+    def exportar_textos(self):
+        """Datos\\textos_leidos.txt: lo que el motor ha leído y deducido de cada documento.
+        Sirve para mejorar el reconocimiento (nombres, fechas) con documentos reales."""
+        a = self.motor.almacen
+        lineas = [f"SeFinancia · textos leídos · {len(a.documentos('1'))} documentos", ""]
+        for d in a.documentos("estado != 'separado'"):
+            datos = d["datos"] or {}
+            lineas += ["=" * 70, f"DOCUMENTO {d['id']} · {d['nombre_recibido']}",
+                       f"Tipo: {d['tipo'] or 'no reconocido'} ({round((d['confianza'] or 0) * 100)} %) · estado: {d['estado']} · fase {d['fase']}",
+                       f"DNI leídos: {', '.join(datos.get('dni') or []) or '—'}",
+                       f"Personas leídas: {'; '.join(p.get('completo', '') for p in datos.get('personas') or []) or 'ninguna'}",
+                       f"Fechas leídas: {', '.join(datos.get('fechas') or []) or '—'}",
+                       f"Periodo: {datos.get('periodo') or '—'} · ejercicio: {datos.get('ejercicio') or '—'} · caducidad: {datos.get('caducidad') or '—'}", ""]
+            textos = self.documento(d["id"])["texto_paginas"]
+            for i, tx in enumerate(textos, 1):
+                lineas += [f"--- página {i} ---", tx or "(sin texto)", ""]
+        ruta = self.motor.carpetas.rutas["datos"] / "textos_leidos.txt"
+        ruta.write_text("\n".join(lineas), encoding="utf-8-sig")
+        return str(ruta)
+
     def vista(self, did, pos):
         """Imagen de una página para el visor (PNG)."""
         from PIL import Image
@@ -214,6 +234,8 @@ def crear_manejador(app):
                         q = datos.get("que")
                         n = m.vaciar_textos() if q == "textos" else m.vaciar_trabajo(todo=q == "trabajo-todo")
                         return self._json({"vaciado": n})
+                    if p == "/api/exportar_textos":
+                        return self._json({"ruta": app.exportar_textos()})
                     if p == "/api/textos":
                         return self._json([str(r) for r in m.regenerar_textos(datos.get("expediente"))])
                 self._json({"error": "No existe"}, 404)

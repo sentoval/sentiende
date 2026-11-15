@@ -322,10 +322,14 @@ function vistaAjustes() {
     <div class="dato"><span>Memoria de textos reconocidos</span><span>${TMP.textos_paginas} páginas · ${mb(TMP.textos_bytes)}</span></div>` : "Cargando…"}
     <div class="acciones"><button class="btn pri" data-vaciar="trabajo">Vaciar lo que no se usa</button><button class="btn peligro" data-vaciar="trabajo-todo">Vaciar toda la copia de trabajo…</button><button class="btn" data-vaciar="textos">Vaciar la memoria de textos…</button></div>
     <span class="sub">Toda la copia de trabajo: lo que esté a medias se vuelve a leer desde el principio. Memoria de textos: los archivos de texto de los expedientes se conservan.</span></section>
+  <section class="tarjeta"><h2>Mejorar el reconocimiento</h2>
+    <span class="sub">Guarda en un archivo de texto lo que el programa ha leído de cada documento y lo que ha deducido (DNI, nombres, fechas). Lleva datos personales: compártelo solo con quien vaya a ajustar el reconocimiento.</span>
+    <div class="acciones"><button class="btn" id="exportar">Exportar los textos leídos</button></div></section>
   <section class="tarjeta"><h2>Versiones</h2><div class="dato"><span>Motor Sentiende</span><span>${esc(S.info.motor.version)} · contrato ${S.info.motor.contrato}.x</span></div>
     <div class="dato"><span>Variante</span><span>${esc(S.info.variante.nombre)} ${esc(S.info.variante.version)}</span></div></section>`;
 }
 function activarAjustes() {
+  $("#exportar")?.addEventListener("click", async () => { try { const r = await api("exportar_textos", {}); aviso("Guardado en " + r.ruta); } catch (e) { aviso(e.message, true); } });
   document.querySelectorAll("[data-vaciar]").forEach(b => b.addEventListener("click", async () => {
     const q = b.dataset.vaciar;
     if (q !== "trabajo" && !confirm(q === "textos" ? "¿Vaciar la memoria de textos? Los archivos de texto de los expedientes se conservan." : "¿Vaciar toda la copia de trabajo? Lo que esté a medias se volverá a leer.")) return;
