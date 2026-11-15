@@ -345,6 +345,13 @@ def crear_manejador(app):
                         return self._json({"cancelado": True})
                     lote, ids = app.encolar([f], "escáner")
                     return self._json({"lote": lote, "documentos": ids, "archivo": f.name})
+                if p == "/api/abrir_url":         # solo para preparar mensajes: correo o WhatsApp (no se envía nada solo)
+                    import webbrowser
+                    url = str(datos.get("url") or "")
+                    if not (url.startswith("mailto:") or url.startswith("https://wa.me/")):
+                        raise MotorError("Dirección no permitida.")
+                    webbrowser.open(url)
+                    return self._json({"ok": True})
                 if p == "/api/abrir":
                     import os, subprocess, sys
                     ruta = Path(datos.get("ruta") or "")

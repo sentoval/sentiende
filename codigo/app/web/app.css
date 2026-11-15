@@ -520,3 +520,21 @@ tr.apagada td { opacity: .55; }
 .cua .chips .chip { cursor: default; }
 .cab-exp { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
 select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; height: 32px; padding: 0 6px; }
+
+/* checklist más ligera: pestañas finas, sin títulos de familia (barrita de color entre grupos) */
+.ck-tabs2 { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.ck-tabs2 button { background: none; border: 1px solid transparent; color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+.ck-tabs2 button small { font-size: 11px; opacity: .8; margin-left: 2px; }
+.ck-tabs2 button.sel { color: var(--text); border-color: var(--gris); }
+.ck-grupo { border-left: 3px solid var(--g, #4A5869); padding-left: 8px; margin-top: 8px; }
+.ck-grupo .ck-fila:first-child { border-top: 0; }
+.ck-grupo.g0 { --g: #60A5FA; } .ck-grupo.g1 { --g: #C4B5FD; } .ck-grupo.g2 { --g: #5EEAD4; } .ck-grupo.g3 { --g: #FDBA74; } .ck-grupo.g4 { --g: #F9A8D4; } .ck-grupo.g5 { --g: #A3E635; }
+.ck-fila { padding: 5px 0; gap: 7px; grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ck-ico { width: 18px; height: 18px; font-size: 10.5px; }
+.ck-nom { font-size: 13px; font-weight: 500; }
+.ck-imp { color: #FBBF24; font-weight: 700; text-transform: none; font-size: 14px; letter-spacing: 0; }
+.ck-txt small { font-size: 11.5px; }
+.ck-acc button { font-size: 11px; padding: 2px 6px; font-weight: 500; }
+.checklist .neg-cab h2 { font-size: 15px; }
+select.misma { height: 28px; font-size: 12.5px; max-width: 220px; }
+select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-color: var(--selFondo); }

@@ -254,9 +254,15 @@ function fichadas() {
   }));
   return [...m.values()];
 }
+const aliasDe = x => { try { return JSON.parse(x.alias || "[]").map(normaliza); } catch { return []; } };
 function buscarFichada(P) {
-  const f = fichadas(), n = normaliza(`${P.nombre} ${P.ap1} ${P.ap2}`);
-  return f.find(x => P.dni && x.dni && x.dni.toUpperCase() === P.dni.toUpperCase()) || f.find(x => normaliza(`${x.nombre} ${x.apellido1} ${x.apellido2}`) === n) || null;
+  const f = fichadas(), n = normaliza(`${P.nombre} ${P.ap1} ${P.ap2 || ""}`), dni = (P.dni || "").toUpperCase();
+  return f.find(x => dni && x.dni && x.dni.toUpperCase() === dni)
+    || f.find(x => normaliza(`${x.nombre} ${x.apellido1} ${x.apellido2 || ""}`) === n)
+    || f.find(x => aliasDe(x).includes(n))                         // otras formas de escribirla ya confirmadas
+    // mismo nombre y primer apellido y a uno de los dos le falta el segundo (sin DNI distinto): es la misma
+    || f.find(x => !(dni && x.dni && x.dni.toUpperCase() !== dni) && normaliza(x.nombre) === normaliza(P.nombre) && normaliza(x.apellido1) === normaliza(P.ap1)
+         && (!normaliza(P.ap2) || !normaliza(x.apellido2))) || null;
 }
 function parecidas(P, menos) {
   return fichadas().filter(x => (!menos || x.id !== menos.id) && normaliza(x.nombre) === normaliza(P.nombre) && normaliza(x.apellido1) === normaliza(P.ap1));
@@ -299,8 +305,10 @@ function vistaRevision() {
     + `<button type="button" class="chip peq ${R.persona === -1 ? "sel" : ""}" data-persona="-1">Otra persona…</button>`;
   const lm = loteMayoritario(d);
   const chipLote = lm ? `<button type="button" class="chip peq lote ${R.persona === -2 ? "sel" : ""}" id="r-lote" title="Lo que más se repite en los documentos ya confirmados de este lote">Como el resto del lote: ${esc(`${lm.per.nombre} ${lm.per.apellido1}`)}<small>${lm.n} de ${lm.total}</small></button>` : "";
-  const estadoPersona = R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
-    : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`;
+  const reconocidaComo = fich && normaliza(`${fich.nombre} ${fich.apellido1} ${fich.apellido2 || ""}`) !== normaliza(`${P.nombre} ${P.ap1} ${P.ap2}`)
+    ? `<span class="ok-txt">≈ Reconocida como <b>${esc(`${fich.nombre} ${fich.apellido1} ${fich.apellido2 || ""}`)}</b> (ya fichada)</span>` : "";
+  const estadoPersona = reconocidaComo + (R.persona === -3 ? `<span class="warn-txt">Este documento nombra a varias personas: elige de quién es (o «Colectivo» si es de todo el expediente).</span>` : fich ? `<span class="ok-txt">Ya fichada: ${esc(fich.exps.map(e => `${e.papel} en «${e.nombre}»`).join(" · "))}</span>`
+    : `<span class="sub">Persona nueva: todavía no está en ningún expediente.</span>`);
   // discrepancia: la ficha coincide por nombre pero el DNI leído es otro (pantalla 14)
   const discrepa = fich && P.dni && fich.dni && P.dni.toUpperCase() !== fich.dni.toUpperCase() && !R.discrepanciaVista;
   const avisoDiscrepancia = discrepa ? `<div class="dup discrepancia" role="alert"><b>Discrepancia: ¿es la misma persona?</b>
@@ -366,7 +374,7 @@ function vistaRevision() {
   const filaOtras = otras.length ? `<div class="fila-rev otras"><span class="lab">Más personas en el documento</span><div class="otras-lista">
       ${otras.map(x => `<div class="otra"><span><b>${esc(x.p.completo)}</b>${x.p.dni ? ` <span class="mono muted">${esc(x.p.dni)}</span>` : ""}</span>
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
-          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}</span>`}</div>`).join("")}</div></div>` : "";
+          .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}${expSel ? `<select class="misma ${String((R.otros || {})[x.i] || "").startsWith("misma:") ? "sel" : ""}" data-misma="${x.i}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${expSel.personas.map(q => `<option value="${q.id}" ${(R.otros || {})[x.i] === "misma:" + q.id ? "selected" : ""}>${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}</span>`}</div>`).join("")}</div></div>` : "";
   const pendientesOtras = otras.filter(x => !x.yaEsta).length;
   const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a></div>` : ""; })();
   // ¿tarjeta de visita? Se pregunta siempre, arriba y en grande: no se puede confirmar sin responder
@@ -509,6 +517,11 @@ function activarRevision() {
     else R.nuevo = { nombre: "", ap1: "", ap2: "", dni: "" };
     R.destino = undefined; R.dupOk = false; pintar();
   }));
+  document.querySelectorAll("[data-misma]").forEach(s => s.addEventListener("change", () => {
+    const i = +s.dataset.misma; R.otros = { ...(R.otros || {}) };
+    if (s.value) R.otros[i] = "misma:" + s.value; else delete R.otros[i];
+    pintar();
+  }));
   document.querySelectorAll("[data-otro]").forEach(b => b.addEventListener("click", () => { R.otros = { ...(R.otros || {}), [b.dataset.otro]: b.dataset.acc }; pintar(); }));
   $("#todos-terceros")?.addEventListener("click", () => { R.otros = {}; (S.doc.datos.personas || []).forEach((p, i) => { if (i !== R.persona) R.otros[i] = "tercero"; }); pintar(); });
   document.querySelectorAll("[data-fecha]").forEach(b => b.addEventListener("click", () => { R.fecha = b.dataset.fecha; pintar(); }));
@@ -536,7 +549,8 @@ async function confirmar() {
     return !(f && expSel && expSel.personas.some(q => q.id === f.id));
   });
   if (pendientes.some(x => !(R.otros || {})[x.i])) return aviso("Hay más personas en el documento: indica qué es cada una.", true);
-  const otrosEnvio = pendientes.map(x => ({ persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: R.otros[x.i] }));
+  const otrosEnvio = pendientes.map(x => { const acc = R.otros[x.i], misma = String(acc).startsWith("misma:");
+    return { persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: misma ? "misma" : acc, persona_id: misma ? +acc.slice(6) : null }; });
   const persona_datos = { nombre: P.nombre.trim(), apellido1: P.ap1.trim(), apellido2: P.ap2.trim(), dni: P.dni.trim().toUpperCase() || null };
   const fich = R.ignorarFicha ? null : buscarFichada(P);
   let expediente, persona = null;
@@ -741,32 +755,44 @@ function tarjetaChecklist(e) {
   const solicitados = ck.filas.filter(f => marcas[f.clave]?.estado === "solicitado").length;
   const cuenta = gr => `${gr.filas.filter(f => f.estado === "Recibido").length}/${gr.filas.length}`;
   const fila = f => { const [txt, cls, ic] = estadoCheck(f); const libre = f.estado !== "Recibido";
-    return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><b>${esc(f.documento)}</b>${f.importancia === "imprescindible" ? ' <span class="ck-imp">Imprescindible</span>' : ""}
-      <small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small></div>
+    return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><span class="ck-nom">${esc(f.documento)}${f.importancia === "imprescindible" ? ' <span class="ck-imp" title="Imprescindible">•</span>' : ""}</span>
+      ${f.archivos.length || f.detalle || ["sol", "nop"].includes(cls) ? `<small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small>` : ""}</div>
       ${libre ? `<span class="ck-acc"><button type="button" class="${marcas[f.clave]?.estado === "solicitado" ? "sel" : ""}" data-marca="${f.clave}" data-estado="solicitado" title="Ya se lo he pedido al cliente">Solicitado</button><button type="button" class="${marcas[f.clave]?.estado === "sin_pedir" ? "sel" : ""}" data-marca="${f.clave}" data-estado="sin_pedir" title="No hace falta pedirlo en este expediente">Sin pedir</button></span>` : `<span class="ck-estado">${txt}</span>`}</div>`; };
   return `<section class="tarjeta checklist"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
     ${solicitados ? `<div class="progreso fino"><i style="width:${Math.round(100 * ck.recibidos / Math.max(1, ck.recibidos + solicitados))}%"></i></div>` : ""}
-    <div class="pestanas ck-tabs">${grupos.map(x => `<a href="javascript:void 0" data-ck-tab="${x.id}" ${x.id === CK_TAB ? 'aria-current="page"' : ""}>${esc(x.nombre)} <span class="num">${cuenta(x)}</span></a>`).join("")}</div>
+    <div class="ck-tabs2">${grupos.map(x => `<button type="button" data-ck-tab="${x.id}" class="${x.id === CK_TAB ? "sel" : ""}">${esc(x.id === "exp" ? "Comunes" : x.nombre)} <small>${cuenta(x)}</small></button>`).join("")}</div>
     ${g ? (() => { const fam = {}; g.filas.forEach(f => (fam[f.familia || "Otros"] = fam[f.familia || "Otros"] || []).push(f));
-        return Object.entries(fam).map(([k, fs]) => `<div class="ck-familia">${esc(k)}</div>` + fs.map(fila).join("")).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
+        return Object.entries(fam).map(([k, fs], n) => `<div class="ck-grupo g${n % 6}" title="${esc(k)}">${fs.map(fila).join("")}</div>`).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
     ${ck.avisos_cliente.length ? `<div class="ck-avisos"><b>Avisos al cliente</b>${ck.avisos_cliente.map(a => `<span>${esc(a)}</span>`).join("")}</div>` : ""}
-    <button class="btn" id="ck-informe">Generar informe de lo que falta</button></section>`;
+    <button class="btn" id="ck-informe">${ico("mail", 16)}Generar informe de lo que falta y enviar</button></section>`;
 }
 function textoInforme() {
   const { e, ck } = EXP, falta = ck.filas.filter(f => f.estado !== "Recibido" && (EXP.neg?.marcas || {})[f.clave]?.estado !== "sin_pedir");
-  const por = {}; falta.forEach(f => (por[f.quien] = por[f.quien] || []).push(`- ${f.documento}${f.detalle && f.estado !== "Pendiente" ? " (" + f.detalle + ")" : ""}`));
-  return `Documentación pendiente · ${e.nombre}\n\n` + Object.entries(por).map(([q, l]) => `${q === "Expediente" ? "De la operación" : q}:\n${l.join("\n")}`).join("\n\n") + (falta.length ? "" : "No falta nada.");
+  const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel));
+  const saludo = titulares.length > 1 ? `Hola, ${titulares.map(p => p.nombre).join(" y ")}:` : `Hola, ${(titulares[0] || e.personas[0] || {}).nombre || ""}:`;
+  const fin = (S.info.variante.finalidades[e.finalidad] || "operación").toLowerCase();
+  const por = {}; falta.forEach(f => (por[f.quien] = por[f.quien] || []).push(`  · ${f.documento}${f.detalle && f.estado !== "Pendiente" ? " (" + f.detalle + ")" : ""}`));
+  const lista = Object.entries(por).map(([q, l]) => (Object.keys(por).length > 1 || q === "Expediente" ? `${q === "Expediente" ? "De la operación" : "De " + q}:\n` : "") + l.join("\n")).join("\n\n");
+  if (!falta.length) return `${saludo}\n\n¡Buenas noticias! Ya tenemos toda la documentación para tu ${fin}. En cuanto haya novedades te lo contamos.\n\nMuchas gracias y un saludo.`;
+  return `${saludo}\n\nEspero que estés muy bien. Para seguir avanzando con tu ${fin}, todavía nos falta la siguiente documentación:\n\n${lista}\n\nPuedes enviárnosla respondiendo a este mensaje; valen fotos con el móvil o PDF, siempre que se lean bien y se vean enteros. Si tienes cualquier duda con algún documento, dímelo y te ayudo.\n\nMuchas gracias y un saludo.`;
 }
 function modalInforme() {
-  return `<div class="zoom informe"><div class="tarjeta"><h2>Lo que falta</h2><textarea id="inf-txt" rows="16">${esc(INFORME)}</textarea>
-    <div class="acciones"><button class="btn pri" id="inf-copiar">${ico("check")}Copiar</button><button class="btn" id="inf-cerrar">Cerrar</button></div></div></div>`;
+  const c = EXP.op?.datos || {};
+  return `<div class="zoom informe"><div class="tarjeta"><h2>Enviar lo que falta</h2>
+    <div class="op-campos"><div class="campo"><label for="inf-mail">Correo del cliente</label><input id="inf-mail" type="email" value="${esc(c.contacto_email || "")}" placeholder="cliente@correo.es"></div>
+      <div class="campo"><label for="inf-tel">Móvil (WhatsApp)</label><input id="inf-tel" value="${esc(c.contacto_tel || "")}" placeholder="600 000 000"></div>
+      <div class="campo"><label for="inf-asunto">Asunto</label><input id="inf-asunto" value="Documentación pendiente · ${esc(EXP.e.nombre)}"></div></div>
+    <textarea id="inf-txt" rows="15">${esc(INFORME)}</textarea>
+    <span class="sub">Puedes cambiar el texto. «Correo» abre tu programa de correo con el mensaje preparado; «WhatsApp» abre WhatsApp con el texto listo. No se envía nada sin que tú lo pulses allí.</span>
+    <div class="acciones"><button class="btn pri" id="inf-correo">${ico("mail")}Enviar por correo</button><button class="btn pri" id="inf-wa">Enviar por WhatsApp</button><button class="btn" id="inf-copiar">${ico("check")}Copiar</button><button class="btn" id="inf-cerrar">Cerrar</button></div></div></div>`;
 }
 function tarjetaPersonasExp(e) {
   const docsDe = id => (EXP.docs || []).filter(d => d.persona_id === id && !d.de_expediente).length;
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Personas del expediente · ${e.personas.length}</h2></div>
     <table class="tabla"><tbody>${e.personas.map(p => { const n = docsDe(p.id);
       return `<tr><td><a href="#persona/${p.id}"><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></a></td><td><select data-papel="${p.id}" aria-label="Papel">${PAPELES.map(x => `<option ${x === p.papel ? "selected" : ""}>${x}</option>`).join("")}</select></td><td class="mono">${esc(p.dni || "sin DNI")}</td><td>${n} documento(s)</td>
-      <td class="der">${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
+      <td class="der">${e.personas.length > 1 ? `<select class="misma" data-misma-exp="${p.id}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${e.personas.filter(q => q.id !== p.id).map(q => `<option value="${q.id}">${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}
+        ${e.estado === "abierto" && e.personas.length > 1 ? `<button class="btn peq" data-quitar-persona="${p.id}" ${n ? `disabled title="Tiene documentos: muévelos antes con «Mover…»"` : ""}>Quitar del expediente</button>` : ""}</td></tr>`; }).join("")}</tbody></table></section>`;
 }
 // ---------------- arreglar lo ya guardado (v1.1)
 const ARR = { unir: false, destino: "", mover: null, exp: "", persona: "", comun: false };
@@ -840,7 +866,25 @@ function activarExpediente(id) {
   }));
   $("#ck-informe")?.addEventListener("click", () => { INFORME = textoInforme(); pintar(); });
   $("#inf-cerrar")?.addEventListener("click", () => { INFORME = null; pintar(); });
+  const enviar = async via => {
+    const email = $("#inf-mail").value.trim(), tel = $("#inf-tel").value.replace(/\D/g, ""), texto = $("#inf-txt").value, asunto = $("#inf-asunto").value;
+    if (via === "correo" && !email && !confirm("No has puesto el correo del cliente. ¿Abrir el mensaje igualmente?")) return;
+    if (via === "wa" && !tel) return aviso("Pon el móvil del cliente.", true);
+    try { await api("operacion", { expediente: EXP.e.id, datos: { contacto_email: email, contacto_tel: $("#inf-tel").value.trim() } }); } catch {}
+    const url = via === "correo" ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(texto)}`
+                                 : `https://wa.me/${tel.length === 9 ? "34" + tel : tel}?text=${encodeURIComponent(texto)}`;
+    try { await api("abrir_url", { url }); aviso(via === "correo" ? "Abriendo el correo…" : "Abriendo WhatsApp…"); } catch (e) { aviso(e.message, true); }
+  };
+  $("#inf-correo")?.addEventListener("click", () => enviar("correo"));
+  $("#inf-wa")?.addEventListener("click", () => enviar("wa"));
   $("#inf-copiar")?.addEventListener("click", async () => { const tx = $("#inf-txt"); tx.select(); try { await navigator.clipboard.writeText(tx.value); } catch { document.execCommand("copy"); } aviso("Copiado: pégalo en el correo o el WhatsApp del cliente"); });
+  document.querySelectorAll("[data-misma-exp]").forEach(s => s.addEventListener("change", async () => {
+    if (!s.value) return;
+    const quita = EXP.e.personas.find(x => x.id === +s.dataset.mismaExp), queda = EXP.e.personas.find(x => x.id === +s.value);
+    const dniDistinto = quita.dni && queda.dni && quita.dni.toUpperCase() !== queda.dni.toUpperCase();
+    if (!confirm(`¿${quita.nombre} ${quita.apellido1} ${quita.apellido2 || ""} es la misma persona que ${queda.nombre} ${queda.apellido1} ${queda.apellido2 || ""}?\n\nSus documentos pasarán a ${queda.nombre} ${queda.apellido1} y se renombrarán; la ficha sobrante desaparece.` + (dniDistinto ? `\n\nOJO: tienen DNI distintos (${quita.dni} y ${queda.dni}). Se quedará ${queda.dni}.` : ""))) { s.value = ""; return; }
+    try { await api("arreglo", { accion: "unir_personas", quitar: quita.id, quedar: queda.id, forzar: !!dniDistinto }); aviso("Unidas: es la misma persona"); await recargar(); } catch (e) { aviso(e.message, true); s.value = ""; }
+  }));
   document.querySelectorAll("[data-quitar-persona]").forEach(b => b.addEventListener("click", async () => {
     const p = EXP.e.personas.find(x => x.id === +b.dataset.quitarPersona);
     if (!confirm(`¿Quitar a ${p.nombre} ${p.apellido1} (${p.papel}) del expediente «${EXP.e.nombre}»?`)) return;

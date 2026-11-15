@@ -142,7 +142,7 @@ class Gestion:
         op = self.operacion(eid)
         d = op["datos"]
         campos = ("importe_solicitado", "importe_concedido", "entidad", "fecha_envio", "fecha_aprobacion", "fecha_firma",
-                  "honorarios_tipo", "honorarios_valor", "factura_num", "factura_fecha", "fecha_cobro", "nota")
+                  "honorarios_tipo", "honorarios_valor", "factura_num", "factura_fecha", "fecha_cobro", "nota", "contacto_email", "contacto_tel")
         for k in campos:
             if k in nuevos:
                 d[k] = nuevos[k]

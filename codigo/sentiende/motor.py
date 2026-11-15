@@ -361,6 +361,18 @@ class Motor:
         for o in otros or []:
             pe, accion = o.get("persona") or {}, o.get("accion")
             nombre = f'{pe.get("nombre", "")} {pe.get("apellido1", "")}'.strip()
+            if accion == "misma" and o.get("persona_id"):        # es una persona que ya está, escrita de otra forma
+                p0 = a.persona(int(o["persona_id"]))
+                if p0:
+                    from .extraer import norm
+                    completo = " ".join(x for x in (pe.get("nombre"), pe.get("apellido1"), pe.get("apellido2")) if x)
+                    alias = json.loads(p0.get("alias") or "[]")
+                    if norm(completo).strip() not in alias:
+                        alias.append(norm(completo).strip())
+                        a.db.execute("UPDATE personas SET alias = ? WHERE id = ?", (json.dumps(alias, ensure_ascii=False), p0["id"]))
+                        a.db.commit()
+                    hechos.append(f"{nombre}: es {p0['nombre']} {p0['apellido1']} {p0['apellido2'] or ''} (nombre apuntado como alias)")
+                continue
             if accion == "tercero" or not accion:
                 if doc_id and (d0 := a.documento(doc_id)):        # se recuerda en el lote: en los siguientes documentos ya viene como tercero
                     from .extraer import norm
