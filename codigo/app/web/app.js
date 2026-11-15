@@ -67,16 +67,18 @@ function lateral() {
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
-    <div class="marca"><img class="logo" src="/api/logo" alt="" width="60" height="60"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
+    <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
-      ${item("motor", "motor", "Motor de proceso", c.pendientes - (c.revisar || 0))}
       ${item("revision", "check", "Centro de revisión", c.revisar)}
-      ${item("avisos", "bell", "Avisos", c.avisos)}
       ${item("limbo", "limbo", "Limbo", c.limbo)}
-      ${item("", "search", "Buscar en documentos", 0, false, "pronto")}
+      ${item("motor", "motor", "Motor de proceso", c.pendientes - (c.revisar || 0))}
+      ${item("avisos", "bell", "Avisos", c.avisos)}
       ${item("", "chart", "Estadísticas", 0, false, "pronto")}
-      ${item("ajustes", "gear", "Ajustes")}
+    </div>
+    <div class="nav-iconos">
+      <a class="inactivo" aria-disabled="true" title="Buscar en documentos (pronto)" aria-label="Buscar en documentos (pronto)">${ico("search", 20)}</a>
+      <a href="#ajustes" title="Ajustes" aria-label="Ajustes" ${r === "ajustes" ? 'aria-current="page"' : ""}>${ico("gear", 20)}</a>
     </div>
     <div class="lat-zona" id="zona">
       <span class="ico">${ico("upload", 20)}</span>
