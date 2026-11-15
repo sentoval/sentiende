@@ -7,7 +7,7 @@
 Cada fase deja su resultado en el almacén: si el programa se cierra, se reanuda
 desde la última fase terminada sin repetir nada (M-61). Si algo falla, el documento
 queda «parado» en esa fase con el motivo, y el original no se toca."""
-import datetime, io, shutil
+import datetime, io, json, re, shutil, unicodedata
 from pathlib import Path
 
 from . import VERSION, FASES
@@ -17,7 +17,7 @@ from .variante import Variante, VarianteError
 from .recibir import huella, tipo_archivo, mover_a_entrada
 from .lectura import leer
 from .separar import separar
-from .extraer import extraer
+from .extraer import extraer, aprender_personas
 from .clasificar import Clasificador
 from .nombres import Nombrador, carpeta_expediente
 from . import checklist, textos
@@ -40,12 +40,92 @@ class Motor:
         self.almacen = Almacen(self.carpetas.datos / "sentiende.db")
         self.clasificador = Clasificador(self.variante)
         self.nombrador = Nombrador(self.variante)
+        self._cargar_finalidades()
+        aprender_personas([dict(r) for r in self.almacen.db.execute("SELECT * FROM personas")])   # nombres ya confirmados
+
+    # ------------------------------------------------------------ finalidades (editables por el usuario)
+    def _ruta_finalidades(self):
+        return self.carpetas.datos / "finalidades.json"
+
+    def _cargar_finalidades(self):
+        """Las finalidades y sus checklists son del usuario (Datos\\finalidades.json): las actualizaciones de
+        la variante no las pisan. Las finalidades nuevas que traiga la variante se añaden si no se quitaron."""
+        v = self.variante
+        base_f = dict(v.meta.get("finalidades", {}))
+        base_c = {k: x for k, x in v.checklists.items() if not k.startswith("_")}
+        datos = {}
+        if self._ruta_finalidades().exists():
+            try:
+                datos = json.loads(self._ruta_finalidades().read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                datos = {}
+        fin = datos.get("finalidades") or {}
+        chk = datos.get("checklists") or {}
+        quitadas = set(datos.get("quitadas", []))
+        for k, n in base_f.items():
+            if k not in fin and k not in quitadas:
+                fin[k] = n
+                chk.setdefault(k, base_c.get(k, []))
+        self._fin = {"finalidades": fin, "checklists": chk, "quitadas": sorted(quitadas)}
+        v.meta["finalidades"] = fin
+        v.checklists = chk
+
+    def _guardar_finalidades(self):
+        self._ruta_finalidades().write_text(json.dumps(self._fin, ensure_ascii=False, indent=1), encoding="utf-8")
+        self.variante.meta["finalidades"] = self._fin["finalidades"]
+        self.variante.checklists = self._fin["checklists"]
+
+    def finalidades(self):
+        uso = dict(self.almacen.db.execute("SELECT finalidad, COUNT(*) FROM expedientes GROUP BY finalidad").fetchall())
+        return [{"id": k, "nombre": n, "documentos": self._fin["checklists"].get(k, []), "expedientes": uso.get(k, 0)}
+                for k, n in self._fin["finalidades"].items()]
+
+    def guardar_finalidad(self, nombre, documentos=None, fid=None):
+        """Crea (sin fid; checklist vacía) o cambia una finalidad. documentos: [{tipo, por, importancia, condicion}]."""
+        nombre = (nombre or "").strip()
+        if not nombre:
+            raise MotorError("La finalidad necesita un nombre.")
+        fin = self._fin["finalidades"]
+        if fid is None:
+            base = re.sub(r"[^a-z0-9]+", "_", unicodedata.normalize("NFD", nombre.lower()).encode("ascii", "ignore").decode()).strip("_") or "finalidad"
+            fid, n = base, 2
+            while fid in fin:
+                fid, n = f"{base}_{n}", n + 1
+            documentos = documentos or []
+        elif fid not in fin:
+            raise MotorError(f"No existe la finalidad {fid}.")
+        if any(x.lower() == nombre.lower() for k, x in fin.items() if k != fid):
+            raise MotorError(f"Ya hay una finalidad que se llama «{nombre}».")
+        fin[fid] = nombre
+        if documentos is not None:
+            tipos = self.variante.docs
+            limpio = []
+            for dct in documentos:
+                if dct.get("tipo") not in tipos:
+                    raise MotorError(f"Tipo de documento desconocido: {dct.get('tipo')}")
+                limpio.append({"tipo": dct["tipo"], "por": "expediente" if dct.get("por") == "expediente" else "titular",
+                               "importancia": "imprescindible" if dct.get("importancia") == "imprescindible" else "recomendable",
+                               "condicion": dct.get("condicion") or {}})
+            self._fin["checklists"][fid] = limpio
+        self._fin["quitadas"] = [q for q in self._fin["quitadas"] if q != fid]
+        self._guardar_finalidades()
+        return fid
+
+    def quitar_finalidad(self, fid):
+        n = self.almacen.db.execute("SELECT COUNT(*) FROM expedientes WHERE finalidad = ?", (fid,)).fetchone()[0]
+        if n:
+            raise MotorError(f"No se puede quitar: la usan {n} expediente(s).")
+        self._fin["finalidades"].pop(fid, None)
+        self._fin["checklists"].pop(fid, None)
+        self._fin["quitadas"] = sorted(set(self._fin["quitadas"]) | {fid})
+        self._guardar_finalidades()
 
     # ------------------------------------------------------------ fase 1
-    def recibir(self, rutas, origen="arrastrados"):
-        """Mueve a Entrada\\, calcula la huella y detecta duplicados. Devuelve (lote_id, [doc_id])."""
+    def recibir(self, rutas, origen="arrastrados", lote=None):
+        """Mueve a Entrada\\, calcula la huella y detecta duplicados. Devuelve (lote_id, [doc_id]).
+        lote: para añadir a un lote ya abierto (varios archivos soltados a la vez)."""
         a = self.almacen
-        lote = a.nuevo_lote(origen)
+        lote = lote or a.nuevo_lote(origen)
         ids = []
         for r in rutas:
             r = Path(r)
@@ -198,7 +278,10 @@ class Motor:
 
     def nueva_persona(self, nombre, apellido1="", apellido2="", dni=None, es_empresa=False):
         p = self.almacen.persona_por_dni(dni) if dni else None
-        return p["id"] if p else self.almacen.nueva_persona(nombre, apellido1, apellido2, dni, es_empresa)
+        if p:
+            return p["id"]
+        aprender_personas([{"nombre": nombre, "apellido1": apellido1, "apellido2": apellido2}])
+        return self.almacen.nueva_persona(nombre, apellido1, apellido2, dni, es_empresa)
 
     def crear_expediente(self, persona_id, finalidad, fecha=None, nombre=None):
         if finalidad not in self.variante.meta.get("finalidades", {}):
@@ -212,6 +295,74 @@ class Motor:
         eid = self.almacen.nuevo_expediente(nombre, finalidad, carpeta)
         self.almacen.anadir_persona(eid, persona_id, "Titular")
         return eid
+
+    def vincular_personas(self, expediente_id, otros, doc_id=None):
+        """Las demás personas de un documento (p. ej. el segundo declarante de la renta):
+        'cotitular' → se añade a este expediente como Cotitular; 'separado' → se ficha con su propio
+        expediente (misma finalidad); 'tercero' → no se ficha."""
+        a = self.almacen
+        exp = a.expediente(expediente_id)
+        hechos = []
+        for o in otros or []:
+            pe, accion = o.get("persona") or {}, o.get("accion")
+            nombre = f'{pe.get("nombre", "")} {pe.get("apellido1", "")}'.strip()
+            if accion == "tercero" or not accion:
+                hechos.append(f"{nombre}: tercero, no se ficha"); continue
+            if not pe.get("nombre") or not pe.get("apellido1"):
+                raise MotorError(f"Faltan el nombre o el primer apellido de {nombre or 'la otra persona'}.")
+            pid = self.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), (pe.get("dni") or None))
+            if accion == "cotitular":
+                a.anadir_persona(expediente_id, pid, "Cotitular")
+                hechos.append(f"{nombre}: cotitular de este expediente")
+            elif accion == "separado":
+                eid = self.crear_expediente(pid, exp["finalidad"])
+                hechos.append(f"{nombre}: expediente propio {a.expediente(eid)['carpeta']}")
+        if hechos and doc_id:
+            d = a.documento(doc_id)
+            a.evento("Otras personas del documento · " + " · ".join(hechos), doc_id, d["lote_id"] if d else None, 7)
+        return hechos
+
+    # ------------------------------------------------------------ unir fotos de un mismo documento
+    def propuestas_union(self):
+        """Fotos o escaneos de una página que llegaron juntos (mismo lote), esperan revisión y parecen
+        el mismo tipo de documento: se propone unirlos en un PDF. Siempre se pregunta."""
+        docs = [d for d in self.almacen.documentos("estado = 'espera_emparejar' AND unido_en IS NULL AND padre_id IS NULL")
+                if d["extension"] in (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".webp", ".bmp") or (d["extension"] == ".pdf" and (d["paginas"] or 1) == 1 and any(r.get("origen") == "ocr" for r in d["rotaciones"] or []))]
+        grupos = {}
+        for d in docs:
+            grupos.setdefault((d["lote_id"], d["tipo"]), []).append(d["id"])
+        return [{"lote": k[0], "tipo": k[1], "documentos": v} for k, v in grupos.items() if len(v) > 1 and k[1]]
+
+    def unir(self, ids):
+        """Une varios documentos (en el orden dado) en un PDF nuevo que sigue el proceso desde la fase 2.
+        Las fotos originales no se tocan hasta guardar; entonces van a Doc_original."""
+        from PIL import Image, ImageOps
+        a = self.almacen
+        docs = [a.documento(int(i)) for i in ids]
+        if len(docs) < 2 or any(d is None for d in docs):
+            raise MotorError("Elige al menos dos documentos para unir.")
+        if any(d["estado"] not in ("espera_emparejar", "parado") for d in docs):
+            raise MotorError("Solo se pueden unir documentos que esperan revisión.")
+        paginas = []
+        for d in docs:
+            for r in (d["rotaciones"] or [{"n": 1}]):
+                if r.get("imagen") and Path(r["imagen"]).exists():
+                    paginas.append(Image.open(r["imagen"]).convert("RGB"))
+                elif d["extension"] == ".pdf":
+                    from .lectura import imagen_pdf
+                    paginas.append(imagen_pdf(d["ruta_original"], r["n"]))
+                else:
+                    paginas.append(ImageOps.exif_transpose(Image.open(d["ruta_original"])).convert("RGB"))
+        lote = docs[0]["lote_id"]
+        trabajo = self.carpetas.trabajo(lote)
+        ruta = libre(trabajo / f"unido_{docs[0]['id']}.pdf")
+        paginas[0].save(ruta, "PDF", resolution=200, save_all=True, append_images=paginas[1:])
+        nuevo = a.nuevo_documento(lote, f"{Path(docs[0]['nombre_recibido']).stem} (+{len(docs) - 1} unidas).pdf", ruta, huella(ruta), ".pdf")
+        a.actualizar(nuevo, fase=1)
+        for d in docs:
+            a.actualizar(d["id"], estado="unido", unido_en=nuevo, motivo=f"Unido en el documento {nuevo}")
+        a.evento(f"Unidos {len(docs)} documentos en un PDF de {len(paginas)} páginas: " + ", ".join(d["nombre_recibido"] for d in docs), nuevo, lote, 1)
+        return nuevo
 
     # ------------------------------------------------------------ fases 7 a 10
     def clave_fecha(self, tipo):
@@ -295,9 +446,18 @@ class Motor:
             if hermanos:
                 a.evento(f"El original se moverá a Doc_original cuando se guarden las otras {len(hermanos)} parte(s) del archivo.", doc_id, lote, 10)
             else:
-                nombre_orig = a.documento(d["padre_id"])["nombre_recibido"] if d["padre_id"] else d["nombre_recibido"]
-                orig_destino = libre(orig_dir / nombre_orig)
-                shutil.move(d["ruta_original"], orig_destino)
+                fuentes = a.documentos("unido_en = ?", (doc_id,))
+                if fuentes:       # PDF unido a partir de fotos: los originales son las fotos; el PDF unido era de trabajo
+                    for fu in fuentes:
+                        dest_fu = libre(orig_dir / fu["nombre_recibido"])
+                        shutil.move(fu["ruta_original"], dest_fu)
+                        a.actualizar(fu["id"], ruta_original_final=str(dest_fu))
+                    Path(d["ruta_original"]).unlink(missing_ok=True)
+                    orig_destino = orig_dir
+                else:
+                    nombre_orig = a.documento(d["padre_id"])["nombre_recibido"] if d["padre_id"] else d["nombre_recibido"]
+                    orig_destino = libre(orig_dir / nombre_orig)
+                    shutil.move(d["ruta_original"], orig_destino)
                 if d["padre_id"]:
                     for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
                         a.actualizar(h["id"], ruta_original_final=str(orig_destino))

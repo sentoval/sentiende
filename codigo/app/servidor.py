@@ -22,12 +22,16 @@ class App:
         self.motor = Motor(raiz, carpeta_variante)
         self.trabajando = False
         self._cola = []
+        self._grupos = {}
         self._hilo = None
 
     # ---------------- trabajo en segundo plano
-    def encolar(self, rutas, origen):
+    def encolar(self, rutas, origen, grupo=None):
+        """grupo: los archivos soltados a la vez llegan uno a uno pero van al mismo lote."""
         with CERROJO:
-            lote, ids = self.motor.recibir(rutas, origen)
+            lote, ids = self.motor.recibir(rutas, origen, self._grupos.get(grupo) if grupo else None)
+            if grupo:
+                self._grupos[grupo] = lote
         self._cola.append(lote)
         self._arrancar()
         return lote, ids
@@ -130,7 +134,7 @@ class App:
         ruta.write_text("\n".join(lineas), encoding="utf-8-sig")
         return str(ruta)
 
-    def vista(self, did, pos):
+    def vista(self, did, pos, grande=False):
         """Imagen de una página para el visor (PNG)."""
         from PIL import Image
         d = self.motor.almacen.documento(did)
@@ -148,14 +152,14 @@ class App:
                 pagina = n
             if ruta.suffix.lower() == ".pdf":
                 from sentiende.lectura import imagen_pdf
-                img = imagen_pdf(ruta, pagina, dpi=90)
+                img = imagen_pdf(ruta, pagina, dpi=200 if grande else 90)
             else:
                 from PIL import ImageOps
                 img = ImageOps.exif_transpose(Image.open(ruta))
                 if rot.get("rotacion") and not final:
                     img = img.rotate(-rot["rotacion"], expand=True)
         img = img.convert("RGB")
-        img.thumbnail((1100, 1500))
+        img.thumbnail((2600, 3600) if grande else (1100, 1500))
         buf = io.BytesIO(); img.save(buf, "PNG"); return buf.getvalue()
 
 def crear_manejador(app):
@@ -199,13 +203,15 @@ def crear_manejador(app):
                     if p == "/api/estado": return self._json(app.estado())
                     if p == "/api/expedientes": return self._json(app.expedientes())
                     if p == "/api/temporales": return self._json(app.motor.temporales())
+                    if p == "/api/finalidades": return self._json(app.motor.finalidades())
+                    if p == "/api/propuestas_union": return self._json(app.motor.propuestas_union())
                     if p == "/api/avisos":
                         a = app.motor.almacen
                         return self._json({"cliente": a.avisos_cliente(), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:]})
                     if m := re.fullmatch(r"/api/documento/(\d+)", p): return self._json(app.documento(int(m.group(1))))
                     if m := re.fullmatch(r"/api/checklist/(\d+)", p): return self._json(checklist.evaluar(app.motor.variante, app.motor.almacen, int(m.group(1))))
                     if m := re.fullmatch(r"/api/vista/(\d+)/(\d+)", p):
-                        b = app.vista(int(m.group(1)), int(m.group(2)))
+                        b = app.vista(int(m.group(1)), int(m.group(2)), "grande=1" in (urlparse(self.path).query or ""))
                         self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(b)))
                         self.end_headers(); self.wfile.write(b); return
                 self._json({"error": "No existe"}, 404)
@@ -220,7 +226,7 @@ def crear_manejador(app):
                     origen = self.headers.get("X-Origen", "arrastrados")
                     destino = libre(app.motor.carpetas.entrada / nombre)
                     destino.write_bytes(self._cuerpo())
-                    lote, ids = app.encolar([destino], origen)
+                    lote, ids = app.encolar([destino], origen, self.headers.get("X-Grupo"))
                     return self._json({"lote": lote, "documentos": ids})
                 datos = json.loads(self._cuerpo() or b"{}")
                 with CERROJO:
@@ -236,6 +242,8 @@ def crear_manejador(app):
                         eid = m.crear_expediente(pid, datos["finalidad"])
                         return self._json({"expediente": eid, "persona": pid, "carpeta": m.almacen.expediente(eid)["carpeta"]})
                     if p == "/api/emparejar":
+                        if datos.get("otros"):
+                            m.vincular_personas(int(datos["expediente"]), datos["otros"], int(datos["documento"]))
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
                                         datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
                         return self._json(d)
@@ -245,6 +253,13 @@ def crear_manejador(app):
                         q = datos.get("que")
                         n = m.vaciar_textos() if q == "textos" else m.vaciar_trabajo(todo=q == "trabajo-todo")
                         return self._json({"vaciado": n})
+                    if p == "/api/unir":
+                        nuevo = m.unir(datos["documentos"]); app._arrancar()
+                        return self._json({"documento": nuevo})
+                    if p == "/api/finalidad":
+                        if datos.get("quitar"):
+                            m.quitar_finalidad(datos["quitar"]); return self._json({"ok": True})
+                        return self._json({"id": m.guardar_finalidad(datos.get("nombre"), datos.get("documentos"), datos.get("id"))})
                     if p == "/api/exportar_textos":
                         return self._json({"ruta": app.exportar_textos()})
                     if p == "/api/textos":

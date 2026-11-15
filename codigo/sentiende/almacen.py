@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS documentos(
   datos TEXT, rotaciones TEXT, ruta_trabajo TEXT,
   expediente_id INTEGER, persona_id INTEGER, de_expediente INTEGER DEFAULT 0, privado INTEGER DEFAULT 0,
   nombre_final TEXT, ruta_final TEXT, ruta_original_final TEXT, duplicado_de INTEGER,
-  padre_id INTEGER, paginas_sel TEXT,
+  padre_id INTEGER, paginas_sel TEXT, unido_en INTEGER,
   creado TEXT, actualizado TEXT);
 CREATE INDEX IF NOT EXISTS idx_doc_huella ON documentos(huella);
 CREATE TABLE IF NOT EXISTS textos(
@@ -53,7 +53,7 @@ class Almacen:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(ESQUEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(documentos)")}
-        for c in ("padre_id INTEGER", "paginas_sel TEXT"):      # bases de datos de versiones anteriores
+        for c in ("padre_id INTEGER", "paginas_sel TEXT", "unido_en INTEGER"):      # bases de datos de versiones anteriores
             if c.split()[0] not in cols:
                 self.db.execute(f"ALTER TABLE documentos ADD COLUMN {c}")
         self.db.execute("PRAGMA foreign_keys = ON")

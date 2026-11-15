@@ -47,7 +47,7 @@ function aviso(txt, mal = false) {
 const pill = (t, c = "todo") => `<span class="pill p-${c}">${esc(t)}</span>`;
 const nombreTipo = id => (S.info.tipos.find(t => t.id === id) || {}).nombre || id || "—";
 const ESTADOS = { en_proceso: ["Trabajando", "acc"], espera_emparejar: ["Para revisar", "warn"], parado: ["Parado", "bad"], guardado: ["Guardado", "ok"],
-  limbo: ["En el Limbo", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
+  limbo: ["En el Limbo", "todo"], unido: ["Unido a otro", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
 const est = e => pill(...(ESTADOS[e] || [e, "todo"]));
 function fbar(fase, estado) {
   const n = estado === "guardado" || estado === "limbo" ? 10 : fase;
@@ -119,8 +119,9 @@ function activarBandeja() {
 async function subir(archivos, origen) {
   if (!archivos.length) return;
   aviso(`Recibiendo ${archivos.length} archivo(s)…`);
+  const grupo = Date.now() + "-" + Math.random().toString(36).slice(2);   // lo soltado a la vez va al mismo lote
   for (const f of archivos) {
-    try { await api("subir", f, { headers: { "X-Nombre": encodeURIComponent(f.name || "pegado.png"), "X-Origen": origen } }); }
+    try { await api("subir", f, { headers: { "X-Nombre": encodeURIComponent(f.name || "pegado.png"), "X-Origen": origen, "X-Grupo": grupo } }); }
     catch (e) { aviso(`${f.name}: ${e.message}`, true); }
   }
   await refrescar(true);
@@ -233,11 +234,18 @@ function vistaRevision() {
       <details style="padding:0 14px 14px"><summary class="muted" style="cursor:pointer;padding:10px 0">Ver el texto leído de esta página</summary><div class="campo"><textarea readonly>${esc(d.texto_paginas[S.pag - 1] || "")}</textarea></div></details>
     </section>
     <section class="tarjeta" aria-label="Revisar">
+      ${(() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union"><b>${pr.documentos.length} fotos parecen el mismo documento (${esc(nombreTipo(pr.tipo))})</b>
+        <span class="sub">Llegaron juntas. Puedes unirlas en un solo PDF, en el orden que elijas.</span><a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">Ver y unir</a></div>` : ""; })()}
       <div><h2>Revisar</h2><span class="sub">${d.motivo ? esc(d.motivo) : "Clasificado con " + Math.round((d.confianza || 0) * 100) + " %"}</span></div>
       <div class="campo"><label for="r-tipo">1 · Tipo de documento</label><select id="r-tipo">${R.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
         ${(d.alternativas || []).length ? `<span class="chips">${d.alternativas.map(a => `<button type="button" class="chip peq" data-tipo="${a.tipo}">${esc(nombreTipo(a.tipo))}</button>`).join("")}</span>` : ""}</div>
       <div class="campo"><span class="lab">2 · ¿De quién es?</span>
         ${leidas.length ? `<span class="chips">${chipsPersona}</span><span class="sub">${leidas.length > 1 ? "Ha leído varios nombres: pulsa el del titular." : "Si no es correcto, cámbialo abajo en «Expediente nuevo»."}</span>` : '<span class="sub">No ha encontrado ningún nombre: escríbelo abajo en «Expediente nuevo».</span>'}
+        ${leidas.length > 1 ? `<div class="otros"><span class="lab">Hay más personas en el documento. ¿Qué es cada una?</span>
+          ${leidas.map((p, i) => i === R.persona ? "" : `<div class="otro"><span><b>${esc(p.completo)}</b>${p.dni ? ` <span class="mono muted">${esc(p.dni)}</span>` : ""}</span>
+            <span class="seg">${[["cotitular", "Cotitular de este expediente"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
+              .map(([k, n]) => `<button type="button" class="${(R.otros || {})[i] === k ? "sel" : ""}" data-otro="${i}" data-acc="${k}">${n}</button>`).join("")}</span></div>`).join("")}
+          <button type="button" class="btn peq" id="todos-terceros">Todos los demás: tercero</button></div>` : ""}
         ${dnisSueltos.length ? `<span class="chips">${dnisSueltos.map(x => `<button type="button" class="chip peq ${N.dni === x ? "sel" : ""}" data-dni="${x}">DNI ${x}</button>`).join("")}</span>` : ""}</div>
       ${clave ? `<div class="campo"><span class="lab">3 · ${FECHA_TXT[clave][0]}</span>
         ${chipsFecha ? `<span class="chips">${chipsFecha}</span>` : '<span class="sub">No ha encontrado ninguna fecha.</span>'}
@@ -254,7 +262,7 @@ function vistaRevision() {
       </div>
       <label class="check"><input type="checkbox" id="r-comun"><span><b>Es de todo el expediente</b><br><span class="sub">Arras, tasación, nota simple… Se nombra con el código del primer titular.</span></span></label>
       <label class="check"><input type="checkbox" id="r-priv"><span><b>No compartir</b><br><span class="sub">Añade PRIVADO_NO_COMPARTIR_ y lo deja fuera de los envíos.</span></span></label>
-      <div class="acciones"><button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button><button class="btn" id="r-limbo">${ico("limbo")}Al Limbo</button></div>
+      <div class="acciones"><button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button><button class="btn" id="r-limbo">${ico("limbo")}Al Limbo</button><a class="btn" href="#unir/${d.id}">Unir con otros…</a></div>
     </section>
   </div>`;
 }
@@ -279,10 +287,12 @@ function activarRevision() {
   document.querySelectorAll("[data-tipo]").forEach(b => b.addEventListener("click", () => { S.rev.tipo = b.dataset.tipo; S.rev.fecha = null; pintar(); }));
   document.querySelectorAll("[data-persona]").forEach(b => b.addEventListener("click", () => {
     const p = S.doc.datos.personas[+b.dataset.persona];
-    S.rev.persona = +b.dataset.persona;
+    S.rev.persona = +b.dataset.persona; if (S.rev.otros) delete S.rev.otros[b.dataset.persona];
     S.rev.nuevo = { nombre: p.nombre || "", ap1: p.apellido1 || "", ap2: p.apellido2 || "", dni: p.dni || S.rev.nuevo.dni };
     pintar(); if (!document.querySelector('input[name="destino"][value^="e:"]')) marcarDestinoNuevo();
   }));
+  document.querySelectorAll("[data-otro]").forEach(b => b.addEventListener("click", () => { S.rev.otros = { ...(S.rev.otros || {}), [b.dataset.otro]: b.dataset.acc }; pintar(); }));
+  $("#todos-terceros")?.addEventListener("click", () => { S.rev.otros = {}; (S.doc.datos.personas || []).forEach((p, i) => { if (i !== S.rev.persona) S.rev.otros[i] = "tercero"; }); pintar(); });
   document.querySelectorAll("[data-dni]").forEach(b => b.addEventListener("click", () => { S.rev.nuevo.dni = b.dataset.dni; pintar(); }));
   document.querySelectorAll("[data-fecha]").forEach(b => b.addEventListener("click", () => { S.rev.fecha = b.dataset.fecha; pintar(); }));
   $("#r-fecha")?.addEventListener("change", e => { if (e.target.value) { S.rev.fecha = e.target.value; pintar(); } });
@@ -301,6 +311,10 @@ async function confirmar() {
   if (!tipo) return aviso("Elige el tipo de documento.", true);
   const dest = (document.querySelector('input[name="destino"]:checked') || {}).value;
   if (!dest) return aviso("Elige a qué expediente va.", true);
+  const leidas = (S.doc.datos || {}).personas || [];
+  const otros = leidas.map((p, i) => ({ i, p })).filter(x => x.i !== R.persona && leidas.length > 1);
+  if (otros.some(x => !(R.otros || {})[x.i])) return aviso("Hay más personas en el documento: indica qué es cada una.", true);
+  const otrosEnvio = otros.map(x => ({ persona: { nombre: x.p.nombre, apellido1: x.p.apellido1, apellido2: x.p.apellido2, dni: x.p.dni }, accion: R.otros[x.i] }));
   let expediente, persona = null;
   try {
     if (dest === "nuevo") {
@@ -310,7 +324,7 @@ async function confirmar() {
       expediente = r.expediente; persona = r.persona; aviso("Expediente creado: " + r.carpeta);
     } else if (dest === "otro") expediente = +$("#r-otro").value;
     else { const [, e, p] = dest.split(":"); expediente = +e; persona = +p; }
-    const g = await api("emparejar", { documento: S.docId, expediente, persona, comun: $("#r-comun").checked, tipo, privado: $("#r-priv").checked, fecha: R.fecha });
+    const g = await api("emparejar", { documento: S.docId, expediente, persona, comun: $("#r-comun").checked, tipo, privado: $("#r-priv").checked, fecha: R.fecha, otros: otrosEnvio });
     aviso("Guardado: " + g.nombre_final);
     siguiente();
   } catch (e) { aviso(e.message, true); }
@@ -321,6 +335,53 @@ async function siguiente() {
   const cola = colaRevision();
   location.hash = cola.length ? "revision/" + cola[0].id : "revision";
   if (cola.length && S.docId === cola[0].id) cargarDoc(cola[0].id);
+}
+
+// ------------------------------------------------------------------ Unir varias fotos en un PDF
+let UNIR = [];
+function vistaUnir() {
+  const cola = colaRevision().filter(x => x.estado === "espera_emparejar");
+  const porId = Object.fromEntries(cola.map(x => [x.id, x]));
+  UNIR = UNIR.filter(id => porId[id]);
+  const resto = cola.filter(x => !UNIR.includes(x.id));
+  const tarjeta = (x, i) => `<figure class="pag">
+      <button type="button" class="miniatura" data-zoom="${x.id}" aria-label="Ver ${esc(x.archivo)} en grande"><img src="/api/vista/${x.id}/1" alt="" loading="lazy"></button>
+      <figcaption><b>${i + 1}.</b> ${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo))}</span></figcaption>
+      <span class="acciones"><button class="btn peq" data-mover="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Antes">${ico("left", 14)}</button>
+      <button class="btn peq" data-mover="${i}" data-dir="1" ${i === UNIR.length - 1 ? "disabled" : ""} aria-label="Después">${ico("right", 14)}</button>
+      <button class="btn peq" data-sacar="${x.id}" aria-label="Quitar">${ico("x", 14)}</button></span></figure>`;
+  return `<div class="cab"><div><small><a href="#revision">Centro de revisión</a> › Unir</small><h1>Unir en un solo PDF</h1>
+    <div class="sub">Ordena las páginas, pulsa una para verla en grande con zoom y une. Las fotos originales se guardan en Doc_original al terminar.</div></div>
+    <div class="acciones"><a class="btn" href="#revision">Cancelar</a><button class="btn pri" id="unir-ok" ${UNIR.length < 2 ? "disabled" : ""}>${ico("check")}Unir en un PDF (${UNIR.length} páginas)</button></div></div>
+  <section class="tarjeta"><h2>Páginas del documento, en orden</h2><div class="pags">${UNIR.map((id, i) => tarjeta(porId[id], i)).join("") || '<span class="sub">Añade abajo las fotos que forman el documento.</span>'}</div></section>
+  ${resto.length ? `<section class="tarjeta"><h2>Otros documentos pendientes</h2><div class="pags">${resto.map(x => `<figure class="pag otro-doc">
+      <button type="button" class="miniatura" data-zoom="${x.id}" aria-label="Ver ${esc(x.archivo)} en grande"><img src="/api/vista/${x.id}/1" alt="" loading="lazy"></button>
+      <figcaption>${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo))}</span></figcaption>
+      <button class="btn peq" data-meter="${x.id}">Añadir al final</button></figure>`).join("")}</div></section>` : ""}
+  <div id="zoom" class="zoom" hidden><div class="zoom-barra"><button class="btn peq" id="z-menos" aria-label="Alejar">−</button><span id="z-nivel">100 %</span>
+    <button class="btn peq" id="z-mas" aria-label="Acercar">+</button><button class="btn peq" id="z-ajustar">Ajustar</button><button class="btn peq" id="z-cerrar">${ico("x", 14)} Cerrar</button></div>
+    <div class="zoom-lienzo" id="z-lienzo"><img id="z-img" alt="Vista ampliada"></div></div>`;
+}
+function activarUnir() {
+  document.querySelectorAll("[data-mover]").forEach(b => b.addEventListener("click", () => {
+    const i = +b.dataset.mover, j = i + +b.dataset.dir; [UNIR[i], UNIR[j]] = [UNIR[j], UNIR[i]]; pintar();
+  }));
+  document.querySelectorAll("[data-sacar]").forEach(b => b.addEventListener("click", () => { UNIR = UNIR.filter(x => x !== +b.dataset.sacar); pintar(); }));
+  document.querySelectorAll("[data-meter]").forEach(b => b.addEventListener("click", () => { UNIR.push(+b.dataset.meter); pintar(); }));
+  let z = 1;
+  const img = $("#z-img"), caja = $("#zoom");
+  const poner = n => { z = Math.min(6, Math.max(0.25, n)); img.style.width = (z * 100) + "%"; $("#z-nivel").textContent = Math.round(z * 100) + " %"; };
+  document.querySelectorAll("[data-zoom]").forEach(b => b.addEventListener("click", () => { img.src = `/api/vista/${b.dataset.zoom}/1?grande=1`; caja.hidden = false; poner(1); }));
+  $("#z-mas").addEventListener("click", () => poner(z * 1.25));
+  $("#z-menos").addEventListener("click", () => poner(z / 1.25));
+  $("#z-ajustar").addEventListener("click", () => poner(1));
+  $("#z-cerrar").addEventListener("click", () => (caja.hidden = true));
+  $("#z-lienzo").addEventListener("wheel", e => { e.preventDefault(); poner(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") caja.hidden = true; }, { once: true });
+  $("#unir-ok")?.addEventListener("click", async () => {
+    try { const r = await api("unir", { documentos: UNIR }); aviso("Unido en un PDF: se está leyendo"); UNIR = []; await refrescar(false); location.hash = "revision/" + r.documento; }
+    catch (e) { aviso(e.message, true); }
+  });
 }
 
 // ------------------------------------------------------------------ Expedientes
@@ -343,7 +404,7 @@ function vistaExpediente() {
     <div class="acciones"><button class="btn" id="rehacer">${ico("play")}Rehacer archivo de texto</button></div></div>
   <section class="tarjeta sinp"><div class="tcab"><h2>Checklist · ${ck.recibidos} de ${ck.total}</h2></div>
     <table class="tabla"><thead><tr><th>Documento</th><th>De</th><th>Estado</th><th>Detalle</th><th>Archivo</th></tr></thead><tbody>
-    ${ck.filas.map(f => `<tr><td>${esc(f.documento)}</td><td>${esc(f.quien)}</td><td>${pill(f.estado, c[f.estado] || "todo")}</td><td>${esc(f.detalle)}</td><td class="mono">${esc(f.archivos.join(", "))}</td></tr>`).join("")}
+    ${ck.filas.map(f => `<tr><td>${esc(f.documento)}${f.importancia === "imprescindible" ? ' <span class="pill p-acc">Imprescindible</span>' : ""}</td><td>${esc(f.quien)}</td><td>${pill(f.estado, c[f.estado] || "todo")}</td><td>${esc(f.detalle)}</td><td class="mono">${esc(f.archivos.join(", "))}</td></tr>`).join("")}
     </tbody></table></section>
   ${ck.avisos_cliente.length ? `<section class="tarjeta"><h2>Avisos al cliente</h2>${ck.avisos_cliente.map(a => `<div class="dato"><span>${esc(a)}</span></div>`).join("")}</section>` : ""}`;
 }
@@ -378,13 +439,58 @@ function vistaAjustes() {
     <div class="dato"><span>Memoria de textos reconocidos</span><span>${TMP.textos_paginas} páginas · ${mb(TMP.textos_bytes)}</span></div>` : "Cargando…"}
     <div class="acciones"><button class="btn pri" data-vaciar="trabajo">Vaciar lo que no se usa</button><button class="btn peligro" data-vaciar="trabajo-todo">Vaciar toda la copia de trabajo…</button><button class="btn" data-vaciar="textos">Vaciar la memoria de textos…</button></div>
     <span class="sub">Toda la copia de trabajo: lo que esté a medias se vuelve a leer desde el principio. Memoria de textos: los archivos de texto de los expedientes se conservan.</span></section>
+  ${tarjetaFinalidades()}
   <section class="tarjeta"><h2>Mejorar el reconocimiento</h2>
     <span class="sub">Guarda en un archivo de texto lo que el programa ha leído de cada documento y lo que ha deducido (DNI, nombres, fechas). Lleva datos personales: compártelo solo con quien vaya a ajustar el reconocimiento.</span>
     <div class="acciones"><button class="btn" id="exportar">Exportar los textos leídos</button></div></section>
   <section class="tarjeta"><h2>Versiones</h2><div class="dato"><span>Motor Sentiende</span><span>${esc(S.info.motor.version)} · contrato ${S.info.motor.contrato}.x</span></div>
     <div class="dato"><span>Variante</span><span>${esc(S.info.variante.nombre)} ${esc(S.info.variante.version)}</span></div></section>`;
 }
+let FIN = null, FIN_ABIERTA = null;
+function tarjetaFinalidades() {
+  if (!FIN) return '<section class="tarjeta"><h2>Finalidades de los expedientes</h2><span class="sub">Cargando…</span></section>';
+  const opTipos = sel => S.info.tipos.map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.nombre)}</option>`).join("");
+  return `<section class="tarjeta"><div><h2>Finalidades de los expedientes</h2><span class="sub">Las que se eligen al crear un expediente, con los documentos que pide cada una. Son tuyas: las actualizaciones no las cambian.</span></div>
+    ${FIN.map(f => `<div class="fin-ed ${FIN_ABIERTA === f.id ? "abierta" : ""}">
+      <button type="button" class="fin-cab" data-abrir="${f.id}"><b>${esc(f.nombre)}</b><span class="sub">${f.documentos.length} documento(s) · ${f.documentos.filter(d => d.importancia === "imprescindible").length} imprescindible(s) · ${f.expedientes} expediente(s)</span></button>
+      ${FIN_ABIERTA === f.id ? `<div class="fin-cuerpo">
+        <div class="campo"><label for="fn-${f.id}">Nombre</label><input id="fn-${f.id}" value="${esc(f.nombre)}"></div>
+        <table class="tabla"><thead><tr><th>Documento</th><th>De</th><th>Imprescindible</th><th></th></tr></thead><tbody>
+        ${f.documentos.map((d, i) => `<tr><td><select data-ed="${i}" data-campo="tipo">${opTipos(d.tipo)}</select></td>
+          <td><select data-ed="${i}" data-campo="por"><option value="titular" ${d.por === "titular" ? "selected" : ""}>Cada titular</option><option value="expediente" ${d.por === "expediente" ? "selected" : ""}>Todo el expediente</option></select></td>
+          <td><input type="checkbox" data-ed="${i}" data-campo="importancia" ${d.importancia === "imprescindible" ? "checked" : ""} aria-label="Imprescindible"></td>
+          <td><button type="button" class="btn peq" data-quitar-doc="${i}" aria-label="Quitar">${ico("x", 14)}</button></td></tr>`).join("") || '<tr><td colspan="4" class="muted">Sin documentos todavía: añade los que pide esta finalidad.</td></tr>'}
+        </tbody></table>
+        <div class="acciones"><button type="button" class="btn" id="fin-add">Añadir documento</button><button type="button" class="btn pri" id="fin-guardar">Guardar</button>
+          <button type="button" class="btn peligro" id="fin-quitar" ${f.expedientes ? `disabled title="La usan ${f.expedientes} expediente(s)"` : ""}>Quitar finalidad</button></div>
+      </div>` : ""}</div>`).join("")}
+    <div class="fila" style="align-items:flex-end"><div class="campo" style="flex:1 1 240px"><label for="fin-nueva">Nueva finalidad</label><input id="fin-nueva" placeholder="Por ejemplo: Reunificación de deudas"></div>
+      <button type="button" class="btn" id="fin-crear" style="flex:0 0 auto">Añadir finalidad</button></div>
+    <span class="sub">Una finalidad nueva empieza sin documentos. Solo se puede quitar si ningún expediente la usa.</span></section>`;
+}
+function activarFinalidades() {
+  const f = (FIN || []).find(x => x.id === FIN_ABIERTA);
+  document.querySelectorAll("[data-abrir]").forEach(b => b.addEventListener("click", () => { FIN_ABIERTA = FIN_ABIERTA === b.dataset.abrir ? null : b.dataset.abrir; pintar(); }));
+  document.querySelectorAll("[data-ed]").forEach(el => el.addEventListener("change", () => {
+    const d = f.documentos[+el.dataset.ed];
+    if (el.dataset.campo === "importancia") d.importancia = el.checked ? "imprescindible" : "recomendable"; else d[el.dataset.campo] = el.value;
+  }));
+  document.querySelectorAll("[data-quitar-doc]").forEach(b => b.addEventListener("click", () => { f.documentos.splice(+b.dataset.quitarDoc, 1); pintar(); }));
+  $("#fin-add")?.addEventListener("click", () => { f.documentos.push({ tipo: S.info.tipos[0].id, por: "titular", importancia: "imprescindible", condicion: {} }); pintar(); });
+  $("#fin-guardar")?.addEventListener("click", async () => {
+    try { await api("finalidad", { id: f.id, nombre: $("#fn-" + f.id).value, documentos: f.documentos }); aviso("Finalidad guardada"); await recargarFinalidades(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#fin-quitar")?.addEventListener("click", async () => {
+    if (!confirm(`¿Quitar la finalidad «${f.nombre}»?`)) return;
+    try { await api("finalidad", { quitar: f.id }); FIN_ABIERTA = null; aviso("Finalidad quitada"); await recargarFinalidades(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#fin-crear")?.addEventListener("click", async () => {
+    try { const r = await api("finalidad", { nombre: $("#fin-nueva").value }); FIN_ABIERTA = r.id; aviso("Finalidad creada: añade sus documentos"); await recargarFinalidades(); } catch (e) { aviso(e.message, true); }
+  });
+}
+async function recargarFinalidades() { [FIN, S.info] = await Promise.all([api("finalidades"), api("info")]); pintar(); }
 function activarAjustes() {
+  activarFinalidades();
   $("#exportar")?.addEventListener("click", async () => { try { const r = await api("exportar_textos", {}); aviso("Guardado en " + r.ruta); } catch (e) { aviso(e.message, true); } });
   document.querySelectorAll("[data-vaciar]").forEach(b => b.addEventListener("click", async () => {
     const q = b.dataset.vaciar;
@@ -400,7 +506,7 @@ function pintar() {
   const vistas = { bandeja: [vistaBandeja, activarBandeja], motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, () => document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", () => (location.hash = "expediente/" + tr.dataset.exp)))],
     expediente: [vistaExpediente, () => $("#rehacer")?.addEventListener("click", async () => { await api("textos", { expediente: +id }); aviso("Archivo de texto rehecho"); })],
-    avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, () => {}], ajustes: [vistaAjustes, activarAjustes] };
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisos, () => {}], limbo: [vistaLimbo, () => {}], ajustes: [vistaAjustes, activarAjustes] };
   const [v, act] = vistas[r] || vistas.bandeja;
   const y = $("#vista").scrollTop;
   $("#vista").innerHTML = v();
@@ -418,8 +524,10 @@ async function ir() {
     else { S.doc = null; S.docId = null; }
   }
   if (r === "expediente") return cargarExpediente(+id);
+  if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
+  if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
   if (r === "avisos") AV = await api("avisos");
-  if (r === "ajustes") TMP = await api("temporales");
+  if (r === "ajustes") [TMP, FIN] = await Promise.all([api("temporales"), api("finalidades")]);
   pintar();
 }
 async function refrescar(repintar) {

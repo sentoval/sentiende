@@ -65,8 +65,8 @@ def fechas(texto):
         f = _fecha(*m.groups())
         if f:
             out.append((m.start(), f))
-    low = texto.lower()
-    nombres = {n: i + 1 for i, n in enumerate(MESES)} | MESES_OTROS
+    low = norm(texto).lower()
+    nombres = {norm(n).lower(): i + 1 for i, n in enumerate(MESES)} | {norm(k).lower(): v for k, v in MESES_OTROS.items()}
     pat = r"\b(\d{1,2})\s+(?:de\s+|d[e']\s*)?(" + "|".join(sorted(nombres, key=len, reverse=True)) + r")\s+(?:de\s+|del\s+)?(\d{4})\b"
     for m in re.finditer(pat, low):
         f = _fecha(m.group(1), nombres[m.group(2)], m.group(3))
@@ -81,6 +81,9 @@ def importes(texto):
         vals.append(float(m.group(1).replace(".", "").replace(",", ".")))
     return vals
 
+MES_NUM = {norm(n): i + 1 for i, n in enumerate(MESES)} | {norm(k): v for k, v in MESES_OTROS.items()}
+MES_RE = "|".join(sorted(MES_NUM, key=len, reverse=True))
+
 def periodo(texto):
     """Mes al que corresponde (nóminas, extractos, CIRBE): devuelve date(año, mes, 1) o None."""
     t = norm(texto)
@@ -92,6 +95,10 @@ def periodo(texto):
         f = _fecha(*(m.group(5, 6, 7) if m.group(5) else m.group(2, 3, 4)))
         if f:
             return f.replace(day=1)
+    # «del 01 de agosto al 31 de agosto de 2026» / «del 01 d'agost al 31 d'agost de 2026»
+    m = re.search(r"(?:PERIODO|PERIODE|LIQUIDACION|LIQUIDACIO)[^\n]{0,40}?\bDEL?\s+\d{1,2}\s+D(?:E\s+|')(" + MES_RE + r")\b[^\n]{0,20}?\bAL?\s+\d{1,2}\s+D(?:E\s+|')(" + MES_RE + r")\b\s+(?:DE\s+|DEL\s+)?(\d{4})", t)
+    if m:
+        return datetime.date(int(m.group(3)), MES_NUM[m.group(2)], 1)
     meses_up = [norm(x) for x in MESES]
     m = re.search(r"(PERIODO|MES|NOMINA|NOMINA DE|MENSUALIDAD)[^\n]{0,25}?\b(" + "|".join(meses_up) + r")\b[^\n\d]{0,6}(\d{4})", t)
     if m:
@@ -114,13 +121,19 @@ def caducidad(texto):
     return None
 
 def emision(texto, todas):
-    """Fecha de emisión o del documento: la que va junto a su etiqueta; si no hay etiqueta, la más
-    reciente que no sea futura (las de nacimiento, alta o antigüedad suelen ser antiguas)."""
+    """Fecha de emisión o del documento: la que va junto a su etiqueta (castellano o valenciano) o junto
+    a la ciudad al pie («València, 11/09/2026»); si no hay, la más reciente que no sea futura (las de
+    nacimiento, alta o antigüedad suelen ser antiguas)."""
     t = norm(texto)
-    m = re.search(r"(FECHA DE EMISION|FECHA EMISION|FECHA DE EXPEDICION|EXPEDIDO|EXPEDICION|EMITIDO|EMISION|FECHA DEL DOCUMENTO|"
-                  r"FECHA DE EXPEDICIO|DATA D.EMISSIO|A FECHA DE|[A-Z]+, A)\s*:?[^\n\d]{0,12}(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})", t)
-    if m and (f := _fecha(*m.group(2, 3, 4))):
-        return f
+    etiquetas = (r"FECHA DE EMISION|FECHA EMISION|FECHA DE EXPEDICION|EXPEDIDO EL|EXPEDIDO|EXPEDICION|EMITIDO EL|EMISION|FECHA DEL DOCUMENTO|"
+                 r"DATA D.EMISSIO|DATA D.EXPEDICIO|EXPEDIT|EMES EL|AL DIA|A FECHA DE|EN FECHA|PRESENTACION REALIZADA EL|FECHA DE PRESENTACION|"
+                 r"DATA DE PRESENTACIO|FECHA DE FIRMA|FIRMADO EL|SIGNAT EL|FECHA DE CERTIFICACION")
+    for m in re.finditer(r"(?:" + etiquetas + r")\s*:?\s*([^\n]{0,40})", t):
+        if (f := fechas(m.group(1))):
+            return f[0]
+    m = re.search(r"(?m)^\s*(?:EN\s+)?[A-Z][A-Z' ]{2,30},\s*(?:A\s+)?(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}\s+DE?\s*'?\s*[A-Z]+\s+(?:DE\s+|DEL\s+)?\d{4})", t)
+    if m and (f := fechas(m.group(1))):
+        return f[0]
     hoy = datetime.date.today()
     validas = [f for f in todas if f <= hoy]
     return max(validas) if validas else None
@@ -172,16 +185,51 @@ def extraer(texto, base=None):
     return d
 
 # ------------------------------------------------------------------ personas (nombre y apellidos)
+# Cómo se buscan (castellano y valenciano):
+#  1. Etiquetas: «Nombre y apellidos / Nom i cognoms», «Apellidos y nombre / Cognoms i nom», «Trabajador»,
+#     «Declarante», «Titular», «D./Dña., D/Dª»… con el valor en la misma línea, en el cuadro de al lado o debajo.
+#  2. «APELLIDOS, NOMBRE» en cualquier cuadro (nóminas).
+#  3. Junto a un DNI válido, aunque no haya etiqueta.
+# Cada candidato se valida con listas de nombres y apellidos frecuentes (y los de las personas ya
+# confirmadas en el programa): así no se cuelan «Representante legal», calles ni empresas.
+from pathlib import Path as _Path
+
 PARTICULAS = {"DE", "DEL", "LA", "LAS", "LOS", "Y", "I", "DA", "DAS", "DO", "DOS", "SAN", "SANTA"}
-CORTE = r"(?=\s+(?:NIF|N\.I\.F|DNI|D\.N\.I|NIE|N\.A\.F|NAF|SEXO|NACIONALIDAD|FECHA|DOMICILIO|CON\s+DNI|PROVISTO|MAYOR|VECIN|CIF|IBAN|CATEGORIA|GRUPO|ANTIG|NUM)\b|\s*[,;:\n(]|\s{2,}|$)"
-NO_NOMBRE = set("""DNI NIF NIE CIF NAF NUM NUMERO DOCUMENTO NACIONAL IDENTIDAD ESPANA ESPANOLA ESP SEXO NACIONALIDAD FECHA
-NACIMIENTO VALIDO HASTA DOMICILIO CALLE AVDA AVENIDA PLAZA PASEO CTRA CAMINO PISO PUERTA BAJO PROVINCIA MUNICIPIO
-BANCO CAJA RURAL SL SA SLU SAU S.L. S.A. SOCIEDAD LIMITADA ANONIMA EMPRESA TRABAJADOR TRABAJADORA EMPLEADO TITULAR
-TITULARES DECLARANTE CONTRIBUYENTE SOLICITANTE NOMBRE APELLIDOS APELLIDO CON PROVISTO MAYOR EDAD VECINO VECINA
-SEGURIDAD SOCIAL TESORERIA GENERAL AGENCIA TRIBUTARIA INFORME VIDA LABORAL CERTIFICADO NOMINA RECIBO PERIODO
-CUENTA IBAN SWIFT BIC CODIGO POSTAL TELEFONO TEL CORREO EMAIL DATOS PERSONALES CATEGORIA GRUPO ANTIGUEDAD
-REGISTRO PROPIEDAD FINCA NOTA SIMPLE INFORMATIVA HOJA PAGINA DE A EL EN POR PARA""".split())
-NOMBRE_RE = r"([A-Z][A-Z'\-]+(?: [A-Z][A-Z'\-]+){0,5}?)"
+SEP = "¦"            # separa cuadros o columnas de una misma línea (lo pone la lectura de los PDF)
+
+def _lista(nombre):
+    f = _Path(__file__).with_name("datos") / nombre
+    try:
+        return {w for l in f.read_text(encoding="utf-8").splitlines() if not l.startswith("#") for w in l.split()}
+    except OSError:
+        return set()
+
+NOMBRES_PILA = _lista("nombres.txt")
+APELLIDOS = _lista("apellidos.txt")
+_APRENDIDOS = {"nombres": set(), "apellidos": set()}
+
+def aprender_personas(personas):
+    """Añade los nombres y apellidos de las personas ya confirmadas (los da el motor al arrancar)."""
+    for p in personas:
+        _APRENDIDOS["nombres"] |= set(norm(p.get("nombre") or "").split()) - PARTICULAS
+        _APRENDIDOS["apellidos"] |= set(norm(f'{p.get("apellido1") or ""} {p.get("apellido2") or ""}').split()) - PARTICULAS
+
+def es_nombre(w):
+    return w in NOMBRES_PILA or w in _APRENDIDOS["nombres"]
+
+def es_apellido(w):
+    return w in APELLIDOS or w in _APRENDIDOS["apellidos"]
+
+NO_NOMBRE = set("""DNI NIF NIE CIF NAF NUM NUMERO DOCUMENTO NACIONAL IDENTIDAD IDENTIFICATIVO IDENTIFICACION ESPANA ESPANOLA ESP SEXO NACIONALIDAD
+FECHA NACIMIENTO VALIDO HASTA DOMICILIO CALLE AVDA AVENIDA PLAZA PASEO CTRA CAMINO PISO PUERTA BAJO PROVINCIA MUNICIPIO BANCO CAJA RURAL
+SL SA SLU SAU SOCIEDAD LIMITADA ANONIMA EMPRESA TRABAJADOR TRABAJADORA EMPLEADO TITULAR TITULARES DECLARANTE CONTRIBUYENTE SOLICITANTE NOMBRE
+APELLIDOS APELLIDO CON PROVISTO MAYOR EDAD VECINO VECINA SEGURIDAD SOCIAL TESORERIA GENERAL AGENCIA TRIBUTARIA INFORME VIDA LABORAL
+CERTIFICADO NOMINA RECIBO PERIODO CUENTA IBAN SWIFT BIC CODIGO POSTAL TELEFONO TEL CORREO EMAIL DATOS PERSONALES CATEGORIA GRUPO ANTIGUEDAD
+REGISTRO PROPIEDAD FINCA NOTA SIMPLE INFORMATIVA HOJA PAGINA EL EN POR PARA QUE SON SU SUS LO AL UN UNA CONYUGE PROGENITOR HIJO HIJA PRIMER
+SEGUNDO SOLICITUD DEVOLUCION REPRESENTANTE LEGAL ACTIVIDAD ECONOMICA PAGADOR ANUALIDADES ANUALIDAD IMPORTE FIGURAN DURANTE ANO OTRO OTRA
+NOM COGNOMS COGNOM TREBALLADOR TREBALLADORA DECLARANT CARRER PASSEIG PLACA HABITANT DADES IDENTIFICACIO NASCUT NASCUDA DATA ENTITAT SITUACIO
+CL PZ PZA AV CR URB AJUNTAMENT VALENCIA MADRID BARCELONA ALICANTE CASTELLON GENERALITAT NOTARIO NOTARI ANTE MI COMPARECEN INTERVIENEN SENOR SENORA DON DONA PROPIO PROPIA DERECHO DUENO DUENA DUENOS CARACTER CONSTE""".split())
+DIRECCION = r"(?:\bCL\b\.?|\bC/|\bCALLE\b|\bCARRER\b|\bAVDA\b\.?|\bAV\b\.|\bAVENIDA\b|\bPZA\b\.?|\bPLAZA\b|\bPLACA\b|\bPASEO\b|\bPASSEIG\b|\bPG\b\.|\bCTRA\b\.?|\bCAMI\b|\bCAMINO\b|\bPARTIDA\b|\bURB\b\.?)\s*$"
 
 def _agrupar(tokens):
     """Une partículas con la palabra siguiente: DE LA FUENTE -> una sola pieza."""
@@ -199,71 +247,137 @@ def _persona(nombre, apellidos, por, orden_seguro=True):
     return {"nombre": nombre.title(), "apellido1": ap[0].title() if ap else "", "apellido2": " ".join(ap[1:]).title(),
             "completo": f"{nombre} {apellidos}".title(), "por": por, "orden_seguro": orden_seguro}
 
-def _completo(txt, por, apellidos_primero=False):
-    pz = _agrupar(txt.split())
-    if len(pz) < 2:
+def _palabras(txt):
+    return [w for w in re.sub(r"[^A-Z' \-]", " ", txt).split() if w.strip("-'")]
+
+def _partir(tokens, orden, por):
+    """Decide qué es nombre y qué apellidos. orden: 'nombre' (nombre primero), 'apellidos' o None (adivinar)."""
+    tk = [w.strip("-") for w in tokens if w.strip("-")]
+    if len(tk) < 2 or len(tk) > 7 or any(w in NO_NOMBRE for w in tk):
         return None
-    if apellidos_primero:   # MORALES GIL IVAN: dos apellidos y el resto nombre
-        return _persona(" ".join(pz[2:]) or pz[-1], " ".join(pz[:2] if len(pz) > 2 else pz[:1]), por, len(pz) == 3)
-    return _persona(pz[0] if len(pz) <= 3 else " ".join(pz[:-2]), " ".join(pz[1:] if len(pz) <= 3 else pz[-2:]), por, len(pz) == 3)
+    if orden is None:
+        orden = "nombre" if es_nombre(tk[0]) and not es_apellido(tk[0]) else ("apellidos" if es_nombre(tk[-1]) else "nombre")
+    # Nombre compuesto: se alarga mientras sea un nombre de pila y queden al menos dos apellidos
+    # (o la palabra no pueda ser apellido: «Miguel» o «Gil» son las dos cosas).
+    if orden == "nombre":
+        k = 1
+        while k < len(tk) - 1 and es_nombre(tk[k]) and (not es_apellido(tk[k]) or len(tk) - k - 1 >= 2):
+            k += 1
+        nombre, apellidos = tk[:k], tk[k:]
+    else:
+        k = len(tk) - 1
+        while k > 1 and es_nombre(tk[k - 1]) and (not es_apellido(tk[k - 1]) or k - 1 >= 2):
+            k -= 1
+        apellidos, nombre = tk[:k], tk[k:]
+    return _persona(" ".join(nombre), " ".join(apellidos), por, True)
+
+def _valida(p, fuerte):
+    """fuerte: viene de una etiqueta clara. Si no, hace falta un nombre y un apellido conocidos."""
+    if not p:
+        return False
+    nom = set(norm(p["nombre"]).split()) - PARTICULAS
+    ape = set(norm(f'{p["apellido1"]} {p["apellido2"]}').split()) - PARTICULAS
+    if not nom or not ape:
+        return False
+    todas = nom | ape
+    if any(w in NO_NOMBRE or len(w) < 2 for w in todas) or len(todas) > 6:
+        return False
+    desconocidas = [w for w in todas if not es_nombre(w) and not es_apellido(w)]
+    if len(desconocidas) > (2 if fuerte else 1):
+        return False
+    conocido_n = any(es_nombre(w) for w in nom)
+    conocido_a = any(es_apellido(w) for w in ape)
+    return (conocido_n or conocido_a) if fuerte else (conocido_n and conocido_a)
+
+ETIQUETAS = [   # (expresión, orden, fuerza)
+    (r"APELLIDOS Y NOMBRE|APELLIDOS,? NOMBRE|COGNOMS I NOM|COGNOMS,? NOM", "apellidos"),
+    (r"NOMBRE Y APELLIDOS|NOM I COGNOMS|NOMBRE COMPLETO|NOM COMPLET", "nombre"),
+    (r"D\.?\s?/\s?D[NAª]\.?|D\.?\s?/\s?DNA|DONA|DON|D\.|SR\.|SRA\.|EN/NA", "nombre"),
+    (r"TRABAJADOR[A]?|TREBALLADOR[A]?|EMPLEADO|EMPLEADA|PRIMER DECLARANTE|SEGUNDO DECLARANTE|DECLARANTE|DECLARANT|CONYUGE|CONTRIBUYENTE|"
+     r"SOLICITANTE|SOL.LICITANT|INTERESADO|INTERESADA|INTERESSAT|TITULAR(?:ES)?|TITULARIDAD|TITULARITAT|PROPIETARIO|PROPIETARIA|VENDEDOR|VENDEDORA|"
+     r"COMPRADOR|COMPRADORA|ARRENDATARIO|ARRENDADOR|PRESTATARIO|AVALISTA|BENEFICIARIO|BENEFICIARIA", None),
+]
 
 def personas(texto):
-    """Nombres de personas que aparecen como titular, trabajador, declarante… con su DNI si está cerca."""
-    t = norm(texto)
+    """Nombres de personas del documento, validados, con su DNI si está cerca. Los más seguros primero."""
+    t = re.sub(r"([A-Z])-\n([A-Z])", r"\1\2", norm(texto))      # palabras partidas con guion al final de línea
     encontradas = []
-    def add(p, pos):
-        if not p or len(p["completo"]) < 6:
+    def add(p, pos, fuerte):
+        if not _valida(p, fuerte):
             return
-        cerca = t[max(0, pos - 60): pos + 160]
+        cerca = t[max(0, pos - 80): pos + 200]
         dn = [dni_valido(m.group(0)) for m in re.finditer(r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b", cerca)]
         p["dni"] = next((x for x in dn if x), None)
-        clave = frozenset(p["completo"].upper().split())
-        if not any(clave <= frozenset(q["completo"].upper().split()) for q in encontradas):   # ni repetido ni un trozo de otro
-            encontradas.append(p)
-    # Tarjeta del DNI: APELLIDOS ... / NOMBRE ...
-    m = re.search(r"APELLIDOS\s+" + NOMBRE_RE + CORTE + r"[\s\S]{0,80}?\bNOMBRE\s+" + NOMBRE_RE + CORTE, t)
-    if m:
-        add(_persona(m.group(2), m.group(1), "tarjeta DNI"), m.start())
-    # APELLIDOS, NOMBRE (nóminas, certificados)
-    for m in re.finditer(r"(?:TRABAJADOR|TRABAJADORA|EMPLEADO|APELLIDOS Y NOMBRE|NOMBRE Y APELLIDOS|DECLARANTE|TITULAR|CONTRIBUYENTE|SOLICITANTE)\s*:?\s*([A-Z][A-Z' \-]{3,60}?),\s*([A-Z][A-Z' \-]{1,40}?)" + CORTE, t):
-        add(_persona(m.group(2).strip(), m.group(1).strip(), "apellidos, nombre"), m.start())
-    # D./Dña./Don/Doña + nombre completo (orden habitual: nombre y apellidos)
-    for m in re.finditer(r"\b(?:D\.?\s?/\s?DNA\.?|DNA\.?|DONA|DON|D\.|SR\.|SRA\.)\s+" + NOMBRE_RE + CORTE, t):
-        add(_completo(m.group(1), "D./Dña. nombre apellidos"), m.start())
-    # Nota simple, contratos: nombre y apellidos
-    for m in re.finditer(r"(?:TITULARIDAD|PROPIETARIO|PROPIETARIA|VENDEDOR|VENDEDORA|COMPRADOR|COMPRADORA|ARRENDATARIO|ARRENDADOR)\s*:?\s+" + NOMBRE_RE + CORTE, t):
-        add(_completo(m.group(1), "nombre apellidos"), m.start())
-    # Titular de cuenta o declarante sin coma: suele ir apellidos primero
-    for m in re.finditer(r"(?:TITULAR(?:ES)?|DECLARANTE|APELLIDOS Y NOMBRE)\s*:?\s+" + NOMBRE_RE + CORTE, t):
-        if "," not in t[m.end(): m.end() + 2]:
-            add(_completo(m.group(1), "titular (apellidos primero)", apellidos_primero=True), m.start())
-    # Sin etiqueta conocida: el nombre suele estar junto a su DNI (misma línea o la de arriba)
+        clave = frozenset(norm(p["completo"]).split())
+        for q in encontradas:
+            cq = frozenset(norm(q["completo"]).split())
+            if clave <= cq:
+                return
+            if cq < clave:                     # el nuevo es más completo: sustituye
+                encontradas[encontradas.index(q)] = p
+                return
+        encontradas.append(p)
+    def valor(resto):
+        """El nombre que sigue a una etiqueta: hasta el siguiente cuadro, coma de dato o etiqueta."""
+        v = re.split(r"\s*(?:¦|;|\(|\b(?:NIF|N\.I\.F|DNI|D\.N\.I|NIE|N\.A\.F|NAF|SEXO|SEXE|NACIONALIDAD|NACIONALITAT|FECHA|DATA|DOMICILIO|DOMICILI|"
+                     r"CON DNI|AMB DNI|PROVISTO|MAYOR|VECIN|CIF|IBAN|CATEGORIA|GRUPO|ANTIG|NUM|NACIDO|NACIDA|NASCUT|IDENTIFICACIO)\b|\s\d)", resto, maxsplit=1)[0]
+        v = re.split(r"\s+(?:Y|E|I)\s+(?:DON|DONA|D\.|EN|NA)\b", v, maxsplit=1)[0]   # «Don X y Doña Y»: cada uno por su lado
+        return v.strip(" :.-/")
+    # 1. Etiquetas
+    for expr, orden in ETIQUETAS:
+        for m in re.finditer(r"(?<![A-Z])(?:" + expr + r")(?![A-Z])\s*[:¦]?\s*", t):
+            ini_linea = t.rfind("\n", 0, m.start()) + 1
+            if re.search(DIRECCION, t[ini_linea:m.start()]):
+                continue
+            fin = t.find("\n", m.end()); fin = len(t) if fin < 0 else fin
+            resto = t[m.end():fin]
+            if "/" in resto[:3] or re.match(r"\s*/\s*(NOMBRE|APELLIDOS|NOM|COGNOMS)", resto):   # «Nom i cognoms / Nombre y apellidos»
+                resto = re.sub(r"^\s*/\s*(?:NOMBRE Y APELLIDOS|APELLIDOS Y NOMBRE|NOMBRE|APELLIDOS)\s*[:¦]?\s*", "", resto)
+            opciones = [valor(resto)]
+            if orden == "nombre":                  # nombre primero: la coma cierra el nombre (no es «apellidos, nombre»)
+                opciones = [opciones[0].split(",")[0]]
+            sig0 = t.find("\n", fin + 1); sig0 = len(t) if sig0 < 0 else sig0
+            if 0 < len(_palabras(opciones[0])) < 3:   # el nombre sigue en la línea de abajo («DOÑA MÓNICA / FERNÁNDEZ BENAVIDES»)
+                opciones.append(opciones[0] + " " + valor(t[fin + 1:sig0].split("¦")[0]).split(",")[0])
+            if len(_palabras(opciones[0])) < 2:   # el valor está en otra línea: debajo (tablas, «D/Dª» al final) o justo encima
+                col = len(t[ini_linea:m.start()].split("¦")) - 1      # misma columna de la tabla
+                sig = t.find("\n", fin + 1); sig = len(t) if sig < 0 else sig
+                ant_fin = max(ini_linea - 1, 0); ant_ini = t.rfind("\n", 0, ant_fin) + 1
+                for linea in (t[fin + 1:sig], t[ant_ini:ant_fin] if ini_linea else ""):
+                    celdas = linea.split("¦")
+                    orden_celdas = [celdas[min(col, len(celdas) - 1)]] + celdas if celdas else []
+                    opciones += [valor(c) for c in orden_celdas]
+            for v in sorted(opciones, key=lambda o: -len(_palabras(o))) if orden == "nombre" else opciones:
+                if orden == "nombre":
+                    v = v.split(",")[0]
+                if "," in v:
+                    a, n = v.split(",", 1)
+                    p = _persona(" ".join(_palabras(n)), " ".join(_palabras(a)), "etiqueta (apellidos, nombre)")
+                else:
+                    p = _partir(_palabras(v), orden, "etiqueta")
+                if _valida(p, True):
+                    add(p, m.start(), True)
+                    break
+    # 2. APELLIDOS, NOMBRE en cualquier cuadro
+    for m in re.finditer(r"(?:^|¦|\n)\s*([A-Z][A-Z' \-]{3,50}?)\s*,\s*([A-Z][A-Z' \-]{1,30}?)\s*(?=¦|\n|$)", t):
+        if re.search(r"\b(?:S\.?\s?L|S\.?\s?A|S\.?\s?L\.?\s?U|C\.?\s?B)\.?$", m.group(2).strip()):
+            continue
+        add(_persona(" ".join(_palabras(m.group(2))), " ".join(_palabras(m.group(1))), "apellidos, nombre"), m.start(), False)
+    # 3. Junto a un DNI válido
     for m in re.finditer(r"\b0?\d{8}[ -]?[A-Z]\b|\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b", t):
         if not dni_valido(m.group(0)):
             continue
         ini = t.rfind("\n", 0, m.start()) + 1
         fin = t.find("\n", m.end()); fin = len(t) if fin < 0 else fin
         previa = t[t.rfind("\n", 0, max(ini - 1, 0)) + 1: max(ini - 1, 0)] if ini > 0 else ""
-        if re.search(r"\bS\.? ?[LA]\.?U?\b|\bCIF\b|SOCIEDAD|BANCO", previa):
-            previa = ""                                   # la línea de arriba es una empresa
         for trozo in (t[ini:m.start()], t[m.end():fin], previa):
-            if (c := re.match(r"\s*([A-Z][A-Z' \-]{3,50}?),\s*([A-Z][A-Z' \-]{1,30}?)\s*(?:$|\s{2,}|[;(])", trozo)):
-                add(_persona(c.group(2).strip(), c.group(1).strip(), "junto al DNI (apellidos, nombre)"), m.start())
-                break
-            for g in re.finditer(r"[A-Z][A-Z'\-]+(?: [A-Z][A-Z'\-]+){1,5}", trozo):
-                tramos, act = [], []
-                for w in g.group(0).split() + ["DNI"]:          # tramos sin palabras de etiqueta
-                    if w in NO_NOMBRE and w not in PARTICULAS:
-                        if act: tramos.append(act)
-                        act = []
-                    else:
-                        act.append(w)
-                tramos = [x for x in tramos if len([w for w in x if w not in PARTICULAS]) >= 2]
-                if tramos:
-                    mejor = max(tramos, key=len)
-                    while mejor and mejor[0] in PARTICULAS: mejor = mejor[1:]
-                    while mejor and mejor[-1] in PARTICULAS: mejor = mejor[:-1]
-                    if len(mejor) >= 2:
-                        add(_completo(" ".join(mejor), "junto al DNI"), m.start())
-                        break
+            for celda in reversed(trozo.split("¦")):
+                if re.search(r"\bS\.?\s?[LA]\.?U?\b|\bCIF\b|SOCIEDAD|BANCO", celda):
+                    continue
+                for g in re.finditer(r"[A-Z][A-Z'\-]+(?: [A-Z][A-Z'\-]+){1,6}", celda):
+                    if re.search(DIRECCION, celda[:g.start()]):
+                        continue
+                    pal = [w for w in g.group(0).split() if w not in NO_NOMBRE or w in PARTICULAS]
+                    p = _partir(pal, None, "junto al DNI") if len(pal) == len(g.group(0).split()) else None
+                    add(p, m.start(), False)
     return encontradas

@@ -131,6 +131,33 @@ def ocr(img, idiomas):
     texto = "\n".join(" ".join(l) for l in lineas)
     return texto, (sum(confs) / len(confs) / 100) if confs else 0.0
 
+def texto_pdf(page):
+    """Texto de una página de PDF digital respetando los cuadros: si en una misma línea hay dos
+    columnas separadas (p. ej. empresa a la izquierda y trabajador a la derecha en una nómina),
+    se marcan con «¦» para que no se mezclen."""
+    try:
+        words = page.extract_words(x_tolerance=1.5, y_tolerance=3, keep_blank_chars=False)
+    except Exception:
+        words = []
+    if not words:
+        return page.extract_text() or ""
+    words.sort(key=lambda w: (round(w["top"]), w["x0"]))
+    lineas = []
+    for w in words:
+        if lineas and abs(w["top"] - lineas[-1][0]) <= 3:
+            lineas[-1][1].append(w)
+        else:
+            lineas.append([w["top"], [w]])
+    out = []
+    for _, ws in lineas:
+        ws.sort(key=lambda w: w["x0"])
+        s = ws[0]["text"]
+        for a, b in zip(ws, ws[1:]):
+            alto = (a["bottom"] - a["top"]) or 8
+            s += (" ¦ " if b["x0"] - a["x1"] > 2.2 * alto else " ") + b["text"]
+        out.append(s)
+    return "\n".join(out)
+
 def imagen_pdf(ruta, n, dpi=None):
     """Página n (desde 1) de un PDF como imagen. Usa PDFium (va dentro de pdfplumber): sin programas externos."""
     import pypdfium2 as pdfium
@@ -180,7 +207,7 @@ def leer(ruta, clase, huella=None, almacen=None, trabajo=None):
                 p = desde_cache(n)
                 if p and (p.imagen or p.confianza >= 0.99):
                     res.paginas.append(p); continue
-                texto = page.extract_text() or ""
+                texto = texto_pdf(page)
                 if utiles(texto) >= MIN_TEXTO_PDF:
                     p = Pagina(n, texto, "pdf", 1.0, 0)
                 else:

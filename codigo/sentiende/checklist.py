@@ -19,7 +19,7 @@ def _meses_atras(hoy, n):
 def evaluar(variante, almacen, expediente_id, hoy=None):
     hoy = hoy or datetime.date.today()
     exp = almacen.expediente(expediente_id)
-    items = variante.checklists.get(exp["finalidad"], [])
+    items = sorted(variante.checklists.get(exp["finalidad"], []), key=lambda it: it.get("importancia") != "imprescindible")   # imprescindibles primero
     personas = [p for p in almacen.personas_de(expediente_id) if p["papel"] in PAPELES_TITULAR]
     docs = almacen.documentos("expediente_id = ? AND estado = 'guardado'", (expediente_id,))
     filas, avisos = [], []

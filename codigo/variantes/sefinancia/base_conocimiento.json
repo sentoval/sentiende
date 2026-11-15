@@ -223,7 +223,9 @@
         "VÁLIDO HASTA",
         "NUM SOPORT",
         "ESPAÑA",
-        "IDENTITY CARD"
+        "IDENTITY CARD",
+        "DOCUMENT NACIONAL D'IDENTITAT",
+        "VÀLID FINS"
       ],
       "emisores": [
         "dgp"
@@ -376,7 +378,13 @@
         "PADRÓ",
         "ERROLDA",
         "EMPADROAMENTO",
-        "HABITANTES"
+        "HABITANTES",
+        "CERTIFICAT D'EMPADRONAMENT",
+        "VOLANT D'EMPADRONAMENT",
+        "PADRÓ D'HABITANTS",
+        "PADRÓ MUNICIPAL",
+        "DADES DE L'HABITANT",
+        "SITUACIÓ EN EL PADRÓ"
       ],
       "emisores": [
         "ayuntamiento"
@@ -432,7 +440,11 @@
         "REGISTRO CIVIL",
         "LIBRO DE FAMILIA",
         "MATRIMONIO",
-        "PAREJA DE HECHO"
+        "PAREJA DE HECHO",
+        "REGISTRE CIVIL",
+        "LLIBRE DE FAMÍLIA",
+        "MATRIMONI",
+        "PARELLA DE FET"
       ],
       "emisores": [
         "registro_civil",
@@ -485,7 +497,11 @@
         "SENTENCIA",
         "CONVENIO REGULADOR",
         "DIVORCIO",
-        "FALLO"
+        "FALLO",
+        "JUTJAT",
+        "SENTÈNCIA",
+        "CONVENI REGULADOR",
+        "DIVORCI"
       ],
       "emisores": [
         "juzgado",
@@ -552,7 +568,14 @@
         "SELLO EMPRESA",
         "RECIBI",
         "COTIZACION CONT.COMU",
-        "TRIBUTACION I.R.P.F."
+        "TRIBUTACION I.R.P.F.",
+        "TOTAL MERITAT",
+        "TOTAL A DEDUIR",
+        "PERÍODE DE LIQUIDACIÓ",
+        "SALARI BASE",
+        "REBUT DE SALARIS",
+        "MERITACIONS",
+        "DEDUCCIONS"
       ],
       "emisores": [
         "empresa"
@@ -602,7 +625,8 @@
       ],
       "palabras_clave": [
         "PAGA EXTRA",
-        "PAGA EXTRAORDINARIA"
+        "PAGA EXTRAORDINARIA",
+        "PAGA EXTRAORDINÀRIA"
       ],
       "emisores": [
         "empresa"
@@ -652,7 +676,9 @@
       "palabras_clave": [
         "ATRASOS",
         "ATRASOS CONVENIO",
-        "DIFERENCIAS CONVENIO"
+        "DIFERENCIAS CONVENIO",
+        "ENDARRERIMENTS",
+        "DIFERÈNCIES DE CONVENI"
       ],
       "emisores": [
         "empresa"
@@ -700,7 +726,9 @@
         "DE LOS ANTECEDENTES OBRANTES EN LA TESORERÍA",
         "SITUACIÓN DE ALTA",
         "CÓDIGO ELECTRÓNICO DE AUTENTICIDAD",
-        "ID. CEA"
+        "ID. CEA",
+        "TRESORERIA GENERAL DE LA SEGURETAT SOCIAL",
+        "DIES COTITZATS"
       ],
       "emisores": [
         "tgss"
@@ -746,7 +774,12 @@
         "CLÁUSULAS",
         "EMPRESA",
         "TRABAJADOR",
-        "DURACIÓN"
+        "DURACIÓN",
+        "CONTRACTE DE TREBALL",
+        "CLÀUSULES",
+        "TREBALLADOR",
+        "TREBALLADORA",
+        "DURADA DEL CONTRACTE"
       ],
       "emisores": [
         "empresa",
@@ -799,7 +832,10 @@
         "PRÓRROGA",
         "MODIFICACIÓN",
         "CONVERSIÓN",
-        "ANEXO"
+        "ANEXO",
+        "PRÒRROGA",
+        "MODIFICACIÓ DEL CONTRACTE",
+        "CONVERSIÓ"
       ],
       "emisores": [
         "empresa",
@@ -843,7 +879,10 @@
       "palabras_clave": [
         "CERTIFICA",
         "PRESTA SERVICIOS",
-        "ANTIGÜEDAD"
+        "ANTIGÜEDAD",
+        "CERTIFICAT D'EMPRESA",
+        "PRESTA SERVEIS",
+        "ANTIGUITAT"
       ],
       "emisores": [
         "empresa"
@@ -885,7 +924,10 @@
       "palabras_clave": [
         "RETENCIONES",
         "INGRESOS A CUENTA",
-        "RENDIMIENTOS DEL TRABAJO"
+        "RENDIMIENTOS DEL TRABAJO",
+        "CERTIFICAT DE RETENCIONS",
+        "INGRESSOS A COMPTE",
+        "RENDIMENTS DEL TREBALL"
       ],
       "emisores": [
         "empresa",
@@ -932,7 +974,9 @@
       "palabras_clave": [
         "PENSIÓN",
         "INSTITUTO NACIONAL DE LA SEGURIDAD SOCIAL",
-        "IMPORTE ÍNTEGRO"
+        "IMPORTE ÍNTEGRO",
+        "PENSIÓ",
+        "IMPORT ÍNTEGRE"
       ],
       "emisores": [
         "inss"
@@ -977,7 +1021,10 @@
         "SERVICIO PÚBLICO DE EMPLEO ESTATAL",
         "PRESTACIÓN",
         "DESEMPLEO",
-        "SUBSIDIO"
+        "SUBSIDIO",
+        "PRESTACIÓ PER DESOCUPACIÓ",
+        "SUBSIDI",
+        "LABORA"
       ],
       "emisores": [
         "sepe"
@@ -1039,7 +1086,9 @@
         "EN CALIDAD DE",
         "SOLICITUD DE DEVOLUCIÓN",
         "DOMICILIACIÓN DEL IMPORTE A INGRESAR",
-        "RESULTADO CERO"
+        "RESULTADO CERO",
+        "DECLARACIÓ DE LA RENDA",
+        "IMPOST SOBRE LA RENDA DE LES PERSONES FÍSIQUES"
       ],
       "emisores": [
         "aeat",
@@ -1093,7 +1142,8 @@
         "PERIODO 1T",
         "2T",
         "3T",
-        "4T"
+        "4T",
+        "IMPOST SOBRE EL VALOR AFEGIT"
       ],
       "emisores": [
         "aeat",
@@ -1140,7 +1190,8 @@
       ],
       "palabras_clave": [
         "MODELO 390",
-        "RESUMEN ANUAL"
+        "RESUMEN ANUAL",
+        "RESUM ANUAL"
       ],
       "emisores": [
         "aeat"
@@ -1368,7 +1419,10 @@
         "DELEGACIÓN ESPECIAL",
         "Nº REFERENCIA",
         "CARÁCTER DE POSITIVO",
-        "ESTAR AL CORRIENTE EN EL CUMPLIMIENTO DE LAS OBLIGACIONES TRIBUTARIAS"
+        "ESTAR AL CORRIENTE EN EL CUMPLIMIENTO DE LAS OBLIGACIONES TRIBUTARIAS",
+        "AL CORRENT",
+        "OBLIGACIONS TRIBUTÀRIES",
+        "CODI SEGUR DE VERIFICACIÓ"
       ],
       "emisores": [
         "aeat",
@@ -1417,7 +1471,10 @@
         "NO TIENE PENDIENTE",
         "OBLIGACIONES DE SEGURIDAD SOCIAL",
         "REFERENCIA DE VERIFICACIÓN",
-        "CARÁCTER POSITIVO"
+        "CARÁCTER POSITIVO",
+        "AL CORRENT",
+        "SEGURETAT SOCIAL",
+        "NO TÉ PENDENT"
       ],
       "emisores": [
         "tgss"
@@ -1475,7 +1532,10 @@
         "TRANSFERENCIA REALIZADA",
         "TRANSFERENCIA RECIBIDA",
         "BIZUM",
-        "Nº MOV"
+        "Nº MOV",
+        "EXTRACTE",
+        "MOVIMENTS",
+        "DATA VALOR"
       ],
       "emisores": [
         "banco"
@@ -1519,7 +1579,9 @@
       "palabras_clave": [
         "CERTIFICA",
         "SALDO",
-        "TITULAR"
+        "TITULAR",
+        "CERTIFICAT DE SALDO",
+        "CERTIFICAT DE TITULARITAT"
       ],
       "emisores": [
         "banco"
@@ -1577,7 +1639,11 @@
         "TAE",
         "ADEUDO EN CUENTA",
         "AMORTIZACION PRESTAMO",
-        "PTMO."
+        "PTMO.",
+        "CAPITAL PENDENT",
+        "QUOTA",
+        "TIPUS D'INTERÉS",
+        "AMORTITZACIÓ"
       ],
       "emisores": [
         "banco",
@@ -1763,7 +1829,9 @@
         "CENTRAL DE INFORMACIÓN DE RIESGOS",
         "BANCO DE ESPAÑA",
         "RIESGO DIRECTO",
-        "RIESGO INDIRECTO"
+        "RIESGO INDIRECTO",
+        "CENTRAL D'INFORMACIÓ DE RISCOS",
+        "BANC D'ESPANYA"
       ],
       "emisores": [
         "bde"
@@ -1814,7 +1882,9 @@
       "palabras_clave": [
         "PLAN DE PENSIONES",
         "DERECHOS CONSOLIDADOS",
-        "PROVISIÓN MATEMÁTICA"
+        "PROVISIÓN MATEMÁTICA",
+        "PLA DE PENSIONS",
+        "DRETS CONSOLIDATS"
       ],
       "emisores": [
         "banco",
@@ -1959,7 +2029,11 @@
         "FOLIO",
         "INSCRIPCIÓN",
         "CUOTA DE PARTICIPACIÓN",
-        "PLENO DOMINIO"
+        "PLENO DOMINIO",
+        "REGISTRE DE LA PROPIETAT",
+        "NOTA SIMPLE",
+        "CÀRREGUES",
+        "TITULARITAT"
       ],
       "emisores": [
         "registro_propiedad"
@@ -2009,7 +2083,12 @@
         "NOTARIO",
         "PROTOCOLO",
         "COMPRAVENTA",
-        "OTORGAN"
+        "OTORGAN",
+        "DAVANT MEU",
+        "NOTARI",
+        "PROTOCOL",
+        "COMPRAVENDA",
+        "ATORGUEN"
       ],
       "emisores": [
         "notaria"
@@ -2053,7 +2132,10 @@
       "palabras_clave": [
         "ARRAS",
         "SEÑAL",
-        "COMPRAVENTA"
+        "COMPRAVENTA",
+        "ARRES",
+        "SENYAL",
+        "COMPRAVENDA"
       ],
       "emisores": [
         "particular",
@@ -2097,7 +2179,9 @@
       "palabras_clave": [
         "VALOR DE TASACIÓN",
         "ECO/805/2003",
-        "SOCIEDAD DE TASACIÓN"
+        "SOCIEDAD DE TASACIÓN",
+        "VALOR DE TAXACIÓ",
+        "SOCIETAT DE TAXACIÓ"
       ],
       "emisores": [
         "tasadora"
@@ -2144,7 +2228,10 @@
         "REFERENCIA CATASTRAL",
         "VALOR CATASTRAL",
         "IBI",
-        "OHZ"
+        "OHZ",
+        "REFERÈNCIA CADASTRAL",
+        "VALOR CADASTRAL",
+        "IMPOST SOBRE BÉNS IMMOBLES"
       ],
       "emisores": [
         "ayuntamiento",
@@ -2190,7 +2277,10 @@
         "CONSTITUCIÓN",
         "SOCIEDAD LIMITADA",
         "REGISTRO MERCANTIL",
-        "CAPITAL SOCIAL"
+        "CAPITAL SOCIAL",
+        "CONSTITUCIÓ",
+        "SOCIETAT LIMITADA",
+        "REGISTRE MERCANTIL"
       ],
       "emisores": [
         "notaria",
@@ -2281,7 +2371,11 @@
         "ACTIVO",
         "PASIVO",
         "PATRIMONIO NETO",
-        "RESULTADO DEL EJERCICIO"
+        "RESULTADO DEL EJERCICIO",
+        "ACTIU",
+        "PASSIU",
+        "PATRIMONI NET",
+        "RESULTAT DE L'EXERCICI"
       ],
       "emisores": [
         "empresa",
@@ -2453,7 +2547,8 @@
       "palabras_clave": [
         "LICENCIA",
         "AUTOTAXI",
-        "AUTO-TAXI"
+        "AUTO-TAXI",
+        "LLICÈNCIA"
       ],
       "emisores": [
         "ayuntamiento",
@@ -2579,7 +2674,9 @@
       "palabras_clave": [
         "PERMISO DE CONDUCCIÓN",
         "PERMISO DE CONDUCIR",
-        "DIRECCIÓN GENERAL DE TRÁFICO"
+        "DIRECCIÓN GENERAL DE TRÁFICO",
+        "PERMÍS DE CONDUCCIÓ",
+        "PERMÍS DE CONDUIR"
       ],
       "emisores": [
         "dgt"
@@ -2705,7 +2802,10 @@
       "palabras_clave": [
         "INGRESOS",
         "GASTOS",
-        "PREVISIÓN"
+        "PREVISIÓN",
+        "PREVISIÓ",
+        "INGRESSOS",
+        "DESPESES"
       ],
       "emisores": [
         "gestoria",
