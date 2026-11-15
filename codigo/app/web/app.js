@@ -341,7 +341,7 @@ function vistaRevision() {
       <div class="pie-izq">${filaOtras}</div>
       <div class="pie-der">
         <div class="pie-btns">${pendientesOtras > 1 ? '<button type="button" class="btn peq" id="todos-terceros">Todos: tercero</button>' : ""}<button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button></div>
-        <label class="check mini"><input type="checkbox" id="r-priv" ${R.priv ? "checked" : ""}><span>No compartir</span></label>
+        <label class="check mini"><input type="checkbox" id="r-priv" ${R.priv ? "checked" : ""}><span><b>PRIVADO</b>, No compartir</span></label>
       </div>
     </div>
   </section>
