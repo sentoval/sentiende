@@ -1,7 +1,7 @@
 // Sentiende · pantallas (v1.0). Sin librerías: todo funciona sin internet.
 "use strict";
 
-const S = { info: null, estado: null, expedientes: [], doc: null, docId: null, pag: 1, ruta: "", editando: false };
+const S = { zoom: 1, info: null, estado: null, expedientes: [], doc: null, docId: null, pag: 1, ruta: "", editando: false };
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -225,20 +225,17 @@ function vistaRevision() {
   return `
   <div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1><div class="sub">${cola.length} pendiente(s). Comprueba lo leído, elige con un clic y confirma; el resto lo hace el motor.</div></div>
     <div class="acciones"><a class="btn" href="#motor">${ico("motor")}Ver en el motor</a></div></div>
-  <div class="rev">
-    <nav class="cola" aria-label="Pendientes">${lista}</nav>
-    <section class="visor" aria-label="Documento">
-      <div class="lienzo"><img alt="Página ${S.pag} de ${esc(d.nombre_recibido)}" src="/api/vista/${d.id}/${S.pag}?t=${d.actualizado}"></div>
-      <div class="pie-v"><span>${esc(d.nombre_recibido)} · página ${S.pag} de ${pags}</span>
-        <span class="acciones"><button class="btn peq" id="pant" ${S.pag <= 1 ? "disabled" : ""} aria-label="Página anterior">${ico("left", 15)}</button><button class="btn peq" id="psig" ${S.pag >= pags ? "disabled" : ""} aria-label="Página siguiente">${ico("right", 15)}</button></span></div>
-      <details style="padding:0 14px 14px"><summary class="muted" style="cursor:pointer;padding:10px 0">Ver el texto leído de esta página</summary><div class="campo"><textarea readonly>${esc(d.texto_paginas[S.pag - 1] || "")}</textarea></div></details>
-    </section>
-    <section class="tarjeta" aria-label="Revisar">
+  <section class="tarjeta panel-rev" aria-label="Revisar">
       ${(() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union"><b>${pr.documentos.length} fotos parecen el mismo documento (${esc(nombreTipo(pr.tipo))})</b>
         <span class="sub">Llegaron juntas. Puedes unirlas en un solo PDF, en el orden que elijas.</span><a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">Ver y unir</a></div>` : ""; })()}
       <div><h2>Revisar</h2><span class="sub">${d.motivo ? esc(d.motivo) : "Clasificado con " + Math.round((d.confianza || 0) * 100) + " %"}</span></div>
+    <div class="rev-campos">
+      <div class="bloque">
       <div class="campo"><label for="r-tipo">1 · Tipo de documento</label><select id="r-tipo">${R.tipo ? "" : '<option value="">— Elegir —</option>'}${tipos}</select>
         ${(d.alternativas || []).length ? `<span class="chips">${d.alternativas.map(a => `<button type="button" class="chip peq" data-tipo="${a.tipo}">${esc(nombreTipo(a.tipo))}</button>`).join("")}</span>` : ""}</div>
+      ${otrosDatos ? `<div>${otrosDatos}</div>` : ""}
+      </div>
+      <div class="bloque">
       <div class="campo"><span class="lab">2 · ¿De quién es?</span>
         ${leidas.length ? `<span class="chips">${chipsPersona}</span><span class="sub">${leidas.length > 1 ? "Ha leído varios nombres: pulsa el del titular." : "Si no es correcto, cámbialo abajo en «Expediente nuevo»."}</span>` : '<span class="sub">No ha encontrado ningún nombre: escríbelo abajo en «Expediente nuevo».</span>'}
         ${leidas.length > 1 ? `<div class="otros"><span class="lab">Hay más personas en el documento. ¿Qué es cada una?</span>
@@ -247,24 +244,41 @@ function vistaRevision() {
               .map(([k, n]) => `<button type="button" class="${(R.otros || {})[i] === k ? "sel" : ""}" data-otro="${i}" data-acc="${k}">${n}</button>`).join("")}</span></div>`).join("")}
           <button type="button" class="btn peq" id="todos-terceros">Todos los demás: tercero</button></div>` : ""}
         ${dnisSueltos.length ? `<span class="chips">${dnisSueltos.map(x => `<button type="button" class="chip peq ${N.dni === x ? "sel" : ""}" data-dni="${x}">DNI ${x}</button>`).join("")}</span>` : ""}</div>
+      </div>
+      ${clave ? `<div class="bloque">` : ""}
       ${clave ? `<div class="campo"><span class="lab">3 · ${FECHA_TXT[clave][0]}</span>
         ${chipsFecha ? `<span class="chips">${chipsFecha}</span>` : '<span class="sub">No ha encontrado ninguna fecha.</span>'}
         <span class="fila" style="align-items:center"><span class="sub" style="flex:0 0 auto">u otra:</span><input type="date" id="r-fecha" value="${R.fecha && !candidatas.includes(R.fecha) ? R.fecha : ""}" style="height:34px;border-radius:6px;border:1px solid var(--border);background:var(--bg);padding:0 8px;flex:0 1 180px"></span>
         <span class="sub">${FECHA_TXT[clave][1]}</span></div>` : ""}
-      ${otrosDatos ? `<div>${otrosDatos}</div>` : ""}
+      ${clave ? `</div>` : ""}
+      <div class="bloque">
       <div class="campo"><span class="lab">${clave ? 4 : 3} · ¿A qué expediente va?</span>
         ${opExp}
         ${otros.length ? `<div class="opcion"><input type="radio" name="destino" value="otro" id="d-otro" ${opExp ? "" : "checked"}><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="d-otro"><b>Otro expediente abierto</b></label><div class="campo"><select id="r-otro" aria-label="Otro expediente abierto">${otros.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("")}</select></div></div></div>` : ""}
         <div class="opcion"><input type="radio" name="destino" value="nuevo" id="d-nuevo" ${!opExp && !otros.length ? "checked" : ""}><div style="flex:1;display:flex;flex-direction:column;gap:10px"><label for="d-nuevo"><b>Expediente nuevo</b></label>
-          <div class="fila"><div class="campo"><label for="n-nom">Nombre</label><input id="n-nom" data-n="nombre" value="${esc(N.nombre)}"></div><div class="campo"><label for="n-dni">DNI / NIE</label><input id="n-dni" data-n="dni" value="${esc(N.dni)}"></div></div>
-          <div class="fila"><div class="campo"><label for="n-ap1">Primer apellido</label><input id="n-ap1" data-n="ap1" value="${esc(N.ap1)}"></div><div class="campo"><label for="n-ap2">Segundo apellido</label><input id="n-ap2" data-n="ap2" value="${esc(N.ap2)}"></div></div>
+          <div class="fila"><div class="campo"><label for="n-nom">Nombre</label><input id="n-nom" data-n="nombre" value="${esc(N.nombre)}"></div><div class="campo"><label for="n-ap1">Primer apellido</label><input id="n-ap1" data-n="ap1" value="${esc(N.ap1)}"></div><div class="campo"><label for="n-ap2">Segundo apellido</label><input id="n-ap2" data-n="ap2" value="${esc(N.ap2)}"></div><div class="campo"><label for="n-dni">DNI / NIE</label><input id="n-dni" data-n="dni" value="${esc(N.dni)}"></div></div>
           <div class="campo"><span class="lab">Finalidad</span><div class="fines">${finalidades}</div></div></div></div>
       </div>
+      </div>
+      <div class="bloque rev-pie">
       <label class="check"><input type="checkbox" id="r-comun"><span><b>Es de todo el expediente</b><br><span class="sub">Arras, tasación, nota simple… Se nombra con el código del primer titular.</span></span></label>
       <label class="check"><input type="checkbox" id="r-priv"><span><b>No compartir</b><br><span class="sub">Añade PRIVADO_NO_COMPARTIR_ y lo deja fuera de los envíos.</span></span></label>
       <div class="acciones"><button class="btn pri" id="r-ok">${ico("check")}Confirmar y guardar</button><button class="btn" id="r-limbo">${ico("limbo")}Al Limbo</button><a class="btn" href="#unir/${d.id}">Unir con otros…</a></div>
+      </div>
+    </div>
+  </section>
+  <div class="rev-abajo">
+    <nav class="cola" aria-label="Pendientes">${lista}</nav>
+    <section class="visor" aria-label="Documento">
+      <div class="pie-v"><span>${esc(d.nombre_recibido)} · página ${S.pag} de ${pags}</span>
+        <span class="acciones"><button class="btn peq" id="pant" ${S.pag <= 1 ? "disabled" : ""} aria-label="Página anterior">${ico("left", 15)}</button><button class="btn peq" id="psig" ${S.pag >= pags ? "disabled" : ""} aria-label="Página siguiente">${ico("right", 15)}</button>
+          <span class="sep"></span><button class="btn peq" id="v-menos" aria-label="Alejar">−</button><span id="v-nivel" class="nivel">${Math.round(S.zoom * 100)} %</span><button class="btn peq" id="v-mas" aria-label="Acercar">+</button>
+          <button class="btn peq" id="v-ajustar">Ajustar</button><button class="btn peq" id="v-grande">Pantalla completa</button></span></div>
+      <div class="lienzo" id="v-lienzo"><img id="v-img" style="width:${S.zoom * 100}%" alt="Página ${S.pag} de ${esc(d.nombre_recibido)}" src="/api/vista/${d.id}/${S.pag}?grande=1&t=${d.actualizado}"></div>
+      <span class="sub" style="padding:6px 14px">Ctrl + rueda del ratón para acercar o alejar.</span>
+      <details style="padding:0 14px 14px"><summary class="muted" style="cursor:pointer;padding:10px 0">Ver el texto leído de esta página</summary><div class="campo"><textarea readonly>${esc(d.texto_paginas[S.pag - 1] || "")}</textarea></div></details>
     </section>
-  </div>`;
+  </div>${zoomModal()}`;
 }
 async function cargarDoc(id) {
   if (S.docId !== id) { S.pag = 1; S.rev = null; }
@@ -274,6 +288,17 @@ async function cargarDoc(id) {
 }
 function marcarDestinoNuevo() { const r = $("#d-nuevo"); if (r) { r.checked = true; S.rev.destino = "nuevo"; } }
 function activarRevision() {
+  const vimg = $("#v-img");
+  if (vimg) {
+    const poner = n => { S.zoom = Math.min(5, Math.max(0.3, n)); vimg.style.width = (S.zoom * 100) + "%"; $("#v-nivel").textContent = Math.round(S.zoom * 100) + " %"; };
+    $("#v-mas").addEventListener("click", () => poner(S.zoom * 1.25));
+    $("#v-menos").addEventListener("click", () => poner(S.zoom / 1.25));
+    $("#v-ajustar").addEventListener("click", () => poner(1));
+    $("#v-lienzo").addEventListener("wheel", e => { if (!e.ctrlKey) return; e.preventDefault(); poner(S.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
+    const abrir = activarZoomModal();
+    $("#v-grande").addEventListener("click", () => abrir(vimg.src));
+    vimg.addEventListener("dblclick", () => abrir(vimg.src));
+  }
   if (S.rev?.destino) { const r = document.querySelector(`input[name="destino"][value="${S.rev.destino}"]`); if (r) r.checked = true; }
   document.querySelectorAll('input[name="destino"]').forEach(r => r.addEventListener("change", () => (S.rev.destino = r.value)));
   $("#r-otro")?.addEventListener("change", () => { const r = $("#d-otro"); r.checked = true; S.rev.destino = "otro"; });
@@ -338,6 +363,24 @@ async function siguiente() {
 }
 
 // ------------------------------------------------------------------ Unir varias fotos en un PDF
+function zoomModal() {
+  return `<div id="zoom" class="zoom" hidden><div class="zoom-barra"><button class="btn peq" id="z-menos" aria-label="Alejar">−</button><span id="z-nivel">100 %</span>
+    <button class="btn peq" id="z-mas" aria-label="Acercar">+</button><button class="btn peq" id="z-ajustar">Ajustar</button><button class="btn peq" id="z-cerrar">${ico("x", 14)} Cerrar</button></div>
+    <div class="zoom-lienzo" id="z-lienzo"><img id="z-img" alt="Vista ampliada"></div></div>`;
+}
+function activarZoomModal() {
+  const img = $("#z-img"), caja = $("#zoom");
+  if (!img) return () => {};
+  let z = 1;
+  const poner = n => { z = Math.min(6, Math.max(0.25, n)); img.style.width = (z * 100) + "%"; $("#z-nivel").textContent = Math.round(z * 100) + " %"; };
+  $("#z-mas").addEventListener("click", () => poner(z * 1.25));
+  $("#z-menos").addEventListener("click", () => poner(z / 1.25));
+  $("#z-ajustar").addEventListener("click", () => poner(1));
+  $("#z-cerrar").addEventListener("click", () => (caja.hidden = true));
+  $("#z-lienzo").addEventListener("wheel", e => { e.preventDefault(); poner(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
+  document.onkeydown = e => { if (e.key === "Escape") caja.hidden = true; };
+  return src => { img.src = src; caja.hidden = false; poner(1); };
+}
 let UNIR = [];
 function vistaUnir() {
   const cola = colaRevision().filter(x => x.estado === "espera_emparejar");
@@ -358,9 +401,7 @@ function vistaUnir() {
       <button type="button" class="miniatura" data-zoom="${x.id}" aria-label="Ver ${esc(x.archivo)} en grande"><img src="/api/vista/${x.id}/1" alt="" loading="lazy"></button>
       <figcaption>${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo))}</span></figcaption>
       <button class="btn peq" data-meter="${x.id}">Añadir al final</button></figure>`).join("")}</div></section>` : ""}
-  <div id="zoom" class="zoom" hidden><div class="zoom-barra"><button class="btn peq" id="z-menos" aria-label="Alejar">−</button><span id="z-nivel">100 %</span>
-    <button class="btn peq" id="z-mas" aria-label="Acercar">+</button><button class="btn peq" id="z-ajustar">Ajustar</button><button class="btn peq" id="z-cerrar">${ico("x", 14)} Cerrar</button></div>
-    <div class="zoom-lienzo" id="z-lienzo"><img id="z-img" alt="Vista ampliada"></div></div>`;
+  ${zoomModal()}`;
 }
 function activarUnir() {
   document.querySelectorAll("[data-mover]").forEach(b => b.addEventListener("click", () => {
@@ -368,16 +409,8 @@ function activarUnir() {
   }));
   document.querySelectorAll("[data-sacar]").forEach(b => b.addEventListener("click", () => { UNIR = UNIR.filter(x => x !== +b.dataset.sacar); pintar(); }));
   document.querySelectorAll("[data-meter]").forEach(b => b.addEventListener("click", () => { UNIR.push(+b.dataset.meter); pintar(); }));
-  let z = 1;
-  const img = $("#z-img"), caja = $("#zoom");
-  const poner = n => { z = Math.min(6, Math.max(0.25, n)); img.style.width = (z * 100) + "%"; $("#z-nivel").textContent = Math.round(z * 100) + " %"; };
-  document.querySelectorAll("[data-zoom]").forEach(b => b.addEventListener("click", () => { img.src = `/api/vista/${b.dataset.zoom}/1?grande=1`; caja.hidden = false; poner(1); }));
-  $("#z-mas").addEventListener("click", () => poner(z * 1.25));
-  $("#z-menos").addEventListener("click", () => poner(z / 1.25));
-  $("#z-ajustar").addEventListener("click", () => poner(1));
-  $("#z-cerrar").addEventListener("click", () => (caja.hidden = true));
-  $("#z-lienzo").addEventListener("wheel", e => { e.preventDefault(); poner(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") caja.hidden = true; }, { once: true });
+  const abrir = activarZoomModal();
+  document.querySelectorAll("[data-zoom]").forEach(b => b.addEventListener("click", () => abrir(`/api/vista/${b.dataset.zoom}/1?grande=1`)));
   $("#unir-ok")?.addEventListener("click", async () => {
     try { const r = await api("unir", { documentos: UNIR }); aviso("Unido en un PDF: se está leyendo"); UNIR = []; await refrescar(false); location.hash = "revision/" + r.documento; }
     catch (e) { aviso(e.message, true); }
