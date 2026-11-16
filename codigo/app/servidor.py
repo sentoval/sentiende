@@ -291,6 +291,14 @@ class App:
             if ruta.suffix.lower() == ".pdf":
                 from sentiende.lectura import imagen_pdf
                 img = imagen_pdf(ruta, pagina, dpi=200 if grande else 90)
+            elif ruta.suffix.lower() in (".xlsx", ".xls", ".docx", ".doc", ".csv", ".txt") or not ruta.is_file():
+                # 3.0.3: Excel y Word no tienen vista previa (antes daba error al abrirlos como imagen)
+                from PIL import ImageDraw
+                img = Image.new("RGB", (900, 1200), "white")
+                dib = ImageDraw.Draw(img)
+                dib.rectangle((60, 60, 840, 1140), outline=(180, 180, 180), width=3)
+                dib.text((120, 560), f"Sin vista previa: {ruta.suffix.upper().lstrip('.') or 'archivo'}", fill=(90, 90, 90))
+                dib.text((120, 600), "Ábrelo con su programa para verlo.", fill=(120, 120, 120))
             else:
                 from PIL import ImageOps
                 img = ImageOps.exif_transpose(Image.open(ruta))
