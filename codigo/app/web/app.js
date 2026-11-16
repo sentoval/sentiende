@@ -173,11 +173,25 @@ function pestanasMotor(activa) {
     <a href="#limbo" ${activa === "limbo" ? 'aria-current="page"' : ""}>${ico("limbo", 16)}Limbo${n ? `<span class="num">${n}</span>` : ""}</a>
     <a href="#cuarentena" ${activa === "cuarentena" ? 'aria-current="page"' : ""}>${ico("mail", 16)}Correo por revisar${q ? `<span class="num">${q}</span>` : ""}</a></nav>`;
 }
+// 3.0.3 · Centro de revisión vacío: tres bailaoras (A, B y C, con la cabeza de la A) que se alternan con un fundido suave
+const BAILAORAS = [`<g transform="translate(0,0)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M72 57l-2 10"/><path d="M70 67c-8 10-9 26-6 40"/><path d="M76 67c4 12 4 26 2 40"/><path d="M70 70c-14-10-20-30-12-50c4-8 10-12 16-10"/><path d="M76 70c10 4 16 12 14 22c-1 6-8 8-12 4"/><path d="M64 107c-12 18-24 40-30 70c16 8 32 10 50 8"/><path d="M78 107c10 18 30 38 56 50c-10 18-30 28-50 28"/><path d="M40 150c14 6 30 6 44 2"/><path d="M36 168c18 8 38 8 56 2c14-4 30-10 40-18"/><path d="M60 185l-4 50"/><path d="M76 185l6 50"/><path d="M52 236h8"/><path d="M80 236h8"/>`, `<g transform="translate(3,2)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M75 59v8"/><path d="M70 67c-4 14-4 26-2 38"/><path d="M80 67c4 14 4 26 2 38"/><path d="M70 70c-16-8-26-24-26-44"/><path d="M80 70c16-8 26-24 26-44"/><path d="M44 26c-2-4 2-8 6-6"/><path d="M106 26c2-4-2-8-6-6"/><path d="M68 105c-30 6-52 26-56 56c22 14 48 22 78 20c30-2 52-16 62-34c-14-22-40-38-72-42"/><path d="M20 150c20 14 50 20 80 16c20-2 36-10 46-20"/><path d="M30 168c24 10 52 12 78 6"/><path d="M66 181l-2 52"/><path d="M84 181l2 52"/><path d="M58 234h8"/><path d="M84 234h8"/>`, `<g transform="translate(-2,0)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M70 57c2 10-2 21-4 31c10 6 22 2 30-6c8-10 12-28 4-46"/><path d="M66 88c-10 2-22-6-26-18c-4-12 2-28 14-36"/><path d="M66 88c-4 22-14 44-34 66c18 20 46 28 76 22c22-4 38-16 46-32c-24-10-48-28-64-56"/><path d="M34 160c26 10 54 12 82 6c14-4 26-10 36-20"/><path d="M60 176l-6 58"/><path d="M84 176l10 58"/><path d="M48 234h10"/><path d="M90 234h10"/>`];
+function bailaoras() {
+  return `<div class="bailaoras" aria-hidden="true">${BAILAORAS.map((b, i) => `<svg viewBox="10 10 150 240" class="bailaora b${i}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><g vector-effect="non-scaling-stroke">${b}</g></svg>`).join("")}</div>`;
+}
+// Engranajes del Motor de proceso: el del motor gira cuando el equipo trabaja; el de la IA, con los colores del botón IA
+const ENGRANAJE = '<path d="M12 2.5l1.6.3.4 2.1a7 7 0 0 1 1.9.8l1.8-1.2 1.2 1.1-1.2 1.8a7 7 0 0 1 .8 1.9l2.1.4.3 1.6-.3 1.6-2.1.4a7 7 0 0 1-.8 1.9l1.2 1.8-1.2 1.2-1.8-1.2a7 7 0 0 1-1.9.8l-.4 2.1-1.6.3-1.6-.3-.4-2.1a7 7 0 0 1-1.9-.8l-1.8 1.2-1.2-1.2 1.2-1.8a7 7 0 0 1-.8-1.9l-2.1-.4L2.5 12l.3-1.6 2.1-.4a7 7 0 0 1 .8-1.9L4.5 6.3l1.2-1.1 1.8 1.2a7 7 0 0 1 1.9-.8l.4-2.1z"/><circle cx="12" cy="12" r="3.2"/>';
+function engranajes() {
+  const ia = S.estado?.ia || {}, motor = !!S.estado?.trabajando;
+  const iaCls = !ia.activo ? "apagado" : ia.estado === "pausa" ? "pausa" : ia.estado === "trabajando" ? "on gira" : "on";
+  const iaTxt = !ia.activo ? "IA apagada" : ia.estado === "pausa" ? "IA en pausa" : ia.estado === "trabajando" ? "La IA está trabajando" : "IA encendida, en espera";
+  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>Motor</small></span>
+    <span class="eng ia ${iaCls}" title="${iaTxt}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>IA</small></span></div>`;
+}
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);
   const pendiente = x => x.documentos.some(d => !["guardado", "limbo", "duplicado", "contacto"].includes(d.estado));
   const l = lotes.find(x => x.id === LOTE) || lotes.find(pendiente) || lotes[0];
-  if (!l) return `<div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
+  if (!l) return `<div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div><div class="acciones">${engranajes()}</div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
   const docs = l.documentos;
   const enFase = i => docs.filter(d => (["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.fase) === i + 1 || (i === 6 && d.estado === "espera_emparejar")).length;
   const minF = Math.min(...docs.map(d => ["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.estado === "espera_emparejar" ? 7 : d.fase));
@@ -199,7 +213,7 @@ function vistaMotor() {
   const titulo = parado ? `Parado · fase ${parado.fase + 1} de 10` : hechos === docs.length ? "Terminado" : espera ? `Espera tu respuesta · ${espera} documento(s) para emparejar` : S.estado.trabajando ? `En marcha · fase ${minF} de 10` : "En pausa";
   return `
   <div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
-    <div class="acciones">${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
+    <div class="acciones">${engranajes()}${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
   ${pestanasMotor("motor")}
   ${avisoPausaIA()}
   ${parado ? `<div class="tarjeta" style="border-color:var(--bad);background:var(--badSoft)"><b>El motor se ha parado: ${esc(parado.motivo || "")}</b><span class="sub">Nada se ha perdido: el original sigue en Entrada\\. Corrige la causa y pulsa «Reanudar lo pendiente».</span></div>` : ""}
@@ -216,7 +230,15 @@ function vistaMotor() {
     </tbody></table></section>`;
 }
 function activarMotor() {
-  $("#reanudar")?.addEventListener("click", async () => { await api("procesar", {}); aviso("Reanudando…"); refrescar(true); });
+  $("#reanudar")?.addEventListener("click", async () => {
+    try {
+      const r = await api("procesar", {});
+      const n = (r.en_cola || 0) + (r.a_revision || 0);
+      aviso(!n ? "No había nada pendiente: todo está procesado o esperando tu respuesta en el Centro de revisión."
+        : [r.en_cola ? `${r.en_cola} en proceso` : "", r.a_revision ? `${r.a_revision} vuelven al Centro de revisión` : ""].filter(Boolean).join(" · "));
+    } catch (e) { aviso(e.message, true); }
+    refrescar(true);
+  });
   activarAvisoPausaIA();
   $("#ia-pasar")?.addEventListener("click", async e => { try { await api("ia/lote", { lote: +e.currentTarget.dataset.lote }); aviso("Pasando el lote a la IA…"); refrescar(true); } catch (er) { aviso(er.message, true); } });
   document.querySelectorAll("tr[data-doc]").forEach(tr => tr.addEventListener("click", () => (location.hash = "revision/" + tr.dataset.doc)));
@@ -296,7 +318,7 @@ function loteMayoritario(d) {
 }
 function vistaRevision() {
   const cola = colaRevision();
-  if (!cola.length) return `<div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1></div></div><div class="tarjeta vacio">No hay nada pendiente de revisar. ${S.estado.trabajando ? "El motor sigue trabajando: aparecerá aquí lo que necesite tu respuesta." : ""}</div>`;
+  if (!cola.length) return `<div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1></div></div><div class="tarjeta vacio revision-vacia">${bailaoras()}<span>No hay nada pendiente de revisar. ${S.estado.trabajando ? "El motor sigue trabajando: aparecerá aquí lo que necesite tu respuesta." : ""}</span></div>`;
   const d = S.doc;
   const lista = cola.map(x => `<a href="#revision/${x.id}" ${S.docId === x.id ? 'aria-current="true"' : ""}><b>${esc(x.archivo)}</b><small>${x.estado === "parado" ? esc(x.motivo) : x.tipo ? esc(nombreTipo(x.tipo, x.modelo)) + " · " + Math.round((x.confianza || 0) * 100) + " %" + (x.motivo ? " · revisar" : "") : "No reconocido"}</small></a>`).join("");
   if (!d || !S.rev) return `<div class="rev-abajo"><nav class="cola" aria-label="Pendientes">${lista}</nav><div class="tarjeta vacio">Cargando…</div></div>`;

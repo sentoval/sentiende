@@ -473,7 +473,10 @@ def crear_manejador(app):
                 with CERROJO:
                     m = app.motor
                     if p == "/api/procesar":
-                        app._arrancar(); return self._json({"ok": True})
+                        with CERROJO:
+                            r = m.reanudar()
+                        app._arrancar()
+                        return self._json({"ok": True, **r})
                     if p == "/api/expediente":
                         if datos.get("desde_documento"):
                             pid = m.persona_desde_documento(int(datos["desde_documento"]), int(datos.get("indice", 0)))

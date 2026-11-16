@@ -236,6 +236,26 @@ class Motor:
             a.actualizar(did, estado="parado", motivo=f"Fase {f} · {NOMBRE_FASE.get(f, '')}: {e}")
             a.evento(f"Parado en la fase {f}: {e}. El original sigue en Entrada.", did, lote, f, "se")
 
+    def reanudar(self):
+        """«Reanudar lo pendiente» (3.0.3): antes solo seguía con lo que estaba en proceso, y lo parado por un error
+        no se volvía a intentar. Ahora:
+        - lo parado antes de clasificar (fases 1-6) vuelve a la cola desde su fase;
+        - lo parado al nombrar o guardar (fases 7-10) vuelve al Centro de revisión para confirmarlo otra vez."""
+        a = self.almacen
+        cola = revision = 0
+        for d in a.documentos("estado = 'parado'"):
+            if not Path(d["ruta_original"] or "").exists() and not (d["ruta_trabajo"] and Path(d["ruta_trabajo"]).exists()):
+                continue                     # sin el archivo no se puede reintentar: se queda parado con su motivo
+            if (d["fase"] or 0) < 6:
+                a.actualizar(d["id"], estado="en_proceso", motivo="")
+                cola += 1
+            else:
+                a.actualizar(d["id"], estado="espera_emparejar", fase=6, motivo="Se paró al guardar: confírmalo otra vez")
+                revision += 1
+            a.evento("Reanudado a mano", d["id"], d["lote_id"], d["fase"])
+        en_cola = len(a.documentos("estado = 'en_proceso' AND fase < 6"))
+        return {"reintentar": cola, "a_revision": revision, "en_cola": en_cola}
+
     def _separar(self, d, lec):
         """Fase 3. Si el PDF trae varios documentos (o páginas en blanco), crea un documento por parte.
         Devuelve True si el archivo se ha separado (las partes siguen el proceso por su cuenta)."""
