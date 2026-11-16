@@ -6,8 +6,8 @@ junto con su variante (carpeta Variantes\\<variante>\\, solo configuración).
 El motor no sabe qué es un préstamo: las reglas, tipos, nombres y checklists
 se los da la variante."""
 
-VERSION = "2.3.0"      # versión del motor (mayor.menor.corrección)
-CONTRATO = 2           # contrato que ofrece a las variantes: «requiere motor 2.x»
+VERSION = "3.0.0"      # versión del motor (mayor.menor.corrección)
+CONTRATO = 3           # contrato que ofrece a las variantes: «requiere motor 3.x»
 
 FASES = [
     (1, "Recibir"), (2, "Leer"), (3, "Separar"), (4, "Orientar"), (5, "Extraer datos"),

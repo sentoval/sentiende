@@ -15,6 +15,7 @@ from sentiende import checklist, arreglos
 from sentiende.carpetas import libre
 from sentiende.negociacion import ErrorNegociacion
 from sentiende.gestion import ErrorGestion
+from sentiende.ia import ControladorIA, ErrorIA, URL_MODELOS, VERSION_API
 
 WEB = Path(__file__).resolve().parent / "web"
 CERROJO = threading.RLock()
@@ -31,7 +32,51 @@ class App:
         self.correo = Correo(self.motor.carpetas.rutas["datos"])
         self.correo_estado = {"trabajando": False, "ultimo": None, "resumen": None, "error": None}
         self.bluetooth = Bluetooth(lambda rutas: self.encolar(rutas, "bluetooth")[0])
+        self.ia = ControladorIA(self.motor)
+        self.ia.cerrojo = CERROJO
+        self._ia_hilo = None
         threading.Thread(target=self._correo_auto, daemon=True).start()
+        threading.Thread(target=self._ia_auto, daemon=True).start()
+
+    # ---------------- Controlador IA (v3.0)
+    def ia_lote(self, lote_id):
+        """Pasa un lote a la IA en segundo plano (el cerrojo del motor se suelta mientras se espera a la API)."""
+        if self._ia_hilo and self._ia_hilo.is_alive():
+            raise ErrorIA("El Controlador IA ya está trabajando.")
+        def tarea():
+            try:
+                self.ia.ejecutar_lote(lote_id, CERROJO)
+            except Exception as e:
+                with CERROJO:
+                    self.motor.almacen.evento(f"Controlador IA: {e}", lote_id=lote_id, nivel="se")
+        self._ia_hilo = threading.Thread(target=tarea, daemon=True)
+        self._ia_hilo.start()
+
+    def _ia_auto(self):
+        """Al terminar cada lote (si está encendida y en «al terminar cada lote»); y las tarifas, como máximo una vez al día."""
+        import time
+        tarifas = 0
+        while True:
+            time.sleep(15)
+            try:
+                with CERROJO:
+                    aj = self.ia.ajustes()
+                if not aj["activo"]:
+                    continue
+                tarifas += 15
+                if tarifas >= 3600:
+                    tarifas = 0
+                    self.ia.comprobar_tarifas()          # no hace nada si ya se comprobó hoy
+                if aj["actua"] != "lote" or self.trabajando or (self._ia_hilo and self._ia_hilo.is_alive()):
+                    continue
+                with CERROJO:
+                    if self.ia.resumen()["estado"] == "pausa":
+                        continue
+                    pendientes = self.ia.lotes_pendientes()
+                if pendientes:
+                    self.ia_lote(pendientes[0])
+            except Exception:
+                pass
 
     # ---------------- correo (v1.1)
     def revisar_correo(self):
@@ -128,11 +173,13 @@ class App:
         for d in docs:
             e = extra[d["id"]]
             d.update(lote_id=e["lote_id"], padre_id=e["padre_id"], expediente_id=e["expediente_id"], nombre_final=e["nombre_final"], paginas=e["paginas"])
+        ia_lotes = {r["lote_id"]: dict(r) for r in a.db.execute("SELECT l.*, (SELECT COUNT(*) FROM ia_acciones x WHERE x.lote_id = l.lote_id) AS acciones FROM ia_lotes l")}
         for l in lotes:
-            l["documentos"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] != "separado"]
+            l["ia"] = ia_lotes.get(l["id"])
+            l["documentos"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] not in ("separado", "deshecho")]
             l["separados"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] == "separado"]
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
-        return {"trabajando": self.trabajando, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
+        return {"trabajando": self.trabajando, "ia": self.ia.resumen(), "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
                             "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
                             "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
@@ -159,6 +206,7 @@ class App:
         for p in (d["datos"] or {}).get("personas", []):
             p["tercero_lote"] = norm(p.get("completo", "")) in terceros
         d["fecha_clave"] = m.clave_fecha(d["tipo"]) if d["tipo"] else None
+        d["ia_acciones"] = self.ia.acciones_doc(did)
         d["fecha_claves"] = {t["id"]: m.clave_fecha(t["id"]) for t in m.variante.base["documentos"]}
         return d
 
@@ -279,6 +327,12 @@ def crear_manejador(app):
                         self.send_response(200); self.send_header("Content-Type", mimetypes.guess_type(str(f))[0] or "image/png")
                         self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
                     if p == "/api/estado": return self._json(app.estado())
+                    if p == "/api/ia": return self._json(app.ia.pantalla())
+                    if p == "/api/ia/manual": return self._json({"texto": app.ia.manual()})
+                    if p == "/api/ia/lotes": return self._json(app.ia.lotes_con_informe())
+                    if p == "/api/ia/por_revisar": return self._json(app.ia.por_revisar())
+                    if m := re.fullmatch(r"/api/ia/informe/(\d+)", p): return self._json(app.ia.informe(int(m.group(1))))
+                    if m := re.fullmatch(r"/api/ia/consulta/(\d+)", p): return self._json(app.ia.consulta(int(m.group(1))))
                     if p == "/api/expedientes": return self._json(app.expedientes())
                     if p == "/api/temporales": return self._json(app.motor.temporales())
                     if p == "/api/finalidades": return self._json(app.motor.finalidades())
@@ -379,6 +433,8 @@ def crear_manejador(app):
                         else:
                             os.startfile(str(ruta))
                     return self._json({"ok": True})
+                if p.startswith("/api/ia/"):
+                    return self._json(self._ia_post(p[8:], datos))
                 if p == "/api/bluetooth":
                     try: return self._json(app.bluetooth.empezar())
                     except RuntimeError as e: raise MotorError(str(e))
@@ -414,6 +470,10 @@ def crear_manejador(app):
                             m.vincular_personas(int(datos["expediente"]), datos["otros"], int(datos["documento"]))
                         d = m.emparejar(int(datos["documento"]), int(datos["expediente"]), datos.get("persona"), bool(datos.get("comun")),
                                         datos.get("tipo") or None, bool(datos.get("privado")), datos.get("fecha") or None)
+                        try:
+                            app.ia.aprender_correccion(int(datos["documento"]))       # si la IA se había equivocado, se aprende
+                        except Exception:
+                            pass
                         return self._json(d)
                     neg = m.negociacion
                     if p == "/api/nota":
@@ -505,6 +565,50 @@ def crear_manejador(app):
                 self._json({"error": "No existe"}, 404)
             except Exception as e:
                 self._error(e)
+
+        def _ia_post(self, que, datos):
+            ia = app.ia
+            if que == "lote":
+                with CERROJO:
+                    r = ia.resumen()
+                if not r["tiene_clave"]:
+                    raise ErrorIA("Primero escribe tu clave de la API en Ajustes › Controlador IA.")
+                if not r["activo"]:
+                    raise ErrorIA("Enciende el Controlador IA (botón de la barra lateral).")
+                with CERROJO:
+                    ia.db.execute("DELETE FROM ia_lotes WHERE lote_id = ?", (int(datos["lote"]),)); ia.db.commit()
+                app.ia_lote(int(datos["lote"]))
+                return {"ok": True}
+            if que == "probar":
+                with CERROJO:
+                    clave = (datos.get("clave") or "").strip() or ia.clave()
+                if not clave:
+                    raise ErrorIA("Escribe la clave de la API.")
+                try:
+                    lista = json.loads(ia.descargar(URL_MODELOS + "?limit=100", {"x-api-key": clave, "anthropic-version": VERSION_API}))
+                except Exception as e:
+                    msg = str(e)
+                    raise ErrorIA("La clave no es válida." if "401" in msg else f"No se ha podido conectar con la API: {msg}")
+                return {"ok": True, "modelos": [x.get("id") for x in lista.get("data", [])]}
+            if que == "tarifas":
+                return ia.comprobar_tarifas(forzar=True)
+            if que == "consola":
+                import webbrowser
+                from sentiende.ia import URL_CONSOLA
+                webbrowser.open(URL_CONSOLA)
+                return {"ok": True}
+            with CERROJO:
+                if que == "ajustes": return ia.guardar(datos) and ia.pantalla()
+                if que == "encender": return ia.encender(bool(datos.get("activo")))
+                if que == "deshacer": return ia.deshacer(int(datos["accion"]))
+                if que == "deshacer_lote": return ia.deshacer_lote(int(datos["lote"]))
+                if que == "revisada": ia.revisada(datos.get("accion") and int(datos["accion"]), datos.get("lote") and int(datos["lote"])); return {"ok": True}
+                if que == "actualizar_tarifas": return ia.actualizar_tarifas()
+                if que == "limite_hoy": return ia.subir_limite_hoy(datos.get("euros", 0))
+                if que == "exportar": return {"ruta": ia.exportar()}
+                if que == "importar": return {"importados": ia.importar(datos.get("datos"))}
+                if que == "borrar_aprendizaje": ia.borrar_aprendizaje(); return {"ok": True}
+            raise ErrorIA("No existe")
 
         def _estatico(self, p):
             ruta = (WEB / ("index.html" if p in ("/", "") else p.lstrip("/"))).resolve()

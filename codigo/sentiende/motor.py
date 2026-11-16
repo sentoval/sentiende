@@ -548,6 +548,33 @@ class Motor:
         a.evento("Sacado del Limbo: vuelve a la revisión", doc_id, d["lote_id"], 7)
         return a.documento(doc_id)
 
+    def devolver_a_revision(self, doc_id, motivo="Devuelto a la revisión"):
+        """Saca un documento guardado de su expediente y lo devuelve al Centro de revisión (deshacer lo de la IA).
+        El archivo guardado pasa a ser la copia de trabajo; el original se queda en Doc_original hasta volver a guardarlo."""
+        a, c = self.almacen, self.carpetas
+        d = a.documento(doc_id)
+        if not d or d["estado"] != "guardado":
+            raise MotorError(f"El documento {doc_id} no está guardado en un expediente.")
+        f = Path(d["ruta_final"] or "")
+        if not f.exists():
+            raise MotorError(f"No encuentro el archivo guardado: {f}")
+        w = libre(c.trabajo(d["lote_id"]) / f"limbo_{doc_id}{f.suffix.lower()}")
+        shutil.move(str(f), w)
+        paginas = 1
+        if w.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            paginas = len(PdfReader(str(w)).pages)
+        eid = d["expediente_id"]
+        # huella nueva: el texto de este documento ya está fijado (textos_documento) y no debe mezclarse con el del archivo de origen
+        a.actualizar(doc_id, estado="espera_emparejar", fase=7, ruta_original=str(w), extension=w.suffix.lower(), huella=huella(w),
+                     paginas=paginas, paginas_sel=None, rotaciones=[{"n": i} for i in range(1, paginas + 1)],
+                     ruta_trabajo=str(w.parent), ruta_final=None, nombre_final=None, expediente_id=None, persona_id=None, motivo=motivo)
+        a.evento(motivo, doc_id, d["lote_id"], 7)
+        from .arreglos import _refrescar
+        if eid:
+            _refrescar(self, eid)
+        return a.documento(doc_id)
+
     def _renombrar_y_guardar(self, doc_id, limbo=False, persona=None):
         a, c = self.almacen, self.carpetas
         d = a.documento(doc_id)
@@ -582,14 +609,23 @@ class Motor:
                 Path(d["ruta_original"]).unlink(missing_ok=True)
                 if not limbo:
                     real = Path(d["ruta_original_final"] or "")
-                    if real.is_file() and c.originales_limbo in real.parents:
+                    # del Limbo, o devuelto a revisión desde un expediente (deshacer lo de la IA): el original va a su sitio
+                    if real.is_file() and (c.originales_limbo in real.parents or c.originales in real.parents) and real.parent != orig_dir:
                         orig_destino = libre(orig_dir / real.name)
-                        compartido = a.documentos("ruta_original_final = ? AND id != ? AND estado = 'limbo'", (str(real), doc_id))
+                        compartido = a.documentos("ruta_original_final = ? AND id != ? AND estado IN ('limbo', 'guardado', 'contacto')", (str(real), doc_id))
                         (shutil.copy2 if compartido else shutil.move)(real, orig_destino)
                         if not compartido and d["padre_id"]:
                             for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
                                 if h["ruta_original_final"] == str(real):
                                     a.actualizar(h["id"], ruta_original_final=str(orig_destino))
+                    elif real.is_dir() and real != orig_dir:      # PDF unido desde fotos: las fotos originales van a su sitio
+                        for fu in a.documentos("unido_en = ?", (doc_id,)):
+                            f0 = Path(fu["ruta_original_final"] or "")
+                            if f0.is_file():
+                                n0 = libre(orig_dir / f0.name)
+                                shutil.move(str(f0), n0)
+                                a.actualizar(fu["id"], ruta_original_final=str(n0))
+                        orig_destino = orig_dir
             elif hermanos:
                 a.evento(f"El original se moverá a Doc_original cuando se guarden las otras {len(hermanos)} parte(s) del archivo.", doc_id, lote, 10)
             else:
