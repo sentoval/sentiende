@@ -334,7 +334,11 @@
    "emisores": [
     "dgp"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "DOCUMENTO EQUIVALENTE",
+    "RESIDENCIA FISCAL"
+   ]
   },
   {
    "validez_meses": null,
@@ -1111,7 +1115,10 @@
     "foral_araba",
     "foral_navarra"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "100"
+   ]
   },
   {
    "validez_meses": null,
@@ -1170,7 +1177,10 @@
     "foral_araba",
     "foral_navarra"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "303"
+   ]
   },
   {
    "validez_meses": null,
@@ -1214,7 +1224,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "390"
+   ]
   },
   {
    "validez_meses": null,
@@ -1264,7 +1277,11 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "130",
+    "131"
+   ]
   },
   {
    "validez_meses": null,
@@ -1305,7 +1322,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "347"
+   ]
   },
   {
    "validez_meses": null,
@@ -1348,7 +1368,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "200"
+   ]
   },
   {
    "validez_meses": null,
@@ -1398,7 +1421,11 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "036",
+    "037"
+   ]
   },
   {
    "validez_meses": 12,
@@ -1561,7 +1588,13 @@
    "emisores": [
     "banco"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "ADEUDO EN CUENTA",
+    "ADEUDO POR DOMICILIACIONES",
+    "EXTRACTO MENSUAL DE COMERCIOS",
+    "TOTAL ADEUDADO"
+   ]
   },
   {
    "validez_meses": null,
@@ -1579,7 +1612,8 @@
    "nombres": {
     "es": [
      "Certificado de saldo",
-     "Certificado de titularidad"
+     "Certificado de titularidad",
+     "Certificado de titularidad de cuenta"
     ],
     "ca": [
      "Certificat de saldo",
@@ -1607,7 +1641,11 @@
     "LA CUENTA ABIERTA EN ESTA ENTIDAD",
     "CERTIFICADO DE SALDO",
     "C E R T I F I C A",
-    "A PETICIÓN DE PARTE INTERESADA"
+    "A PETICIÓN DE PARTE INTERESADA",
+    "TITULAR DE LA CUENTA",
+    "FECHA APERTURA",
+    "QUE SEGÚN CONSTA EN NUESTROS ARCHIVOS",
+    "CERTIFICADO DE TITULARIDAD"
    ],
    "emisores": [
     "banco"
@@ -1671,7 +1709,8 @@
     "TIPUS D'INTERÉS",
     "AMORTITZACIÓ",
     "RECIBO DE PRÉSTAMO",
-    "AMORTIZACIÓN PRÉSTAMO"
+    "AMORTIZACIÓN PRÉSTAMO",
+    "PTMO"
    ],
    "emisores": [
     "banco",
@@ -1811,7 +1850,11 @@
     "FINANCIACIÓN",
     "SECUENCIA ADEUDO",
     "TOTAL ADEUDADO",
-    "FINANCIACIÓN DE VEHÍCULO"
+    "FINANCIACIÓN DE VEHÍCULO",
+    "ADEUDO POR DOMICILIACIONES SEPA",
+    "NOMBRE EMISOR",
+    "REF. ORDEN DOM",
+    "ID.EMISOR"
    ],
    "emisores": [
     "financiera",
@@ -2081,7 +2124,12 @@
    "emisores": [
     "registro_propiedad"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "RESIDENCIA FISCAL",
+    "TITULAR DE LA CUENTA",
+    "VÍAS DE CONTACTO"
+   ]
   },
   {
    "validez_meses": null,
@@ -2999,6 +3047,57 @@
     "OPERACIONES CON TARJETA",
     "TPV",
     "DATÁFONO"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "formbanco",
+   "nombrecorto": "formbanco",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Fecha MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Formulario de la entidad",
+     "Declaración de residencia fiscal",
+     "Declaración de bienes",
+     "Vías de contacto y comunicación",
+     "Conocimiento del cliente"
+    ],
+    "ca": [
+     "Formulari de l'entitat",
+     "Declaració de residència fiscal"
+    ],
+    "eu": [
+     "Erakundearen inprimakia"
+    ],
+    "gl": [
+     "Formulario da entidade"
+    ]
+   },
+   "sinonimos": [
+    "formulario KYC",
+    "FATCA",
+    "CRS"
+   ],
+   "palabras_clave": [
+    "DECLARACIÓN DE RESIDENCIA FISCAL",
+    "RESIDENCIA FISCAL",
+    "PAÍS DE RESIDENCIA",
+    "VÍAS DE CONTACTO Y COMUNICACIÓN",
+    "RELACIÓN NEGOCIAL",
+    "CONOCIMIENTO DEL CLIENTE",
+    "ORIGEN DE LOS FONDOS",
+    "DATOS DE LOS TITULARES",
+    "SIN BIENES",
+    "CONTRATACIÓN ELECTRÓNICA",
+    "NÚMERO PERSONA"
    ],
    "emisores": [
     "banco"

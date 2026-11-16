@@ -18,7 +18,7 @@ En vez de decidir documento a documento, se mira todo el lote junto, una vez le�
 Todo lo que hace queda en el informe del lote (marcado «Local») y se puede deshacer."""
 import datetime, difflib, json, re
 
-from .extraer import norm, letra_dni, PARTICULAS
+from .extraer import norm, letra_dni, PARTICULAS, claves_cuenta
 
 # Documentos que pueden ser de varias personas a la vez (para el cotitular)
 COMPARTIDOS = {"renta", "padron", "extracto", "saldo", "prestamo", "escritura", "notasimple", "compraventa", "arras", "tasacion",
@@ -30,6 +30,17 @@ CON_TERCEROS = {"escritura", "compraventa", "notasimple", "arras", "tasacion", "
 PISTAS_FINALIDAD = {"licencia_taxi": {"licencia", "cap", "autorizacionvt", "fichatecnica", "carnet"},
                     "pyme": {"cif", "sociedades", "balance", "sumasysaldos", "iva", "ivaanual", "constitucion", "censo"},
                     "hipotecario": {"notasimple", "tasacion", "arras", "escritura"}}
+
+# Documentos que llegan en serie (uno por mes, trimestre o recibo): con la misma cuenta o préstamo y fechas distintas
+# se revisan juntos y se guardan como entradas del mismo tipo con su periodo (Joan, 16/11/2026)
+EN_SERIE = {"extracto", "saldo", "prestamo", "cuota", "leasing", "renting", "tpv", "nomina", "iva", "fraccionado", "pension", "paro"}
+
+def _mes(d):
+    datos = d["datos"] or {}
+    f = datos.get("periodo") or datos.get("emision") or ((datos.get("fechas") or [None])[0])
+    if datos.get("trimestre") and datos["trimestre"][1]:
+        return f"T{datos['trimestre'][0]}{datos['trimestre'][1]}"
+    return f[:7] if f else None
 
 EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 TEL = re.compile(r"(?<![\d,.])(?:\+?34[ -]?)?([6789](?:[ -]?\d){8})(?![\d,])")
@@ -175,8 +186,11 @@ class ContextoLote:
             for k in set(sueltos):
                 en_doc[d["id"]].add(f"d{k}@{d['id']}")
             o = set()
-            for v in datos.get("iban") or []:
+            cuentas, prestamos = claves_cuenta(texto)
+            for v in cuentas:
                 o.add(("cuenta", v))
+            for v in prestamos:
+                o.add(("préstamo", v))
             for m in EMAIL.finditer(texto):
                 o.add(("correo", m.group(0)))
             for m in TEL.finditer(texto):
@@ -226,7 +240,7 @@ class ContextoLote:
                 dni = _con_letra(k, dni_vistos.get(k, []))
             variantes = sorted({norm(p.get("completo") or "").strip() for p in nombres if p.get("completo")})
             identidades.append({"clave": r, "persona": {k2: (mejor or {}).get(k2) for k2 in ("nombre", "apellido1", "apellido2", "completo")} if mejor else None,
-                                "dni": dni, "variantes": variantes, "docs": sorted(x["docs"]),
+                                "dni": dni, "variantes": variantes, "docs": sorted(x["docs"]), "_nodos": sorted(x["nodos"]),
                                 "compartidos": sorted(did for did in x["docs"] if tipos.get(did) in COMPARTIDOS),
                                 "individuales": sorted(did for did in x["docs"] if tipos.get(did) not in COMPARTIDOS)})
         identidades.sort(key=lambda i: (-len(i["docs"]), -len(i["individuales"])))
@@ -235,7 +249,9 @@ class ContextoLote:
         con_nombre = {did for i in identidades for did in i["docs"]}
         res = {"lote": lote_id, "identidades": identidades, "docs": {}, "titular": None, "cotitulares": [], "validos": sorted(validos)}
         if not identidades or not con_nombre:
-            return res
+            for d in docs:
+                res["docs"][d["id"]] = {"terceros": []}
+            return self._completar(res, lote_id, docs, otros, {}, {}, set())
         t = identidades[0]
         pct = 100 * len(t["docs"]) / len(con_nombre)
         res["cobertura"] = round(pct)
@@ -282,6 +298,39 @@ class ContextoLote:
                         dec.update(persona=p, comun=False, por="nombre o DNI del documento")
                 asignados[d["id"]] = dec
             res["docs"][d["id"]] = dec
+        return self._completar(res, lote_id, docs, otros, asignados, en_doc, set(grupo), identidades)
+
+    def _completar(self, res, lote_id, docs, otros, asignados, en_doc, grupo, identidades=()):
+        """Lo que se decide con todo el lote ya visto: rentas repetidas, páginas del mismo PDF, otros datos,
+        series y documentos ya guardados en otros lotes."""
+        porid = {d["id"]: d for d in docs}
+        # dos documentos del mismo tipo y periodo marcados «comunes» (p. ej. la renta de cada cónyuge, donde salen los dos):
+        # en realidad son uno de cada persona → cada uno para quien sale primero (el declarante)
+        repetidos = {}
+        for did, dec in res["docs"].items():
+            if dec.get("comun") and porid[did]["tipo"] not in CON_TERCEROS:
+                repetidos.setdefault((porid[did]["tipo"], _mes(porid[did]) or ""), []).append(did)
+        for (tipo, _), dids in repetidos.items():
+            if len(dids) < 2:
+                continue
+            for did in dids:
+                orden = sorted((int(n.split("_")[1]), n) for n in en_doc.get(did, ()) if n.startswith("n"))
+                for _, n in orden:
+                    ident = next((i["n"] for i in identidades if n in i.get("_nodos", ()) ), None)
+                    if ident in grupo:
+                        res["docs"][did].update(comun=False, persona=ident, por="declarante del documento (hay otro igual del otro titular)")
+                        break
+        # páginas del mismo PDF original: si una ya tiene dueño y las demás no, van con ella
+        for d in docs:
+            dec = res["docs"][d["id"]]
+            if "persona" in dec or "comun" in dec or not d.get("padre_id"):
+                continue
+            her = [res["docs"][x["id"]] for x in docs if x.get("padre_id") == d["padre_id"] and x["id"] != d["id"]
+                   and ("persona" in res["docs"][x["id"]] or "comun" in res["docs"][x["id"]])]
+            elegidas = {(h.get("comun"), h.get("persona")) for h in her}
+            if len(elegidas) == 1:
+                dec.update(comun=her[0].get("comun"), persona=her[0].get("persona"), por="mismo PDF original que otro documento del lote")
+                asignados[d["id"]] = dec
         # documentos sin nadie del grupo: coincidencias por otros datos con documentos ya asignados
         valor_a_docs = {}
         for did, vs in otros.items():
@@ -302,7 +351,103 @@ class ContextoLote:
                 (cl, val), por = next(iter(pistas.items()))
                 dec.update({"comun": True, "persona": None} if cl == "comun" else {"comun": False, "persona": val},
                            por="mismo " + " y ".join(sorted(set(por))) + " que otro documento del lote")
+        # documentos en serie: misma cuenta o préstamo (o, sin número, misma entidad), mismo tipo y fechas distintas
+        series, de_serie = self.series(docs, otros), {}
+        for clave, miembros in series.items():
+            for did in miembros:
+                de_serie[did] = clave
+            hecha = [res["docs"][x] for x in miembros if "persona" in res["docs"][x] or "comun" in res["docs"][x]]
+            elegidas = {(h.get("comun"), h.get("persona")) for h in hecha}
+            if len(elegidas) == 1:                       # todos los que ya tienen dueño coinciden: el resto, igual
+                h = hecha[0]
+                for did in miembros:
+                    if not ("persona" in res["docs"][did] or "comun" in res["docs"][did]):
+                        res["docs"][did].update(comun=h.get("comun"), persona=h.get("persona"), por="misma serie (misma cuenta, otro periodo)")
+        for did, clave in de_serie.items():
+            res["docs"][did]["serie"] = clave
+        res["series"] = {k: sorted(v) for k, v in series.items()}
+        # sin nadie del lote, pero el nombre completo del titular sale en el texto (p. ej. extractos con transferencias suyas):
+        # solo se propone, no se guarda solo
+        if res.get("titular") is not None:
+            tp = identidades[res["titular"]].get("persona") or {}
+            completo = norm(tp.get("completo") or "").strip()
+            if len(completo.split()) >= 3:
+                for d in docs:
+                    dec = res["docs"][d["id"]]
+                    if "persona" in dec or "comun" in dec:
+                        continue
+                    if completo in re.sub(r"\s+", " ", norm(self._textos(d))):
+                        dec.update(comun=d["tipo"] in COMPARTIDOS, persona=None if d["tipo"] in COMPARTIDOS else res["titular"],
+                                   por="el nombre del titular aparece en el texto", solo_propuesta=True)
+        # sin nadie del lote: la cuenta o el préstamo ya está en un documento guardado de otro lote
+        for d in docs:
+            dec = res["docs"][d["id"]]
+            if "persona" in dec or "comun" in dec:
+                continue
+            fuera = self.de_otros_lotes(lote_id, otros.get(d["id"], ())) or (self.por_nombre_en_texto(d) if res.get("titular") is None else None)
+            if fuera:
+                dec.update(fuera)
         return res
+
+    def por_nombre_en_texto(self, d):
+        """Último recurso, solo como propuesta: el nombre completo (nombre y dos apellidos) de una persona de un
+        único expediente abierto aparece en el texto (p. ej. extractos con transferencias a su nombre)."""
+        texto = re.sub(r"\s+", " ", norm(self._textos(d)))
+        hall = {}
+        for pid, nom, a1, a2, eid in self.db.execute(
+                "SELECT p.id, p.nombre, p.apellido1, p.apellido2, e.id FROM personas p JOIN expediente_personas ep ON ep.persona_id = p.id "
+                "JOIN expedientes e ON e.id = ep.expediente_id WHERE e.estado = 'abierto' AND p.apellido2 IS NOT NULL AND p.apellido2 != ''"):
+            completo = norm(f"{nom} {a1} {a2}").strip()
+            if len(completo.split()) >= 3 and completo in texto:
+                hall.setdefault(eid, set()).add(pid)
+        if len(hall) != 1:
+            return None
+        eid, pids = next(iter(hall.items()))
+        return {"expediente_id": eid, "persona_id": next(iter(pids)) if len(pids) == 1 and d["tipo"] not in COMPARTIDOS else None,
+                "comun": True, "persona": None, "por": "el nombre de una persona de ese expediente aparece en el texto"}
+
+    def series(self, docs, otros):
+        """{clave: {doc_id}}: grupos de 2 o más documentos del mismo tipo y la misma cuenta o préstamo
+        (o la misma entidad si no se lee el número) con fechas distintas."""
+        grupos = {}
+        for d in docs:
+            if d["tipo"] not in EN_SERIE:
+                continue
+            claves = [f"{d['tipo']}|{c}|{v}" for c, v in otros.get(d["id"], ()) if c in ("cuenta", "préstamo")]
+            if not claves and d.get("entidad"):
+                claves = [f"{d['tipo']}|entidad|{d['entidad']}"]
+            for k in claves:
+                grupos.setdefault(k, set()).add(d["id"])
+        meses = {d["id"]: _mes(d) for d in docs}
+        out, usados = {}, set()
+        for k, g in sorted(grupos.items(), key=lambda kv: -len(kv[1])):
+            g = g - usados
+            if len(g) >= 2 and len({meses[x] for x in g if meses[x]}) >= 2:
+                out[k] = g
+                usados |= g
+        return out
+
+    def de_otros_lotes(self, lote_id, valores):
+        """Si una cuenta o préstamo del documento ya está en documentos guardados de otros lotes, todos del
+        mismo expediente, se propone ese expediente (y su persona si es siempre la misma)."""
+        claves = {v for c, v in valores if c in ("cuenta", "préstamo")}
+        if not claves:
+            return None
+        encontrados = []
+        cache = self.__dict__.setdefault("_claves_guardados", {})
+        for r in self.db.execute("SELECT id, expediente_id, persona_id, de_expediente, huella, paginas, paginas_sel FROM documentos "
+                                 "WHERE estado = 'guardado' AND lote_id != ? AND expediente_id IS NOT NULL", (lote_id,)):
+            if r[0] not in cache:
+                c, p = claves_cuenta(self._textos(self.a.documento(r[0])))
+                cache[r[0]] = set(c) | set(p)
+            if claves & cache[r[0]]:
+                encontrados.append((r[1], None if r[3] else r[2]))
+        exps = {e for e, _ in encontrados}
+        if len(exps) != 1:
+            return None
+        pers = {p for _, p in encontrados}
+        return {"expediente_id": exps.pop(), "persona_id": pers.pop() if len(pers) == 1 else None,
+                "comun": len(pers) != 1 or None in pers, "persona": None, "por": "misma cuenta o préstamo que documentos ya guardados en otro lote"}
 
     # ------------------------------------------------------------------ elegir finalidad para un expediente nuevo
     def _finalidad(self, tipos):
@@ -435,9 +580,22 @@ class ContextoLote:
                 if nm and d["tipo"] in CON_TERCEROS:
                     a.db.execute("INSERT OR IGNORE INTO terceros_lote VALUES(?, ?)", (lote_id, nm)); a.db.commit()
                     hechos["terceros"] += 1
+            if dec.get("serie"):
+                datos["serie"] = dec["serie"]          # se nombra con su periodo y se revisa junto con los demás de la serie
+                a.actualizar(d["id"], datos=datos)
             pid = personas.get(dec.get("persona")) if dec.get("persona") is not None else None
             comun = bool(dec.get("comun"))
-            claro = eid and (comun or pid) and d["tipo"] and not d["motivo"] and (d["confianza"] or 0) >= 0.75
+            if dec.get("expediente_id"):              # misma cuenta o préstamo que lo ya guardado en otro lote: solo propuesta
+                e2 = a.expediente(dec["expediente_id"])
+                p2 = a.persona(dec["persona_id"]) if dec.get("persona_id") else None
+                quien = f'{p2["nombre"]} {p2["apellido1"]}' if p2 else "todo el expediente"
+                datos["ia_propuesta"] = {"texto": f"Contexto del lote: es de {quien} ({e2['nombre']}), por {dec.get('por')}.", "seguridad": 80,
+                                         "expediente_id": e2["id"], "persona_id": dec.get("persona_id"), "tipo": d["tipo"], "comun": not p2, "origen": "local"}
+                datos["contexto"] = True
+                a.actualizar(d["id"], datos=datos)
+                hechos["propuestos"] += 1
+                continue
+            claro = eid and (comun or pid) and d["tipo"] and not d["motivo"] and (d["confianza"] or 0) >= 0.75 and not dec.get("solo_propuesta")
             if claro and aj["guardar"]:
                 prev = m.gestion.nombre_previsto(d["id"], eid, None if comun else pid, d["tipo"], None, False, comun)
                 if prev.get("existe"):

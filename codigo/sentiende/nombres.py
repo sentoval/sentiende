@@ -92,9 +92,16 @@ def dato_distintivo(regla, datos, entidad_abrev=None):
             v = None   # n.º de licencia: se pide en la revisión
         else:
             v = None
+        if not v and clave == "entidad" and datos.get("serie"):
+            continue          # en una serie basta con el periodo
         if not v:
             return None, False
         out.append(v)
+    # documentos en serie (recibos, extractos… de la misma cuenta con fechas distintas): cada uno con su periodo
+    if datos.get("serie") and not any(p.partition(":")[0] in ("periodo", "emision", "trimestre") for p in partes):
+        f = datos.get("periodo") or datos.get("emision") or ((datos.get("fechas") or [None])[0])
+        if f:
+            out.append(_fmt(f, "MMAA"))
     return "_".join(out), True
 
 class Nombrador:

@@ -179,7 +179,7 @@ class App:
     # ---------------- datos para las pantallas
     def info(self):
         v = self.motor.variante
-        tipos = sorted(({"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["nombre"])
+        tipos = sorted(({"id": d["id"], "nombre": v.etiqueta(d["id"]), "orden": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["orden"])
         return {"motor": {"version": VERSION, "contrato": CONTRATO}, "variante": {k: v.meta.get(k) for k in ("id", "nombre", "version", "colores", "vocabulario", "finalidades", "papeles", "modulos")},
                 "compatibilidad": v.compat.mensaje, "finalidades_visibles": self.motor.finalidades_visibles(), "fases": FASES, "tipos": tipos,
                 "carpetas": {k: str(p) for k, p in self.motor.carpetas.rutas.items()},
@@ -381,7 +381,7 @@ def crear_manejador(app):
                     if p == "/api/buscar": return self._json(g.buscar(unquote(q.get("q", "")).replace("+", " ")))
                     if p == "/api/reglas":
                         v = app.motor.variante
-                        return self._json({"nombres": v.nombres, "tipos": [{"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia"),
+                        return self._json({"nombres": v.nombres, "tipos": [{"id": d["id"], "nombre": v.etiqueta(d["id"]), "familia": d.get("familia"),
                                            "corto": d.get("nombre_corto") or d["id"], "zzzz": d.get("zzzz"), "importancia": d.get("importancia"),
                                            "idiomas": sorted((d.get("nombres") or {}).keys()), "otros_nombres": (d.get("nombres") or {}).get("es", [])[1:6]}
                                           for d in v.base["documentos"]]})

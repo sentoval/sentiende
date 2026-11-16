@@ -117,7 +117,7 @@ def vigilar(texto, palabras=()):
     Si devuelve algo, la consulta NO se envía."""
     t = re.sub(r"\[[A-Z]+_[A-Z0-9]+\]", " ", texto or "")
     fallos = []
-    if re.search(r"\b0?\d{8}\s?[A-Z]\b|\b[XYZ]\d{7}[A-Z]\b|\b\d{2}\.\d{3}\.\d{3}-?[A-Z]\b", t):
+    if re.search(r"\b0?\d{8}\s?[A-Z]\b|\b[XYZ]\d{7}[A-Z]\b|\b\d{2}\.\d{3}\.\d{3}-?[A-Z]\b|\b(?:\d ){7}\d ?[A-Z]\b", t):
         fallos.append("un DNI o NIE")
     if re.search(r"(?:DNI|NIF|NIE|D\.N\.I|N\.I\.F|N\.I\.E)\.?[^\n]{0,14}?\b\d{7,9}\b", t):
         fallos.append("un número de DNI o NIF")
@@ -156,7 +156,7 @@ class Mascara:
     def tapar(self, texto, personas=(), palabras=()):
         """personas: [{'clave', 'nombre', 'apellido1', 'apellido2', 'dni', 'ficha'?}] (las leídas y las candidatas).
         Devuelve el texto en mayúsculas, sin tildes y sin datos personales."""
-        t = norm(texto or "")
+        t = re.sub(r"\b(?:\d ){7}\d ?[A-Z]\b", lambda m: m.group(0).replace(" ", ""), norm(texto or ""))   # DNI con cifras separadas
         # códigos de verificación y similares (antes que los números sueltos)
         t = re.sub(r"((?:C[OÓ]DIGO\s+(?:SEGURO\s+)?(?:DE\s+)?VERIFICACI[OÓ]N|CSV|C\.S\.V\.?|REF(?:ERENCIA)?\s+ELECTR[OÓ]NICA)[^\n\w]{0,6})([A-Z0-9][A-Z0-9-]{9,})",
                    lambda m: m.group(1) + self.ficha("CSV", m.group(2)), t)
@@ -971,7 +971,7 @@ class ControladorIA:
         tipo = dec.get("tipo") if dec.get("tipo") in m.variante.docs else None
         if tipo and fn.get("clasificar") and tipo != d["tipo"]:
             a.actualizar(did, tipo=tipo, confianza=max(d["confianza"] or 0, seg / 100), motivo=f"Tipo propuesto por la IA ({seg} %)")
-            nombre_tipo = m.variante.docs[tipo]["nombres"]["es"][0]
+            nombre_tipo = m.variante.etiqueta(tipo)
             hechas.append(self._accion(lote, did, consulta_id, "clasificado", "Clasificado", f"{nombre_tipo} (antes: {d['tipo'] or 'no reconocido'})",
                                        motivo, seg, est, {"tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"]}))
             d = a.documento(did)

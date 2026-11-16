@@ -445,7 +445,7 @@ class Motor:
         regla = self.nombrador.r["dato_distintivo"].get(doc.get("zzzz")) or ""
         return next((c for c in (p.partition(":")[0] for p in regla.split("+")) if c in ("periodo", "emision", "caducidad")), None)
 
-    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False, fecha=None):
+    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False, fecha=None, en_serie=True):
         """Respuesta a la fase 7. tipo: confirma o corrige la clasificación provisional.
         fecha: la fecha del documento elegida en la revisión (AAAA-MM-DD); manda sobre la leída."""
         a = self.almacen
@@ -481,7 +481,24 @@ class Motor:
         a.actualizar(doc_id, fase=7, tipo=tipo, expediente_id=expediente_id, persona_id=persona["id"],
                      de_expediente=int(de_expediente), privado=int(privado), estado="en_proceso", motivo="")
         a.evento(f"Emparejado con el expediente {expediente_id}" + (" (de todo el expediente)" if de_expediente else f" · {persona['nombre']} {persona['apellido1']}"), doc_id, d["lote_id"], 7)
-        return self._renombrar_y_guardar(doc_id)
+        res = self._renombrar_y_guardar(doc_id)
+        serie = (d["datos"] or {}).get("serie")
+        if en_serie and serie:
+            # el resto de la serie (misma cuenta o préstamo, otros periodos) va al mismo sitio, cada uno con su periodo
+            hermanos = [x for x in a.documentos("lote_id = ? AND estado = 'espera_emparejar'", (d["lote_id"],))
+                        if (x["datos"] or {}).get("serie") == serie and x["id"] != doc_id]
+            hechos = []
+            for x in hermanos:
+                try:
+                    g = self.emparejar(x["id"], expediente_id, persona_id, de_expediente, tipo if tipo and tipo != x["tipo"] else None, privado, en_serie=False)
+                    hechos.append(g.get("nombre_final") if isinstance(g, dict) else str(x["id"]))
+                except MotorError as e:
+                    a.evento(f"Serie: no se ha podido guardar junto con el documento {doc_id}: {e}", x["id"], d["lote_id"], 7, nivel="revision")
+            if hechos:
+                a.evento(f"Guardados con la misma decisión por ser de la misma serie: {', '.join(map(str, hechos))}", doc_id, d["lote_id"], 7)
+                if isinstance(res, dict):
+                    res["serie_guardados"] = hechos
+        return res
 
     def guardar_tarjeta(self, doc_id, expediente_id, entidad, contacto):
         """Tarjeta de visita confirmada: el contacto va al banco del expediente (se añade si no estaba)

@@ -399,7 +399,7 @@ function vistaRevision() {
     </div>
     <div class="acciones"><button class="btn pri" id="tj-si">${ico("check")}Sí, guardar como contacto del banco</button><button class="btn" id="tj-no">No, es un documento normal</button></div></section>` : "";
   R.tarjetaPendiente = !!tj;
-  return `${preguntaTarjeta}${bannerIA(d)}
+  return `${preguntaTarjeta}${bannerSerie(d)}${bannerIA(d)}
   <section class="barra-rev ${tj ? "bloqueada" : ""}" aria-label="Revisar">
     <div class="barra-cab"><b>Revisar</b><span class="sub">${esc(d.nombre_recibido)} · ${d.motivo ? esc(d.motivo) : "clasificado con " + Math.round((d.confianza || 0) * 100) + " %"} · ${cola.length} pendiente(s)</span>${union}</div>
     <div class="barra-pasos">
@@ -1603,6 +1603,14 @@ function botonesLoteIA(l) {
   if (ia?.activo && ia.estado !== "pausa" && l.documentos.some(d => d.estado === "espera_emparejar") && !ia.trabajando) b.push(`<button class="btn" id="ia-pasar" data-lote="${l.id}">${ico("ia", 16)}Pasar a la IA</button>`);
   if (l.ia?.estado === "trabajando" && ia?.trabajando) b.push(`<span class="pill p-ia">La IA está trabajando…</span>`);
   return b.join("");
+}
+function bannerSerie(d) {
+  const serie = (d.datos || {}).serie;
+  if (!serie) return "";
+  const [, clase] = serie.split("|");
+  const por = clase === "cuenta" ? "la misma cuenta" : clase === "préstamo" ? "el mismo préstamo" : "la misma entidad";
+  return `<section class="ia-banner"><div class="cab"><div><b>${ico("motor", 16)} Documento de una serie</b>
+      <span class="sub">Hay otros documentos de este lote del mismo tipo, con ${por} y de otros periodos. Al confirmar este, los demás se guardan con la misma decisión, cada uno con su mes (2.ª, 3.ª… entrada del mismo documento).</span></div></div></section>`;
 }
 function bannerIA(d) {
   const acc = d.ia_acciones || [], prop = (d.datos || {}).ia_propuesta;

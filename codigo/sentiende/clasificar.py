@@ -31,6 +31,8 @@ class Clasificador:
 
     def puntuar(self, t):
         res = []
+        # 3.0.3 · el pie legal de los bancos («inscrita en el Registro Mercantil…, tomo…, folio…») no es una nota simple
+        t = re.sub(r"[^\n]*REGISTRO MERCANTIL[^\n]*", " ", t)
         for doc in self.docs:
             if doc.get("subtipo_de"):
                 continue
@@ -38,6 +40,8 @@ class Clasificador:
             nombres = {n for lang in doc["nombres"].values() for n in lang if _contiene(t, n)}
             sin = [n for n in doc["sinonimos"] if _contiene(t, n)]
             p = 3 * len(fuertes) + 2 * len(nombres) + len(sin)
+            if p and any(_contiene(t, x) for x in doc.get("excluir", [])):   # frases que dicen que NO es este tipo
+                p = max(1, p - 9)
             if p:
                 res.append((p, doc["id"], fuertes[:4] + sorted(nombres)[:2] + sin[:1]))
         # 3.0.2 · título del documento: el nombre de un tipo en las primeras líneas pesa más
