@@ -129,6 +129,34 @@ class TestIA(unittest.TestCase):
             self.assertEqual({d["estado"] for d in m.almacen.documentos("padre_id = ?", (padre,))}, {"deshecho"})
             m.almacen.db.close()
 
+    def test_respuesta_vacia_no_para_el_lote(self):
+        with tempfile.TemporaryDirectory() as t:
+            m, pid, eid, lote, did = preparar(t)
+            sim = Simulada(["", ""])          # la IA no contesta nada útil
+            c = IA.ControladorIA(m, cliente=sim, descargar=lambda u, h=None: "")
+            c.guardar({"clave": "sk-ant-prueba"}); c.encender(True)
+            r = c.ejecutar_lote(lote, threading.RLock())
+            self.assertIsNone(r["parado"])
+            acc = c.informe(lote)["acciones"]
+            self.assertEqual((acc[0]["tipo"], acc[0]["titulo"]), ("para_ti", "Sin respuesta"))
+            self.assertEqual(len(sim.recibido), 1)          # no se repite la consulta del mismo documento
+            m.almacen.db.close()
+
+    def test_reintenta_si_se_queda_sin_margen(self):
+        llamadas = []
+        def falso(clave, modelo, sistema, mensaje, max_tokens, timeout):
+            llamadas.append(max_tokens)
+            return ("", {"output_tokens": max_tokens}, "max_tokens") if len(llamadas) == 1 else ('{"seguridad": 50}', {"output_tokens": 300}, "end_turn")
+        orig = IA._llamar
+        IA._llamar = falso
+        try:
+            texto, uso = IA.llamar_api("k", "claude-haiku-5-5", "s", "m")
+        finally:
+            IA._llamar = orig
+        self.assertEqual(llamadas, [4000, 8000])
+        self.assertEqual(uso["output_tokens"], 4300)
+        self.assertIn("seguridad", texto)
+
     def test_tarifas_una_vez_al_dia(self):
         with tempfile.TemporaryDirectory() as t:
             m = Motor(Path(t), VAR)

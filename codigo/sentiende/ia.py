@@ -263,9 +263,26 @@ def leer_precios(html):
 
 
 # ====================================================================== cliente de la API
-def llamar_api(clave, modelo, sistema, mensaje, max_tokens=700, timeout=90):
-    """Una consulta a la API de mensajes. Devuelve (texto, uso). El manual va en caché (más barato si se repite)."""
-    cuerpo = {"model": modelo, "max_tokens": max_tokens,
+ESFUERZO = "low"        # Joan (16/11, 19:00): esfuerzo bajo siempre; si hiciera falta más, se valorará
+
+
+def llamar_api(clave, modelo, sistema, mensaje, max_tokens=4000, timeout=120):
+    """Una consulta a la API de mensajes. Devuelve (texto, uso). El manual va en caché (más barato si se repite).
+    Los modelos 5.5 piensan antes de contestar y ese razonamiento cuenta dentro de max_tokens: si la respuesta
+    se queda sin texto por falta de margen, se repite una vez con el doble (solo se paga lo que se usa)."""
+    total, texto = {}, ""
+    for intento in (max_tokens, max_tokens * 2):
+        texto, uso, motivo = _llamar(clave, modelo, sistema, mensaje, intento, timeout)
+        for k, v in uso.items():
+            if isinstance(v, (int, float)):
+                total[k] = total.get(k, 0) + v
+        if texto.strip() or motivo != "max_tokens":
+            break
+    return texto, total
+
+
+def _llamar(clave, modelo, sistema, mensaje, max_tokens, timeout):
+    cuerpo = {"model": modelo, "max_tokens": max_tokens, "output_config": {"effort": ESFUERZO},
               "system": [{"type": "text", "text": sistema, "cache_control": {"type": "ephemeral"}}],
               "messages": [{"role": "user", "content": mensaje}]}
     req = urllib.request.Request(URL_API, data=json.dumps(cuerpo).encode("utf-8"), method="POST",
@@ -288,14 +305,14 @@ def llamar_api(clave, modelo, sistema, mensaje, max_tokens=700, timeout=90):
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise ErrorIA(f"Sin conexión con la API: {getattr(e, 'reason', e)}")
     texto = "".join(b.get("text", "") for b in j.get("content", []) if b.get("type") == "text")
-    return texto, j.get("usage", {})
+    return texto, j.get("usage", {}), j.get("stop_reason")
 
 
 def json_de(texto):
     """El primer objeto JSON de la respuesta (aunque venga con texto alrededor)."""
     m = re.search(r"\{.*\}", texto or "", re.S)
     if not m:
-        raise ErrorIA("La respuesta de la IA no trae datos.")
+        raise ErrorIA("La IA no ha respondido nada útil")
     try:
         return json.loads(m.group(0))
     except ValueError:
@@ -441,10 +458,11 @@ class ControladorIA:
         return None
 
     def _estimar(self, sistema, mensaje, max_tokens):
+        """Gasto previsto de una consulta: la entrada y una respuesta habitual (no el máximo permitido)."""
         aj = self.ajustes()
         p = aj["precios"].get(aj["modelo"], PRECIOS[aj["modelo"]])
         tokens = (len(sistema) + len(mensaje)) / 3.0
-        return (tokens * p["entrada"] + max_tokens * p["salida"]) / 1e6 * aj["cambio"]
+        return (tokens * p["entrada"] + min(max_tokens, 800) * p["salida"]) / 1e6 * aj["cambio"]
 
     # ------------------------------------------------------------------ estado para las pantallas
     def resumen(self):
@@ -695,7 +713,7 @@ class ControladorIA:
         return {"mensaje": "\n\n".join(partes), "mascara": mas}
 
     # ------------------------------------------------------------------ consultar (sin el cerrojo del motor)
-    def _consultar(self, prep, lote_id, doc_id, clase, cerrojo, max_tokens=700):
+    def _consultar(self, prep, lote_id, doc_id, clase, cerrojo, max_tokens=4000):
         with cerrojo:
             aj = self.ajustes(con_clave=True)
             sistema = self.manual()
@@ -902,17 +920,29 @@ class ControladorIA:
         try:
             with cerrojo:
                 self.db.execute("INSERT OR REPLACE INTO ia_lotes(lote_id, estado, fecha) VALUES(?, 'trabajando', ?)", (lote_id, ahora())); self.db.commit()
+            intentadas = set()          # cada grupo de fotos se consulta una sola vez
             for vuelta in range(3):
                 with cerrojo:
                     ya = {r[0] for r in self.db.execute("SELECT documento_id FROM ia_consultas WHERE lote_id = ? AND documento_id IS NOT NULL", (lote_id,))}
                     docs = [x["id"] for x in self.a.documentos("lote_id = ? AND estado = 'espera_emparejar'", (lote_id,)) if x["id"] not in ya]
-                    fotos = [p for p in self.m.propuestas_union() if p["lote"] == lote_id] if self.ajustes()["funciones"].get("separar") else []
+                    fotos = [p for p in self.m.propuestas_union() if p["lote"] == lote_id and tuple(p["documentos"]) not in intentadas] if self.ajustes()["funciones"].get("separar") else []
+                    intentadas |= {tuple(p["documentos"]) for p in fotos}
                 if not docs and not fotos:
                     break
                 for grupo in fotos:
                     with cerrojo:
                         prep = self.preparar_union(grupo["documentos"])
-                    cid, dec = self._consultar(prep, lote_id, None, "union", cerrojo, 400)
+                    try:
+                        cid, dec = self._consultar(prep, lote_id, None, "union", cerrojo)
+                    except LimiteAlcanzado:
+                        raise
+                    except ErrorIA as e:
+                        if self.error:            # sin conexión, clave o créditos: se para el lote
+                            raise
+                        with cerrojo:             # las fotos se quedan sueltas; cada una se consulta después por separado
+                            self._accion(lote_id, grupo["documentos"][0], None, "para_ti", "Fotos sin unir",
+                                         f"{e}: las {len(grupo['documentos'])} fotos siguen sueltas y se miran una a una.", "", 0, "para_ti", {})
+                        continue
                     resumen["consultas"] += 1
                     with cerrojo:
                         resumen["acciones"] += len(self._aplicar_union(grupo["documentos"], dec, cid, lote_id))
@@ -930,7 +960,7 @@ class ControladorIA:
                         if self.error:            # sin conexión, clave o créditos: se para el lote
                             raise
                         with cerrojo:             # respuesta que no se entiende: este documento se queda para Joan
-                            self._accion(lote_id, did, None, "para_ti", "Sin respuesta útil", str(e), "", 0, "para_ti", {})
+                            self._accion(lote_id, did, None, "para_ti", "Sin respuesta", f"{e}: queda para que lo decidas tú.", "", 0, "para_ti", {})
                         continue
                     resumen["consultas"] += 1
                     with cerrojo:

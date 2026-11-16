@@ -1,4 +1,4 @@
-﻿SeFinancia con Sentiende · v3.0 · kit para crear el programa en tu equipo
+﻿SeFinancia con Sentiende · v3.0.1 · kit para crear el programa en tu equipo
 ==========================================================================
 
 CÓMO SE HACE (una vez; unos 5-10 minutos, necesita internet)
