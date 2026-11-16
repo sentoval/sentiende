@@ -29,7 +29,7 @@ def evaluar(variante, almacen, expediente_id, hoy=None):
         for persona, encontrados in grupos:
             estado, detalle = _condicion(it.get("condicion", {}), encontrados, hoy)
             quien = f'{persona["nombre"]} {persona["apellido1"]}'.strip() if persona else "Expediente"
-            nombre_tipo = variante.docs.get(it["tipo"], {}).get("nombres", {}).get("es", [it["tipo"]])[0]
+            nombre_tipo = variante.etiqueta(it["tipo"])
             filas.append({"tipo": it["tipo"], "documento": nombre_tipo, "quien": quien, "estado": estado,
                           "persona_id": persona["id"] if persona else None, "clave": f'{persona["id"] if persona else "exp"}:{it["tipo"]}',
                           "familia": variante.docs.get(it["tipo"], {}).get("familia", ""),

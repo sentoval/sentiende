@@ -19,6 +19,29 @@ from sentiende.motor import MotorError
 LANZADOR_MINIMO = 2          # versión mínima de SeFinancia.exe que necesita este motor
 CONGELADO = getattr(sys, "frozen", False)
 
+def sin_ventanas_negras():
+    """3.0.3: en Windows, los programas de consola que lanza el motor (Tesseract para el OCR, PowerShell…) abrían
+    una ventana negra un instante en cada página. Se lanzan todos ocultos (CREATE_NO_WINDOW + SW_HIDE)."""
+    if sys.platform != "win32":
+        return
+    import subprocess
+    if getattr(subprocess.Popen, "_sin_ventana", False):
+        return
+    original = subprocess.Popen.__init__
+
+    def __init__(self, *args, **kw):
+        if not kw.get("creationflags"):
+            kw["creationflags"] = 0x08000000                     # CREATE_NO_WINDOW
+        if kw.get("startupinfo") is None:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0                                    # SW_HIDE
+            kw["startupinfo"] = si
+        original(self, *args, **kw)
+    subprocess.Popen.__init__ = __init__
+    subprocess.Popen._sin_ventana = True
+
+
 def mensaje(texto, titulo="SeFinancia", error=True):
     """Ventana de aviso de Windows (en el .exe no hay consola donde escribir)."""
     print(texto)
@@ -122,6 +145,7 @@ def comprobar(raiz, variante, tesseract):
     return r
 
 def main(argv=None, lanzador=None):
+    sin_ventanas_negras()
     ap = argparse.ArgumentParser(description="SeFinancia con Sentiende")
     raiz_defecto = Path(sys.executable).parent if CONGELADO else AQUI / "_pruebas_app"
     ap.add_argument("--raiz", default=str(raiz_defecto), help="carpeta donde están (o se crearán) Entrada, SeDocumentos, Datos…")
@@ -194,7 +218,9 @@ def main(argv=None, lanzador=None):
     if not a.navegador:
         try:
             import webview
-            webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680))
+            import inspect
+            extra = {"maximized": True} if "maximized" in inspect.signature(webview.create_window).parameters else {}
+            webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680), **extra)   # 3.0.3: se abre a pantalla completa (maximizada)
             import inspect
             if icono.is_file() and "icon" in inspect.signature(webview.start).parameters:
                 webview.start(icon=str(icono))

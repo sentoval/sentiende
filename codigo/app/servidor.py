@@ -179,7 +179,7 @@ class App:
     # ---------------- datos para las pantallas
     def info(self):
         v = self.motor.variante
-        tipos = sorted(({"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["nombre"])
+        tipos = sorted(({"id": d["id"], "nombre": v.etiqueta(d["id"]), "orden": d["nombres"]["es"][0], "familia": d.get("familia")} for d in v.base["documentos"]), key=lambda x: x["orden"])
         return {"motor": {"version": VERSION, "contrato": CONTRATO}, "variante": {k: v.meta.get(k) for k in ("id", "nombre", "version", "colores", "vocabulario", "finalidades", "papeles", "modulos")},
                 "compatibilidad": v.compat.mensaje, "finalidades_visibles": self.motor.finalidades_visibles(), "fases": FASES, "tipos": tipos,
                 "carpetas": {k: str(p) for k, p in self.motor.carpetas.rutas.items()},
@@ -291,6 +291,14 @@ class App:
             if ruta.suffix.lower() == ".pdf":
                 from sentiende.lectura import imagen_pdf
                 img = imagen_pdf(ruta, pagina, dpi=200 if grande else 90)
+            elif ruta.suffix.lower() in (".xlsx", ".xls", ".docx", ".doc", ".csv", ".txt") or not ruta.is_file():
+                # 3.0.3: Excel y Word no tienen vista previa (antes daba error al abrirlos como imagen)
+                from PIL import ImageDraw
+                img = Image.new("RGB", (900, 1200), "white")
+                dib = ImageDraw.Draw(img)
+                dib.rectangle((60, 60, 840, 1140), outline=(180, 180, 180), width=3)
+                dib.text((120, 560), f"Sin vista previa: {ruta.suffix.upper().lstrip('.') or 'archivo'}", fill=(90, 90, 90))
+                dib.text((120, 600), "Ábrelo con su programa para verlo.", fill=(120, 120, 120))
             else:
                 from PIL import ImageOps
                 img = ImageOps.exif_transpose(Image.open(ruta))
@@ -370,6 +378,9 @@ def crear_manejador(app):
                         return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
                     if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
                     if m := re.fullmatch(r"/api/negociacion/(\d+)", p): return self._json(app.motor.negociacion.de_expediente(int(m.group(1))))
+                    if m := re.fullmatch(r"/api/datos_expediente/(\d+)", p):
+                        from sentiende.gestion import datos_leidos
+                        return self._json(datos_leidos(app.motor, int(m.group(1))))
                     g = app.motor.gestion
                     q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
                     if m := re.fullmatch(r"/api/operacion/(\d+)", p): return self._json(g.operacion(int(m.group(1))))
@@ -381,7 +392,7 @@ def crear_manejador(app):
                     if p == "/api/buscar": return self._json(g.buscar(unquote(q.get("q", "")).replace("+", " ")))
                     if p == "/api/reglas":
                         v = app.motor.variante
-                        return self._json({"nombres": v.nombres, "tipos": [{"id": d["id"], "nombre": d["nombres"]["es"][0], "familia": d.get("familia"),
+                        return self._json({"nombres": v.nombres, "tipos": [{"id": d["id"], "nombre": v.etiqueta(d["id"]), "familia": d.get("familia"),
                                            "corto": d.get("nombre_corto") or d["id"], "zzzz": d.get("zzzz"), "importancia": d.get("importancia"),
                                            "idiomas": sorted((d.get("nombres") or {}).keys()), "otros_nombres": (d.get("nombres") or {}).get("es", [])[1:6]}
                                           for d in v.base["documentos"]]})
@@ -391,7 +402,7 @@ def crear_manejador(app):
                         out = []
                         for d in a.documentos("expediente_id = ? AND estado = 'guardado'", (int(m.group(1)),)):
                             per = a.persona(d["persona_id"]) or {}
-                            out.append({k: d[k] for k in ("id", "nombre_final", "tipo", "nombre_recibido", "persona_id", "de_expediente", "privado", "ruta_final")}
+                            out.append({k: d.get(k) for k in ("id", "nombre_final", "tipo", "modelo", "nombre_recibido", "persona_id", "de_expediente", "privado", "ruta_final")}
                                        | {"persona": f'{per.get("nombre", "")} {per.get("apellido1", "")}'.strip()})
                         return self._json(sorted(out, key=lambda x: x["nombre_final"] or ""))
                     if m := re.fullmatch(r"/api/checklist/(\d+)", p): return self._json(checklist.evaluar(app.motor.variante, app.motor.almacen, int(m.group(1))))
@@ -465,7 +476,10 @@ def crear_manejador(app):
                 with CERROJO:
                     m = app.motor
                     if p == "/api/procesar":
-                        app._arrancar(); return self._json({"ok": True})
+                        with CERROJO:
+                            r = m.reanudar()
+                        app._arrancar()
+                        return self._json({"ok": True, **r})
                     if p == "/api/expediente":
                         if datos.get("desde_documento"):
                             pid = m.persona_desde_documento(int(datos["desde_documento"]), int(datos.get("indice", 0)))
@@ -545,12 +559,27 @@ def crear_manejador(app):
                     if p == "/api/expediente_manual":
                         pe = datos["persona"]
                         pid = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), (pe.get("dni") or "").upper() or None)
+                        manuales = [pid]
                         eid = m.crear_expediente(pid, datos["finalidad"])
                         for o in datos.get("otras") or []:
                             if o.get("nombre") and o.get("apellido1"):
                                 oid = m.nueva_persona(o["nombre"], o.get("apellido1", ""), o.get("apellido2", ""), (o.get("dni") or "").upper() or None)
                                 m.almacen.anadir_persona(eid, oid, o.get("papel") or "Cotitular")
+                                manuales.append(oid)
+                        # datos metidos a mano: referencia segura para lo que llegue después (3.0.3)
+                        m.almacen.db.executemany("UPDATE personas SET manual = 1 WHERE id = ?", [(x,) for x in manuales])
+                        m.almacen.db.commit()
                         return self._json({"expediente": eid})
+                    if p == "/api/persona_manual":
+                        dni = (datos.get("dni") or "").strip().upper() or None
+                        existia = bool(dni and m.almacen.persona_por_dni(dni))
+                        pid = m.nueva_persona(datos["nombre"].strip(), (datos.get("apellido1") or "").strip(), (datos.get("apellido2") or "").strip(), dni)
+                        m.almacen.db.execute("UPDATE personas SET manual = 1 WHERE id = ?", (pid,)); m.almacen.db.commit()
+                        return self._json({"id": pid, "existia": existia})
+                    if p == "/api/notificacion_cambiar":
+                        return self._json(app.contexto.aplicar_cambio(int(datos["id"])) or {"ok": True})
+                    if p == "/api/finalidad_expediente":
+                        return self._json(m.cambiar_finalidad(int(datos["expediente"]), datos["finalidad"]))
                     if p == "/api/cuarentena":
                         rutas = g.resolver_cuarentena(int(datos["id"]), datos["accion"])
                         if rutas:

@@ -85,16 +85,23 @@ def dato_distintivo(regla, datos, entidad_abrev=None):
             v = str(datos["ejercicio"]) if datos.get("ejercicio") else None
         elif clave == "trimestre":
             tri = datos.get("trimestre")
-            v = f"T{tri[0]}{str(tri[1])[-2:]}" if tri and tri[1] else None
+            v = f"{tri[0]}T{str(tri[1])[-2:]}" if tri and tri[1] else None     # 2T26: 2.º trimestre de 2026 (Joan, 16/11/2026)
         elif clave == "matricula":
             v = datos.get("matricula")
         elif clave == "numero":
             v = None   # n.º de licencia: se pide en la revisión
         else:
             v = None
+        if not v and clave == "entidad" and datos.get("serie"):
+            continue          # en una serie basta con el periodo
         if not v:
             return None, False
         out.append(v)
+    # documentos en serie (recibos, extractos… de la misma cuenta con fechas distintas): cada uno con su periodo
+    if datos.get("serie") and not any(p.partition(":")[0] in ("periodo", "emision", "trimestre") for p in partes):
+        f = datos.get("periodo") or datos.get("emision") or ((datos.get("fechas") or [None])[0])
+        if f:
+            out.append(_fmt(f, "MMAA"))
     return "_".join(out), True
 
 class Nombrador:

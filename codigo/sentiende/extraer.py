@@ -103,11 +103,15 @@ def periodo(texto):
     m = re.search(r"(PERIODO|MES|NOMINA|NOMINA DE|MENSUALIDAD)[^\n]{0,25}?\b(" + "|".join(meses_up) + r")\b[^\n\d]{0,6}(\d{4})", t)
     if m:
         return datetime.date(int(m.group(3)), meses_up.index(m.group(2)) + 1, 1)
+    # tablas: «Período de liquidación» en la cabecera y «AGOSTO -2025» en la fila de abajo (liquidaciones de TPV)
+    m = re.search(r"PERIODO DE LIQUIDACION[^\n]{0,40}\n[^\n]{0,60}?\b(" + "|".join(meses_up) + r")\b\s*[-/]?\s*(\d{4})", t)
+    if m:
+        return datetime.date(int(m.group(2)), meses_up.index(m.group(1)) + 1, 1)
     return None
 
 def ejercicio(texto):
-    t = norm(texto)
-    m = re.search(r"(EJERCICIO|EXERCICI|EKITALDIA|EXERCICIO|PERIODO IMPOSITIVO)\s*:?\s*(20\d{2})", t)
+    t = norm(texto)[:8000]          # el ejercicio va en la cabecera: no se confunde con fechas de páginas posteriores
+    m = re.search(r"(EJERCICIO|EXERCICI|EKITALDIA|EXERCICIO|PERIODO IMPOSITIVO)[\s.:]*(20\d{2})", t)
     if m:
         return int(m.group(2))
     m = re.search(r"\b(?:RENTA|IRPF|MODELO 100)\D{0,12}(20\d{2})\b", t)
@@ -139,16 +143,38 @@ def emision(texto, todas):
     return max(validas) if validas else None
 
 def trimestre(texto):
-    t = norm(texto)
-    m = re.search(r"\b([1-4])\s?T\b|\b([1-4])[ºO]?\s?TRIMESTRE\b", t)
+    """Trimestre y año de los modelos de Hacienda: «Ejercicio ... 2025 ¦ Período ... 2T» en la cabecera (primeras páginas)."""
+    t = norm(texto)[:8000]
+    m = (re.search(r"PERIODO[\s.:]*([1-4])\s?T\b", t) or re.search(r"\b([1-4])\s?T\b", t)
+         or re.search(r"\b([1-4])[ºO]?\s?TRIMESTRE\b", t))
     if not m:
         return None
-    n = int(m.group(1) or m.group(2))
-    a = ejercicio(texto)
+    n = int(m.group(1))
+    a = ejercicio(t)
     return (n, a)
+
+def juntar_cifras(t):
+    """«E S 4 4 8 7 8 5 9 6 F» → «E S 44878596F»: DNI con las cifras separadas por espacios (CIRBE, formularios)."""
+    return re.sub(r"\b(?:\d ){7}\d ?[A-Z]\b", lambda m: m.group(0).replace(" ", ""), t)
+
+def claves_cuenta(t, ibans=None):
+    """Claves para relacionar documentos de la misma cuenta o préstamo sin guardar el número entero:
+    «ES90 3159 …2825» (también si viene tapada con asteriscos: «ES903159001582******2825») y n.º de préstamo."""
+    t = norm(t)
+    if ibans is None:
+        ibans = [v for m in re.finditer(r"\bES\d{2}(?:[ -]?\d{4}){5}\b", t) if (v := iban_valido(m.group(0)))]
+    cuentas = [f"{v[:8]}…{v[-4:]}" for v in ibans]
+    for m in re.finditer(r"\bES\d{2}[ -]?\d{4}[\d -]{0,16}\*{3,}[\d* -]{0,12}?(\d{4})\b", t):
+        raw = re.sub(r"[ -]", "", m.group(0))
+        k = f"{raw[:8]}…{m.group(1)}"
+        if k not in cuentas:
+            cuentas.append(k)
+    prestamos = sorted({m.group(1).lstrip("0") for m in re.finditer(r"\b(?:PTMO|PRESTAMO|N\.?\s?PRESTAMO|CONTRATO)\.?\s*(?:N[ºO.]*\s*)?:?\s*(\d{10,24})\b", t)})
+    return cuentas, prestamos
 
 def extraer(texto, base=None):
     t = norm(texto)
+    t = juntar_cifras(t)
     dnis, dnis_calc = [], []
     for m in re.finditer(r"\b0?(\d{8})[ -]?([A-Z])\b|\b([XYZ])[ -]?(\d{7})[ -]?([A-Z])\b", t):
         v = dni_valido(m.group(0))
@@ -168,9 +194,12 @@ def extraer(texto, base=None):
         v = iban_valido(m.group(0))
         if v and v not in ibans:
             ibans.append(v)
+    cuentas, prestamos = claves_cuenta(t, ibans)
     fs = fechas(texto)
     tri = trimestre(texto)
     d = {
+        "cuentas": cuentas, "prestamos": prestamos,
+        "modelo": (m.group(1) if (m := re.search(r"\bMODELO\s*:?\s*(\d{3})\b", t[:2000])) else None),   # n.º de modelo de Hacienda (131, 303…)
         "dni": dnis, "dni_letra_calculada": dnis_calc, "cif": cifs, "iban": ibans,
         "fechas": [f.isoformat() for f in fs], "importes": importes(texto),
         "periodo": (p.isoformat() if (p := periodo(texto)) else None),
@@ -293,6 +322,7 @@ ETIQUETAS = [   # (expresión, orden, fuerza)
     (r"APELLIDOS Y NOMBRE|APELLIDOS,? NOMBRE|COGNOMS I NOM|COGNOMS,? NOM", "apellidos"),
     (r"NOMBRE Y APELLIDOS|NOM I COGNOMS|NOMBRE COMPLETO|NOM COMPLET", "nombre"),
     (r"D\.?\s?/\s?D[NAª]\.?|D\.?\s?/\s?DNA|DONA|DON|D\.|SR\.|SRA\.|EN/NA", "nombre"),
+    (r"TITULARES DE LA CUENTA|TITULAR DE LA CUENTA|TITULARS DEL COMPTE|CLIENTE|CLIENT|ORDENANTE|DEUDOR|PRESTATARIO", "nombre"),
     (r"TRABAJADOR[A]?|TREBALLADOR[A]?|EMPLEADO|EMPLEADA|PRIMER DECLARANTE|SEGUNDO DECLARANTE|DECLARANTE|DECLARANT|CONYUGE|CONTRIBUYENTE|"
      r"SOLICITANTE|SOL.LICITANT|INTERESADO|INTERESADA|INTERESSAT|TITULAR(?:ES)?|TITULARIDAD|TITULARITAT|PROPIETARIO|PROPIETARIA|VENDEDOR|VENDEDORA|"
      r"COMPRADOR|COMPRADORA|ARRENDATARIO|ARRENDADOR|PRESTATARIO|AVALISTA|BENEFICIARIO|BENEFICIARIA", None),
@@ -300,7 +330,7 @@ ETIQUETAS = [   # (expresión, orden, fuerza)
 
 def personas(texto):
     """Nombres de personas del documento, validados, con su DNI si está cerca. Los más seguros primero."""
-    t = re.sub(r"([A-Z])-\n([A-Z])", r"\1\2", norm(texto))      # palabras partidas con guion al final de línea
+    t = juntar_cifras(re.sub(r"([A-Z])-\n([A-Z])", r"\1\2", norm(texto)))      # palabras partidas con guion al final de línea
     encontradas = []
     def add(p, pos, fuerte):
         if not _valida(p, fuerte):
@@ -367,6 +397,11 @@ def personas(texto):
                 if _valida(p, True):
                     add(p, m.start(), True)
                     break
+    # 1b. «Apellidos X ¦ Nombre Y» (CIRBE, modelos de Hacienda): apellidos y nombre en etiquetas separadas, en la misma línea o seguidas
+    for m in re.finditer(r"(?:RAZON SOCIAL\s*/\s*)?APELLIDOS\s*:?\s*([A-Z][A-Z' \-]{2,50}?)\s*(?:¦|\n|\s)\s*NOMBRE\s*:?\s*([A-Z][A-Z' \-]{1,30}?)\s*(?=¦|\n|$)", t):
+        add(_persona(" ".join(_palabras(m.group(2))), " ".join(_palabras(m.group(1))), "etiquetas apellidos + nombre"), m.start(), True)
+    for m in re.finditer(r"\bNOMBRE\s*\n\s*([A-Z][A-Z' \-]{1,30}?)\s*\n\s*APELLIDOS\s*\n(?:[^\n]*\n)?\s*([A-Z][A-Z' \-]{2,50}?)\s*(?=¦|\n|$)", t):
+        add(_persona(" ".join(_palabras(m.group(1))), " ".join(_palabras(m.group(2))), "etiquetas nombre + apellidos"), m.start(), True)
     # 2. APELLIDOS, NOMBRE en cualquier cuadro
     for m in re.finditer(r"(?:^|¦|\n)\s*([A-Z][A-Z' \-]{3,50}?)\s*,\s*([A-Z][A-Z' \-]{1,30}?)\s*(?=¦|\n|$)", t):
         if re.search(r"\b(?:S\.?\s?L|S\.?\s?A|S\.?\s?L\.?\s?U|C\.?\s?B)\.?$", m.group(2).strip()):

@@ -13,7 +13,7 @@
   "Fecha MMAA": "emision:MMAA", "Alta MMAA": "emision:MMAA", "Cierre MMAA": "emision:MMAA",
   "Emisión AA": "emision:AA", "Caducidad AA": "caducidad:AA", "Caducidad MMAA": "caducidad:MMAA",
   "Ejercicio AAAA": "ejercicio:AAAA", "Año AAAA": "ejercicio:AAAA", "Año de los atrasos AAAA": "ejercicio:AAAA",
-  "Ciudad_AAAA": "ejercicio:AAAA", "Trimestre TnAA": "trimestre",
+  "Ciudad_AAAA": "ejercicio:AAAA", "Trimestre nTAA": "trimestre",
   "Entidad_MMAA": "entidad+periodo:MMAA", "Entidad_AA": "entidad+emision:AA", "Entidad": "entidad", "Entidad_Tipo": "entidad",
   "N.º de licencia": "numero", "Matrícula": "matricula"
  }

@@ -87,6 +87,7 @@ class Almacen:
         d = dict(r)
         for k in JSON_CAMPOS:
             d[k] = json.loads(d[k]) if d[k] else None
+        d["modelo"] = (d.get("datos") or {}).get("modelo") if isinstance(d.get("datos"), dict) else None   # para la etiqueta «(131) …»
         return d
 
     def documentos(self, where="1", params=()):

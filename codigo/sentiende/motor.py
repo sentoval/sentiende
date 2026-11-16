@@ -236,6 +236,26 @@ class Motor:
             a.actualizar(did, estado="parado", motivo=f"Fase {f} · {NOMBRE_FASE.get(f, '')}: {e}")
             a.evento(f"Parado en la fase {f}: {e}. El original sigue en Entrada.", did, lote, f, "se")
 
+    def reanudar(self):
+        """«Reanudar lo pendiente» (3.0.3): antes solo seguía con lo que estaba en proceso, y lo parado por un error
+        no se volvía a intentar. Ahora:
+        - lo parado antes de clasificar (fases 1-6) vuelve a la cola desde su fase;
+        - lo parado al nombrar o guardar (fases 7-10) vuelve al Centro de revisión para confirmarlo otra vez."""
+        a = self.almacen
+        cola = revision = 0
+        for d in a.documentos("estado = 'parado'"):
+            if not Path(d["ruta_original"] or "").exists() and not (d["ruta_trabajo"] and Path(d["ruta_trabajo"]).exists()):
+                continue                     # sin el archivo no se puede reintentar: se queda parado con su motivo
+            if (d["fase"] or 0) < 6:
+                a.actualizar(d["id"], estado="en_proceso", motivo="")
+                cola += 1
+            else:
+                a.actualizar(d["id"], estado="espera_emparejar", fase=6, motivo="Se paró al guardar: confírmalo otra vez")
+                revision += 1
+            a.evento("Reanudado a mano", d["id"], d["lote_id"], d["fase"])
+        en_cola = len(a.documentos("estado = 'en_proceso' AND fase < 6"))
+        return {"reintentar": cola, "a_revision": revision, "en_cola": en_cola}
+
     def _separar(self, d, lec):
         """Fase 3. Si el PDF trae varios documentos (o páginas en blanco), crea un documento por parte.
         Devuelve True si el archivo se ha separado (las partes siguen el proceso por su cuenta)."""
@@ -351,6 +371,25 @@ class Motor:
         self.almacen.anadir_persona(eid, persona_id, "Titular")
         return eid
 
+    def cambiar_finalidad(self, expediente_id, finalidad):
+        """Cambia el tipo de financiación de un expediente (p. ej. lo creó el contexto como hipotecario y es de taxi).
+        El nombre del expediente cambia si era el automático («Apellidos · Finalidad»); la carpeta no se toca."""
+        a = self.almacen
+        e = a.expediente(expediente_id)
+        fins = self.variante.meta.get("finalidades", {})
+        if not e:
+            raise MotorError("No existe ese expediente.")
+        if finalidad not in fins:
+            raise MotorError(f"Finalidad desconocida: {finalidad}")
+        antes = e["finalidad"]
+        nombre = e["nombre"]
+        if antes in fins and nombre.endswith(" · " + fins[antes]):
+            nombre = nombre[: -len(fins[antes])] + fins[finalidad]
+        a.db.execute("UPDATE expedientes SET finalidad = ?, nombre = ? WHERE id = ?", (finalidad, nombre, expediente_id))
+        a.db.commit()
+        a.evento(f"Finalidad del expediente «{e['nombre']}» cambiada: {fins.get(antes, antes)} → {fins[finalidad]}", nivel="info")
+        return {"ok": True, "nombre": nombre}
+
     def vincular_personas(self, expediente_id, otros, doc_id=None):
         """Las demás personas de un documento (p. ej. el segundo declarante de la renta):
         'cotitular' → se añade a este expediente como Cotitular; 'separado' → se ficha con su propio
@@ -445,7 +484,7 @@ class Motor:
         regla = self.nombrador.r["dato_distintivo"].get(doc.get("zzzz")) or ""
         return next((c for c in (p.partition(":")[0] for p in regla.split("+")) if c in ("periodo", "emision", "caducidad")), None)
 
-    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False, fecha=None):
+    def emparejar(self, doc_id, expediente_id, persona_id=None, de_expediente=False, tipo=None, privado=False, fecha=None, en_serie=True):
         """Respuesta a la fase 7. tipo: confirma o corrige la clasificación provisional.
         fecha: la fecha del documento elegida en la revisión (AAAA-MM-DD); manda sobre la leída."""
         a = self.almacen
@@ -481,7 +520,24 @@ class Motor:
         a.actualizar(doc_id, fase=7, tipo=tipo, expediente_id=expediente_id, persona_id=persona["id"],
                      de_expediente=int(de_expediente), privado=int(privado), estado="en_proceso", motivo="")
         a.evento(f"Emparejado con el expediente {expediente_id}" + (" (de todo el expediente)" if de_expediente else f" · {persona['nombre']} {persona['apellido1']}"), doc_id, d["lote_id"], 7)
-        return self._renombrar_y_guardar(doc_id)
+        res = self._renombrar_y_guardar(doc_id)
+        serie = (d["datos"] or {}).get("serie")
+        if en_serie and serie:
+            # el resto de la serie (misma cuenta o préstamo, otros periodos) va al mismo sitio, cada uno con su periodo
+            hermanos = [x for x in a.documentos("lote_id = ? AND estado = 'espera_emparejar'", (d["lote_id"],))
+                        if (x["datos"] or {}).get("serie") == serie and x["id"] != doc_id]
+            hechos = []
+            for x in hermanos:
+                try:
+                    g = self.emparejar(x["id"], expediente_id, persona_id, de_expediente, tipo if tipo and tipo != x["tipo"] else None, privado, en_serie=False)
+                    hechos.append(g.get("nombre_final") if isinstance(g, dict) else str(x["id"]))
+                except MotorError as e:
+                    a.evento(f"Serie: no se ha podido guardar junto con el documento {doc_id}: {e}", x["id"], d["lote_id"], 7, nivel="revision")
+            if hechos:
+                a.evento(f"Guardados con la misma decisión por ser de la misma serie: {', '.join(map(str, hechos))}", doc_id, d["lote_id"], 7)
+                if isinstance(res, dict):
+                    res["serie_guardados"] = hechos
+        return res
 
     def guardar_tarjeta(self, doc_id, expediente_id, entidad, contacto):
         """Tarjeta de visita confirmada: el contacto va al banco del expediente (se añade si no estaba)
@@ -763,6 +819,6 @@ class Motor:
             else:
                 donde = {"original": d["ruta_original"], "trabajo": d["ruta_trabajo"]}
             out.append({"id": d["id"], "archivo": d["nombre_recibido"], "fase": d["fase"], "fase_nombre": NOMBRE_FASE.get(d["fase"], "Recibir"),
-                        "estado": d["estado"], "tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde,
+                        "estado": d["estado"], "tipo": d["tipo"], "modelo": d.get("modelo"), "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde,
                         "expediente_id": d["expediente_id"], "persona_id": d["persona_id"], "nombre_final": d["nombre_final"]})
         return out

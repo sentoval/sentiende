@@ -43,6 +43,31 @@ def _papel_nuevo(a, eid):
     return "Cotitular" if any(p["papel"] == "Titular" for p in a.personas_de(eid)) else "Titular"
 
 
+def _mover(origen, destino, copiar=False):
+    """Mueve (o copia) un archivo. En Windows, si otro programa lo tiene abierto (visor de PDF, vista previa del
+    Explorador…), se reintenta unos segundos y, si sigue abierto, se avisa claro (3.0.3; antes salía WinError 32)."""
+    import gc, time
+    for intento in range(6):
+        try:
+            return (shutil.copy2 if copiar else shutil.move)(str(origen), str(destino))
+        except PermissionError as e:
+            ultimo = e
+        except OSError as e:
+            if getattr(e, "winerror", None) not in (32, 33):
+                raise
+            ultimo = e
+        gc.collect()                       # por si el propio programa aún tenía el archivo abierto
+        time.sleep(0.5 * (intento + 1))
+    # si el destino se creó a medias (copia), no se deja basura
+    try:
+        if not copiar and Path(destino).exists() and Path(origen).exists():
+            Path(destino).unlink()
+    except OSError:
+        pass
+    raise ErrorArreglo(f"«{Path(origen).name}» está abierto en otro programa (un visor de PDF o la vista previa del Explorador de Windows). "
+                       "Ciérralo y vuelve a pulsar «Mover». No se ha movido nada.") from ultimo
+
+
 def _colocar(m, d, exp, persona, mover_original=True):
     """Pone el archivo final (y su original) en la carpeta del expediente con el nombre que toca."""
     a, c = m.almacen, m.carpetas
@@ -54,8 +79,20 @@ def _colocar(m, d, exp, persona, mover_original=True):
     dir_doc.mkdir(parents=True, exist_ok=True)
     destino = final if final.parent == dir_doc and final.name == nombre else libre(dir_doc / nombre)
     if destino != final:
-        shutil.move(str(final), destino)
+        _mover(final, destino)
     cambios = {"nombre_final": destino.name, "ruta_final": str(destino)}
+    try:
+        cambios.update(_colocar_original(m, d, exp, mover_original))
+    except Exception:
+        if destino != final and destino.exists() and not final.exists():
+            _mover(destino, final)             # se deshace: o se mueve todo o nada
+        raise
+    return cambios
+
+
+def _colocar_original(m, d, exp, mover_original):
+    a, c = m.almacen, m.carpetas
+    cambios = {}
     orig = Path(d["ruta_original_final"] or "")
     dir_orig = c.originales / exp["carpeta"]
     if mover_original and orig.is_file() and orig.parent != dir_orig:
@@ -64,7 +101,7 @@ def _colocar(m, d, exp, persona, mover_original=True):
         otros = [x for x in a.documentos("ruta_original_final = ? AND id != ?", (str(orig), d["id"]))
                  if x["expediente_id"] != exp["id"]]
         nuevo = libre(dir_orig / orig.name)
-        (shutil.copy2 if otros else shutil.move)(str(orig), nuevo)
+        _mover(orig, nuevo, copiar=bool(otros))
         cambios["ruta_original_final"] = str(nuevo)
     elif orig.is_dir() and orig != dir_orig:          # PDF unido desde fotos: los originales son varias fotos
         dir_orig.mkdir(parents=True, exist_ok=True)
@@ -72,7 +109,7 @@ def _colocar(m, d, exp, persona, mover_original=True):
             f = Path(fu["ruta_original_final"] or "")
             if f.is_file():
                 n = libre(dir_orig / f.name)
-                shutil.move(str(f), n)
+                _mover(f, n)
                 a.actualizar(fu["id"], ruta_original_final=str(n))
         cambios["ruta_original_final"] = str(dir_orig)
     return cambios

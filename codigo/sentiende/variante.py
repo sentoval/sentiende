@@ -28,6 +28,16 @@ class Variante:
         self.checklists = self._json(self.carpeta / arch["checklists"])
         self.docs = {d["id"]: d for d in self.base["documentos"]}
 
+    def etiqueta(self, tipo, modelo=None):
+        """Nombre del tipo para las pantallas. Los modelos de Hacienda llevan el número delante: «(131) Pago fraccionado del IRPF».
+        Si se sabe el modelo concreto del documento (p. ej. 131), se pone solo ese."""
+        d = self.docs.get(tipo)
+        if not d:
+            return tipo or ""
+        nombre = (d.get("nombres") or {}).get("es", [tipo])[0]
+        mods = [modelo] if modelo and modelo in (d.get("modelo") or []) else (d.get("modelo") or [])
+        return f"({'/'.join(mods)}) {nombre}" if mods else nombre
+
     def _json(self, ruta):
         try:
             return json.loads(Path(ruta).read_text(encoding="utf-8"))

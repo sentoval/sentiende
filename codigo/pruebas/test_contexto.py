@@ -108,3 +108,77 @@ class TestContexto(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeries(unittest.TestCase):
+    def test_recibos_en_serie(self):
+        """Recibos sin titular, misma cuenta (tapada con asteriscos) y meses distintos: se guardan juntos, cada uno con su mes."""
+        with tempfile.TemporaryDirectory() as t:
+            m, lote = lote_familia(t)
+            c = ContextoLote(m, ControladorIA(m))
+            r = c.aplicar(lote)
+            eid = r["expediente"]
+            ent = Path(t) / "in2"; ent.mkdir()
+            for mes, dia in (("ABRIL", "01-04-2026"), ("MAYO", "04-05-2026"), ("JUNIO", "01-06-2026")):
+                pdf_texto(ent / f"recibo_{mes}.pdf", ["ADEUDO POR DOMICILIACIONES SEPA", "OFICINA PATRAIX FECHA " + dia,
+                                                     "IBAN: ES9121000418450******1332", "RECIBO 13 DE 72 FINANCIACION DE VEHICULO",
+                                                     "IMPORTE 250,00 EUR", "TOTAL ADEUDADO 250,00 EUR"])
+            lote2, _ = m.recibir(sorted(ent.iterdir()))
+            m.procesar(lote2)
+            ctx = c.analizar(lote2)
+            self.assertEqual(len(ctx["series"]), 1, ctx.get("series"))
+            # sin nombres en el lote: la cuenta ya está en el extracto y el certificado guardados → propuesta de ese expediente
+            pend = m.almacen.documentos("lote_id = ? AND estado = 'espera_emparejar'", (lote2,))
+            self.assertTrue(all(ctx["docs"][d["id"]].get("expediente_id") == eid for d in pend), ctx["docs"])
+            c.aplicar(lote2)
+            pend = m.almacen.documentos("lote_id = ? AND estado = 'espera_emparejar'", (lote2,))
+            self.assertEqual(len(pend), 3)
+            # Joan confirma uno en la revisión: los otros dos de la serie se guardan con la misma decisión y su mes
+            g = m.emparejar(pend[0]["id"], eid, de_expediente=True)
+            self.assertEqual(len(g.get("serie_guardados") or []), 2, g)
+            nombres = sorted(d["nombre_final"] for d in m.almacen.documentos("lote_id = ? AND estado = 'guardado'", (lote2,)))
+            self.assertEqual(len(nombres), 3)
+            self.assertEqual([n.rsplit("_", 1)[-1] for n in nombres], ["0426.pdf", "0526.pdf", "0626.pdf"], nombres)   # sin «-2», «-3»
+            m.almacen.db.close()
+
+
+class TestManual(unittest.TestCase):
+    def test_expediente_manual_es_la_referencia(self):
+        """Expediente abierto a mano con un DNI casi igual al leído: se usan los datos manuales y se avisa para confirmarlo."""
+        with tempfile.TemporaryDirectory() as t:
+            m = Motor(Path(t), VAR)
+            c = ContextoLote(m, ControladorIA(m))
+            pid = m.nueva_persona("Pilar", "Sanz", "Roig", "23456780D")
+            eid = m.crear_expediente(pid, "hipotecario")
+            m.almacen.db.execute("UPDATE personas SET manual = 1 WHERE id = ?", (pid,)); m.almacen.db.commit()
+            m.almacen.db.close()
+            m, lote = lote_familia(t)
+            c = ContextoLote(m, ControladorIA(m))
+            r = c.aplicar(lote)
+            self.assertEqual(r["expediente"], eid)                      # no crea otro expediente
+            self.assertFalse(r["creado"])
+            ns = [n for n in c.notificaciones() if n["tipo"] == "parecido"]
+            self.assertEqual(len(ns), 1, c.notificaciones())
+            self.assertIn("23456789D", ns[0]["mensaje"])
+            self.assertEqual(m.almacen.persona(pid)["dni"], "23456780D")   # manda lo manual
+            c.aplicar_cambio(ns[0]["id"])                                   # «Cambiar por los del documento»
+            self.assertEqual(m.almacen.persona(pid)["dni"], "23456789D")
+            self.assertEqual([n for n in c.notificaciones() if n["tipo"] == "parecido"], [])
+            # cambiar la financiación del expediente
+            m.cambiar_finalidad(eid, "licencia_taxi")
+            self.assertEqual(m.almacen.expediente(eid)["finalidad"], "licencia_taxi")
+            self.assertTrue(m.almacen.expediente(eid)["nombre"].endswith("Préstamo licencia taxi"))
+            m.almacen.db.close()
+
+
+class TestDatosLeidos(unittest.TestCase):
+    def test_datos_del_expediente(self):
+        from sentiende.gestion import datos_leidos
+        with tempfile.TemporaryDirectory() as t:
+            m, lote = lote_familia(t)
+            r = ContextoLote(m, ControladorIA(m)).aplicar(lote)
+            d = datos_leidos(m, r["expediente"])
+            tit = next(p for p in d["personas"] if p["papel"] == "Titular")
+            self.assertEqual(tit["dni"], "23456789D")
+            self.assertIn("bancos", d)
+            m.almacen.db.close()

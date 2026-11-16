@@ -334,7 +334,11 @@
    "emisores": [
     "dgp"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "DOCUMENTO EQUIVALENTE",
+    "RESIDENCIA FISCAL"
+   ]
   },
   {
    "validez_meses": null,
@@ -808,6 +812,7 @@
    ],
    "nombres": {
     "es": [
+     "Modificación del contrato de trabajo",
      "Ampliación de contrato",
      "Modificación de contrato",
      "Prórroga de contrato",
@@ -849,7 +854,10 @@
     "MODIFICACIÓN DE CLAVE IDENTIFICATIVA",
     "COMUNICACIÓN SOBRE MODIFICACIÓN",
     "AMPLIACIÓN DE JORNADA",
-    "AMPLIACIÓN DE CONTRATO"
+    "AMPLIACIÓN DE CONTRATO",
+    "MODIFICACIÓN DEL CONTRATO DE TRABAJO",
+    "NOVACIÓN DEL CONTRATO",
+    "CAMBIO DE JORNADA"
    ],
    "emisores": [
     "empresa",
@@ -1111,7 +1119,10 @@
     "foral_araba",
     "foral_navarra"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "100"
+   ]
   },
   {
    "validez_meses": null,
@@ -1120,7 +1131,7 @@
    "id": "iva",
    "nombrecorto": "iva",
    "familia": "Fiscal",
-   "zzzz": "Trimestre TnAA",
+   "zzzz": "Trimestre nTAA",
    "finalidades": [
     "pyme",
     "licencia_taxi"
@@ -1170,7 +1181,10 @@
     "foral_araba",
     "foral_navarra"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "303"
+   ]
   },
   {
    "validez_meses": null,
@@ -1214,7 +1228,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "390"
+   ]
   },
   {
    "validez_meses": null,
@@ -1223,7 +1240,7 @@
    "id": "fraccionado",
    "nombrecorto": "fraccionado",
    "familia": "Fiscal",
-   "zzzz": "Trimestre TnAA",
+   "zzzz": "Trimestre nTAA",
    "finalidades": [
     "pyme",
     "licencia_taxi"
@@ -1264,7 +1281,11 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "130",
+    "131"
+   ]
   },
   {
    "validez_meses": null,
@@ -1305,7 +1326,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "347"
+   ]
   },
   {
    "validez_meses": null,
@@ -1348,7 +1372,10 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "200"
+   ]
   },
   {
    "validez_meses": null,
@@ -1398,7 +1425,11 @@
    "emisores": [
     "aeat"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "modelo": [
+    "036",
+    "037"
+   ]
   },
   {
    "validez_meses": 12,
@@ -1561,7 +1592,13 @@
    "emisores": [
     "banco"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "ADEUDO EN CUENTA",
+    "ADEUDO POR DOMICILIACIONES",
+    "EXTRACTO MENSUAL DE COMERCIOS",
+    "TOTAL ADEUDADO"
+   ]
   },
   {
    "validez_meses": null,
@@ -1579,7 +1616,8 @@
    "nombres": {
     "es": [
      "Certificado de saldo",
-     "Certificado de titularidad"
+     "Certificado de titularidad",
+     "Certificado de titularidad de cuenta"
     ],
     "ca": [
      "Certificat de saldo",
@@ -1607,7 +1645,11 @@
     "LA CUENTA ABIERTA EN ESTA ENTIDAD",
     "CERTIFICADO DE SALDO",
     "C E R T I F I C A",
-    "A PETICIÓN DE PARTE INTERESADA"
+    "A PETICIÓN DE PARTE INTERESADA",
+    "TITULAR DE LA CUENTA",
+    "FECHA APERTURA",
+    "QUE SEGÚN CONSTA EN NUESTROS ARCHIVOS",
+    "CERTIFICADO DE TITULARIDAD"
    ],
    "emisores": [
     "banco"
@@ -1671,7 +1713,8 @@
     "TIPUS D'INTERÉS",
     "AMORTITZACIÓ",
     "RECIBO DE PRÉSTAMO",
-    "AMORTIZACIÓN PRÉSTAMO"
+    "AMORTIZACIÓN PRÉSTAMO",
+    "PTMO"
    ],
    "emisores": [
     "banco",
@@ -1811,7 +1854,11 @@
     "FINANCIACIÓN",
     "SECUENCIA ADEUDO",
     "TOTAL ADEUDADO",
-    "FINANCIACIÓN DE VEHÍCULO"
+    "FINANCIACIÓN DE VEHÍCULO",
+    "ADEUDO POR DOMICILIACIONES SEPA",
+    "NOMBRE EMISOR",
+    "REF. ORDEN DOM",
+    "ID.EMISOR"
    ],
    "emisores": [
     "financiera",
@@ -2081,7 +2128,12 @@
    "emisores": [
     "registro_propiedad"
    ],
-   "privado_por_defecto": false
+   "privado_por_defecto": false,
+   "excluir": [
+    "RESIDENCIA FISCAL",
+    "TITULAR DE LA CUENTA",
+    "VÍAS DE CONTACTO"
+   ]
   },
   {
    "validez_meses": null,
@@ -2903,7 +2955,6 @@
     "SOLICITUD DE AVAL",
     "SOCIEDAD DE GARANTÍA RECÍPROCA",
     "SGR",
-    "DECLARACIÓN DE BIENES",
     "PERSONA DE RESPONSABILIDAD PÚBLICA",
     "AFIN SGR",
     "SOLICITANTE",
@@ -3004,6 +3055,144 @@
     "banco"
    ],
    "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "contratobanco",
+   "nombrecorto": "contratobanco",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Firma MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Contrato bancario",
+     "Contrato de cuenta",
+     "Vías de contacto y comunicación",
+     "Condiciones generales del contrato"
+    ],
+    "ca": [
+     "Contracte bancari",
+     "Contracte de compte"
+    ],
+    "eu": [
+     "Contrato bancario"
+    ],
+    "gl": [
+     "Contrato bancario"
+    ]
+   },
+   "sinonimos": [
+    "contrato con el banco",
+    "contrato marco"
+   ],
+   "palabras_clave": [
+    "VÍAS DE CONTACTO Y COMUNICACIÓN",
+    "RELACIÓN NEGOCIAL",
+    "RELACIÓN NEGOCIAL Y/O CONTRACTUAL",
+    "CONTRATO DE CUENTA",
+    "CONTRATO MARCO",
+    "CONDICIONES GENERALES",
+    "CONDICIONES PARTICULARES",
+    "EN ADELANTE LA ENTIDAD",
+    "LA ENTIDAD",
+    "EL CLIENTE",
+    "CONTRATACIÓN A DISTANCIA"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "residenciafiscal",
+   "nombrecorto": "resfiscal",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Emisión MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Declaración de residencia fiscal",
+     "Autocertificación de residencia fiscal"
+    ],
+    "ca": [
+     "Declaració de residència fiscal"
+    ],
+    "eu": [
+     "Declaración de residencia fiscal"
+    ],
+    "gl": [
+     "Declaración de residencia fiscal"
+    ]
+   },
+   "sinonimos": [
+    "residencia fiscal",
+    "FATCA",
+    "CRS"
+   ],
+   "palabras_clave": [
+    "DECLARACIÓN DE RESIDENCIA FISCAL",
+    "RESIDENCIA FISCAL",
+    "PAÍS DE RESIDENCIA",
+    "Nº DE IDENTIFICACIÓN FISCAL EN EL PAÍS DE RESIDENCIA",
+    "AUTOCERTIFICACIÓN",
+    "FATCA",
+    "CRS",
+    "NÚMERO PERSONA"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "bienes",
+   "nombrecorto": "bienes",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Emisión MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Declaración de bienes",
+     "Declaración patrimonial"
+    ],
+    "ca": [
+     "Declaració de béns"
+    ],
+    "eu": [
+     "Declaración de bienes"
+    ],
+    "gl": [
+     "Declaración de bienes"
+    ]
+   },
+   "sinonimos": [
+    "patrimonio declarado"
+   ],
+   "palabras_clave": [
+    "DECLARACIÓN DE BIENES",
+    "DATOS DE LOS TITULARES",
+    "SIN BIENES",
+    "RELACIÓN DE BIENES",
+    "BIENES INMUEBLES",
+    "DECLARACIÓN PATRIMONIAL"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false,
+   "excluir": [
+    "PERSONA DE RESPONSABILIDAD PÚBLICA",
+    "AFIN SGR",
+    "CUMPLIMENTAR EN CASO DE POSEER BIENES"
+   ]
   }
  ],
  "entidades_financieras": [
