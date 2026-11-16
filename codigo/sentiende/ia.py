@@ -559,7 +559,8 @@ class ControladorIA:
             estado = "trabajando"
         else:
             estado = "activo"
-        por_revisar = self.db.execute("SELECT COUNT(*) FROM ia_acciones WHERE estado IN ('por_revisar', 'para_ti') AND revisada = 0").fetchone()[0]
+        # 3.0.3: lo «para ti» de documentos que ya has resuelto tú no cuenta
+        por_revisar = self.db.execute("SELECT COUNT(*) FROM ia_acciones WHERE estado IN ('por_revisar', 'para_ti') AND revisada = 0 AND NOT (estado = 'para_ti' AND documento_id IS NOT NULL AND documento_id NOT IN (SELECT id FROM documentos WHERE estado IN ('espera_emparejar', 'parado'))) AND (documento_id IS NULL OR documento_id NOT IN (SELECT id FROM documentos WHERE estado IN ('unido', 'separado', 'sustituido', 'deshecho')))").fetchone()[0]
         return {"activo": aj["activo"], "estado": estado, "modelo": aj["modelo"], "hoy": round(dia, 4), "mes": round(mes, 4),
                 "consultas_hoy": n_dia, "consultas_mes": n_mes, "limites": lim, "pausa": self.pausa if estado == "pausa" else None,
                 "error": (self.error or {}).get("texto"), "por_revisar": por_revisar, "tiene_clave": aj["tiene_clave"],
@@ -1424,7 +1425,9 @@ class ControladorIA:
         return [dict(r) for r in self.db.execute("SELECT id, tipo, titulo, detalle, motivo, seguridad, estado, revisada, lote_id, consulta_id, origen FROM ia_acciones WHERE documento_id = ? AND estado != 'deshecha' ORDER BY id", (doc_id,))]
 
     def por_revisar(self):
-        return [dict(r) for r in self.db.execute("SELECT id, lote_id, documento_id, tipo, titulo, detalle, seguridad, estado FROM ia_acciones WHERE estado IN ('por_revisar', 'para_ti') AND revisada = 0 ORDER BY id DESC LIMIT 100")]
+        return [dict(r) for r in self.db.execute("SELECT a.id, a.lote_id, a.documento_id, a.tipo, a.titulo, a.detalle, a.motivo, a.seguridad, a.estado, a.origen, "
+                                                 "d.nombre_recibido AS archivo, d.nombre_final, d.estado AS estado_doc FROM ia_acciones a LEFT JOIN documentos d ON d.id = a.documento_id "
+                                                 "WHERE a.estado IN ('por_revisar', 'para_ti') AND a.revisada = 0 AND NOT (a.estado = 'para_ti' AND a.documento_id IS NOT NULL AND a.documento_id NOT IN (SELECT id FROM documentos WHERE estado IN ('espera_emparejar', 'parado'))) AND (d.id IS NULL OR d.estado NOT IN ('unido', 'separado', 'sustituido', 'deshecho')) ORDER BY a.id DESC LIMIT 200")]
 
 
 class Bloqueado(ErrorIA):

@@ -85,7 +85,7 @@ def dato_distintivo(regla, datos, entidad_abrev=None):
             v = str(datos["ejercicio"]) if datos.get("ejercicio") else None
         elif clave == "trimestre":
             tri = datos.get("trimestre")
-            v = f"T{tri[0]}{str(tri[1])[-2:]}" if tri and tri[1] else None
+            v = f"{tri[0]}T{str(tri[1])[-2:]}" if tri and tri[1] else None     # 2T26: 2.º trimestre de 2026 (Joan, 16/11/2026)
         elif clave == "matricula":
             v = datos.get("matricula")
         elif clave == "numero":

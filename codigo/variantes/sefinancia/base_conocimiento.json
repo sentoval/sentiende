@@ -1131,7 +1131,7 @@
    "id": "iva",
    "nombrecorto": "iva",
    "familia": "Fiscal",
-   "zzzz": "Trimestre TnAA",
+   "zzzz": "Trimestre nTAA",
    "finalidades": [
     "pyme",
     "licencia_taxi"
@@ -1240,7 +1240,7 @@
    "id": "fraccionado",
    "nombrecorto": "fraccionado",
    "familia": "Fiscal",
-   "zzzz": "Trimestre TnAA",
+   "zzzz": "Trimestre nTAA",
    "finalidades": [
     "pyme",
     "licencia_taxi"

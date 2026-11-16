@@ -210,19 +210,43 @@ def _abrir(url, datos=None, metodo="GET", timeout=60):
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE           # los escáneres llevan certificados propios
-    req = urllib.request.Request(url, data=datos, method=metodo, headers={"Content-Type": "text/xml"} if datos else {})
+    cab = {"Connection": "close"}            # algunos escáneres cortan las conexiones que se quedan abiertas mientras calientan la lámpara
+    if datos:
+        cab["Content-Type"] = "text/xml"
+    req = urllib.request.Request(url, data=datos, method=metodo, headers=cab)
     return urllib.request.urlopen(req, timeout=timeout, context=ctx if url.startswith("https") else None)
 
 
-def escanear_escl(carpeta, url, dpi=300, color=True, alimentador=False):
-    """Escanea por eSCL. Del cristal, una página; del alimentador, todas las que haya (un PDF)."""
+def _cancelar(loc):
+    """Libera el escáner si el trabajo se queda a medias."""
+    try:
+        _abrir(loc, metodo="DELETE", timeout=10).close()
+    except Exception:
+        pass
+
+
+def _formato_escl(url):
+    """PDF si el escáner lo da; si no, JPEG (muchos multifunción baratos solo dan JPEG)."""
+    try:
+        with _abrir(url.rstrip("/") + "/ScannerCapabilities", timeout=8) as r:
+            cap = r.read()
+        return "application/pdf" if b"application/pdf" in cap else "image/jpeg"
+    except Exception:
+        return "application/pdf"
+
+
+def escanear_escl(carpeta, url, dpi=300, color=True, alimentador=False, limite=240):
+    """Escanea por eSCL. Del cristal, una página; del alimentador, todas las que haya (un PDF).
+    3.0.3: mientras el escáner calienta la lámpara y escanea, algunos cortan la conexión o tardan en contestar:
+    se vuelve a pedir la página hasta `limite` segundos en total (antes se paraba al primer corte)."""
+    formato = _formato_escl(url)
     trabajo = f"""<?xml version="1.0" encoding="UTF-8"?>
 <scan:ScanSettings xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03" xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">
   <pwg:Version>2.0</pwg:Version>
   <pwg:InputSource>{"Feeder" if alimentador else "Platen"}</pwg:InputSource>
   <scan:ColorMode>{"RGB24" if color else "Grayscale8"}</scan:ColorMode>
   <scan:XResolution>{int(dpi)}</scan:XResolution><scan:YResolution>{int(dpi)}</scan:YResolution>
-  <pwg:DocumentFormat>application/pdf</pwg:DocumentFormat><scan:DocumentFormatExt>application/pdf</scan:DocumentFormatExt>
+  <pwg:DocumentFormat>{formato}</pwg:DocumentFormat><scan:DocumentFormatExt>{formato}</scan:DocumentFormatExt>
 </scan:ScanSettings>""".encode()
     try:
         with _abrir(url.rstrip("/") + "/ScanJobs", trabajo, "POST", timeout=30) as r:
@@ -241,17 +265,29 @@ def escanear_escl(carpeta, url, dpi=300, color=True, alimentador=False):
         base = re.match(r"https?://[^/]+", url).group(0)
         loc = base + loc
     archivos = []
+    fin = time.monotonic() + limite
     while True:
         try:
-            with _abrir(loc.rstrip("/") + "/NextDocument", timeout=120) as r:
+            with _abrir(loc.rstrip("/") + "/NextDocument", timeout=60) as r:
                 datos = r.read()
                 tipo = r.headers.get("Content-Type", "")
         except urllib.error.HTTPError as e:
             if e.code == 404 and archivos:              # no hay más páginas
                 break
-            if e.code == 503:
-                time.sleep(1); continue
+            if e.code in (503, 500) and time.monotonic() < fin:   # todavía escaneando
+                time.sleep(2); continue
+            _cancelar(loc)
             raise RuntimeError(f"El escáner no ha devuelto la imagen ({e.code}).")
+        except (ConnectionError, TimeoutError, OSError) as e:      # corte o espera larga mientras calienta: se vuelve a pedir
+            if time.monotonic() < fin:
+                time.sleep(3); continue
+            _cancelar(loc)
+            raise RuntimeError(f"El escáner no ha enviado la página en {limite // 60} minutos ({type(e).__name__}). Se ha cancelado el trabajo; "
+                               "prueba con menos resolución o en blanco y negro.")
+        if not datos:
+            if time.monotonic() < fin:
+                time.sleep(2); continue
+            break
         ext = ".pdf" if "pdf" in tipo or datos[:4] == b"%PDF" else ".jpg"
         destino = _nombre_archivo(carpeta, ext)
         if destino.exists():

@@ -39,7 +39,7 @@ def _mes(d):
     datos = d["datos"] or {}
     f = datos.get("periodo") or datos.get("emision") or ((datos.get("fechas") or [None])[0])
     if datos.get("trimestre") and datos["trimestre"][1]:
-        return f"T{datos['trimestre'][0]}{datos['trimestre'][1]}"
+        return f"{datos['trimestre'][0]}T{datos['trimestre'][1]}"
     return f[:7] if f else None
 
 EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")

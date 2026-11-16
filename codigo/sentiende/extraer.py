@@ -110,7 +110,7 @@ def periodo(texto):
     return None
 
 def ejercicio(texto):
-    t = norm(texto)
+    t = norm(texto)[:8000]          # el ejercicio va en la cabecera: no se confunde con fechas de páginas posteriores
     m = re.search(r"(EJERCICIO|EXERCICI|EKITALDIA|EXERCICIO|PERIODO IMPOSITIVO)[\s.:]*(20\d{2})", t)
     if m:
         return int(m.group(2))
@@ -143,12 +143,14 @@ def emision(texto, todas):
     return max(validas) if validas else None
 
 def trimestre(texto):
-    t = norm(texto)
-    m = re.search(r"\b([1-4])\s?T\b|\b([1-4])[ºO]?\s?TRIMESTRE\b", t)
+    """Trimestre y año de los modelos de Hacienda: «Ejercicio ... 2025 ¦ Período ... 2T» en la cabecera (primeras páginas)."""
+    t = norm(texto)[:8000]
+    m = (re.search(r"PERIODO[\s.:]*([1-4])\s?T\b", t) or re.search(r"\b([1-4])\s?T\b", t)
+         or re.search(r"\b([1-4])[ºO]?\s?TRIMESTRE\b", t))
     if not m:
         return None
-    n = int(m.group(1) or m.group(2))
-    a = ejercicio(texto)
+    n = int(m.group(1))
+    a = ejercicio(t)
     return (n, a)
 
 def juntar_cifras(t):

@@ -70,7 +70,7 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor", ia_mirar: "motor" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
@@ -184,7 +184,8 @@ function vistaMotor() {
   const parado = docs.find(d => d.estado === "parado");
   const espera = docs.filter(d => d.estado === "espera_emparejar").length;
   const hechos = docs.filter(d => ["guardado", "limbo", "duplicado", "contacto"].includes(d.estado)).length;
-  const pct = Math.round(100 * docs.reduce((s, d) => s + (["guardado", "limbo", "duplicado", "contacto"].includes(d.estado) ? 10 : d.fase), 0) / (10 * Math.max(docs.length, 1)));
+  // 3.0.3: unidos, separados, sustituidos o deshechos ya están terminados (los sustituyen otros documentos): antes el lote se quedaba en 91 %
+  const pct = Math.round(100 * docs.reduce((s, d) => s + (["guardado", "limbo", "duplicado", "contacto", "unido", "separado", "sustituido", "deshecho", "papelera"].includes(d.estado) ? 10 : d.fase), 0) / (10 * Math.max(docs.length, 1)));
   const pipe = FASES.map((f, i) => {
     const n = i + 1;
     let c = n < minF ? "hecha" : n === minF ? (parado ? "fallo" : espera && n === 7 ? "pregunta" : "ahora") : "";
@@ -1164,7 +1165,7 @@ function pintar() {
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
     bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)],
-    ia: [vistaIA, activarIA], ia_informe: [vistaInformeIA, activarInformeIA], ia_envio: [vistaEnvioIA, () => {}] };
+    ia: [vistaIA, activarIA], ia_informe: [vistaInformeIA, activarInformeIA], ia_envio: [vistaEnvioIA, () => {}], ia_mirar: [vistaMirarIA, activarMirarIA] };
   const [v, act] = vistas[r] || vistas.motor;
   const y = $("#vista").scrollTop;
   $("#vista").innerHTML = v();
@@ -1193,6 +1194,7 @@ async function ir() {
   if (r === "ia") IAP = await api("ia");
   if (r === "ia_informe") INF = id ? await api("ia/informe/" + id) : null;
   if (r === "ia_envio") ENV = await api("ia/consulta/" + id);
+  if (r === "ia_mirar") MIRAR = await api("ia/por_revisar");
   if (r === "separar") { SEP = { id: +id, doc: await api("documento/" + id), cortes: new Set() }; }
   if (r === "ajustes") { [TMP, FIN, REP, CORREO, S.ajustes] = await Promise.all([api("temporales"), api("finalidades"), api("personas_repetidas"), api("correo"), api("ajustes")]); CORREO.form = { ...CORREO.ajustes, clave: "" }; }
   pintar();
@@ -1582,7 +1584,7 @@ function botonIA() {
     : e === "sin_conexion" ? "Sin conexión: sigue en local" : e === "trabajando" ? "Trabajando…" : `Activo · ${eurIA(ia.hoy)} de ${eurIA(ia.limites.dia)} hoy`;
   return `<div class="ia-lat"><button type="button" id="b-ia" class="ia-btn ${cls}" aria-pressed="${on}" title="${on ? "Pulsa para apagar el Controlador IA" : "Pulsa para encender el Controlador IA"}">
       <span class="ia-cab"><span class="ia-ico">${ico(on && e === "pausa" ? "pause" : "ia", 18)}</span>Controlador IA</span>${sub ? `<span class="ia-sub">${esc(sub)}</span>` : ""}</button>
-    <a class="ia-enlace" href="#ia">Ajustes de la IA${ia.por_revisar ? ` · <b>${ia.por_revisar} para mirar</b>` : ""}</a></div>`;
+    <a class="ia-enlace" href="#ia">Ajustes de la IA</a>${ia.por_revisar ? `<a class="ia-enlace" href="#ia_mirar"><b>${ia.por_revisar} para mirar</b></a>` : ""}</div>`;
 }
 async function pulsarIA() {
   const ia = S.estado?.ia;
@@ -1612,6 +1614,25 @@ function botonesLoteIA(l) {
   if (ia?.activo && ia.estado !== "pausa" && l.documentos.some(d => d.estado === "espera_emparejar") && !ia.trabajando) b.push(`<button class="btn" id="ia-pasar" data-lote="${l.id}">${ico("ia", 16)}Pasar a la IA</button>`);
   if (l.ia?.estado === "trabajando" && ia?.trabajando) b.push(`<span class="pill p-ia">La IA está trabajando…</span>`);
   return b.join("");
+}
+// 3.0.3 · «N para mirar»: lo que hizo la IA con poca seguridad o te dejó a ti, todo junto
+let MIRAR = null;
+function vistaMirarIA() {
+  const xs = MIRAR || [];
+  return `<div class="cab"><div><small>Controlador IA</small><h1>Para mirar</h1><div class="sub">Lo que la IA hizo con poca seguridad o dejó para ti. Ábrelo, compruébalo y dale «Está bien» o «Deshacer».</div></div>
+    <div class="acciones">${xs.length > 1 ? '<button class="btn" id="mirar-todo">Marcar todo como revisado</button>' : ""}</div></div>
+  ${xs.length ? `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Qué</th><th>Documento</th><th>Detalle</th><th></th></tr></thead><tbody>
+  ${xs.map(x => `<tr><td>${pill(x.titulo, x.tipo === "para_ti" ? "warn" : "ia")}<div class="sub">${x.seguridad != null ? x.seguridad + " %" : ""}</div></td>
+    <td>${esc(x.nombre_final || x.archivo || "—")}<div class="sub">${esc(x.estado_doc || "")}${x.lote_id ? " · lote " + x.lote_id : ""}</div></td><td class="sub">${esc(x.detalle || x.motivo || "")}</td>
+    <td class="acciones">${x.estado_doc === "espera_emparejar" ? `<a class="btn peq" href="#revision/${x.documento_id}">Revisar</a>` : x.lote_id ? `<a class="btn peq" href="#ia_informe/${x.lote_id}">Informe</a>` : ""}
+      ${x.tipo !== "para_ti" ? `<button class="btn peq" data-ia-deshacer="${x.id}">${ico("undo", 14)}Deshacer</button>` : ""}<button class="btn peq" data-ia-bien="${x.id}">Está bien</button></td></tr>`).join("")}</tbody></table></section>`
+    : '<div class="tarjeta vacio">Nada para mirar.</div>'}`;
+}
+function activarMirarIA() {
+  $("#mirar-todo")?.addEventListener("click", async () => {
+    for (const x of MIRAR || []) await api("ia/revisada", { accion: x.id });
+    aviso("Todo marcado como revisado"); await refrescar(false); await ir();
+  });
 }
 function bannerSerie(d) {
   const serie = (d.datos || {}).serie;

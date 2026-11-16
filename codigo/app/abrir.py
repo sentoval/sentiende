@@ -194,7 +194,9 @@ def main(argv=None, lanzador=None):
     if not a.navegador:
         try:
             import webview
-            webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680))
+            import inspect
+            extra = {"maximized": True} if "maximized" in inspect.signature(webview.create_window).parameters else {}
+            webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680), **extra)   # 3.0.3: se abre a pantalla completa (maximizada)
             import inspect
             if icono.is_file() and "icon" in inspect.signature(webview.start).parameters:
                 webview.start(icon=str(icono))
