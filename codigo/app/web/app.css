@@ -659,3 +659,14 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 @keyframes girar { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .eng.gira svg { animation: none; } }
 .bailaora * { vector-effect: non-scaling-stroke; }
+
+/* 3.1.0 · botón grande «Documentación», datos leídos */
+.btn-doc-grande { float: right; height: 64px; padding: 0 28px; font-size: 17px; gap: 10px; margin: 0 0 8px 16px; border-radius: 10px; }
+.btn-doc-grande .num { margin-left: 6px; }
+.datos-leidos .dl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 0 16px 16px; }
+.dl-persona { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.dl-persona.banco { border-style: dashed; }
+.dl-cab { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.dl-persona dl { display: grid; grid-template-columns: 82px 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
+.dl-persona dt { color: var(--muted); }
+.dl-persona dd { margin: 0; overflow-wrap: anywhere; }

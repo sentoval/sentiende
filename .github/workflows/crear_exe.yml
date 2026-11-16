@@ -46,25 +46,37 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.0.2_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.1.0_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v3.0.2_windows
-          path: SeFinancia_v3.0.2_windows.zip
+          name: SeFinancia_v3.1.0_windows
+          path: SeFinancia_v3.1.0_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0.2
-          name: SeFinancia v3.0.2
+          tag_name: v3.1.0
+          name: SeFinancia v3.1.0
           prerelease: false
           make_latest: true
-          files: SeFinancia_v3.0.2_windows.zip
+          files: SeFinancia_v3.1.0_windows.zip
           body: |
-            SeFinancia 3.0.2 · motor Sentiende 3.0.2 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v3.0.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 3.1.0 · motor Sentiende 3.1.0 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v3.1.0_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+
+            Novedades de la 3.1.0:
+            - Expediente: botón grande «Documentación» arriba a la derecha (pantalla aparte con archivo, tipo, de quién, Abrir, Mover y Papelera) y tarjeta «Datos leídos» con DNI, teléfono, correo y dirección de cada titular y los contactos del banco.
+            - Personas: «＋ Nueva persona» y «Expediente manual»; lo que metes a mano es la referencia segura y, si llega algo muy parecido, te avisa en la campanita para confirmarlo o cambiarlo.
+            - Menú: Expedientes · Personas · Centro de revisión · Motor de proceso (con icono de engranaje). Engranajes que giran cuando trabajan el motor y la IA.
+            - Cambiar el tipo de financiación de un expediente desde su cabecera.
+            - Tipos nuevos: Contrato bancario, Declaración de residencia fiscal, Declaración de bienes; «Modificación del contrato de trabajo» con su nombre. Número de modelo en las etiquetas: (131) Pago fraccionado, (303) IVA…
+            - Hacienda: ejercicio y trimestre leídos en la cabecera; nombres con el trimestre (…_2T26), sin segundas versiones.
+            - Recibos y extractos en serie (misma cuenta o préstamo, meses distintos): se revisan juntos y se guardan cada uno con su mes.
+            - Más reconocimiento: recibos con «CLIENTE:», CIRBE, rentas de cada cónyuge, páginas del mismo PDF, liquidaciones TPV, certificados de titularidad.
+            - Centro de revisión vacío con bailaoras flamencas; el programa se abre a pantalla completa; sin ventanas negras al procesar.
+            - Arreglos: «Reanudar lo pendiente» reintenta lo parado; el lote ya no se queda en 91 %; «N para mirar» de la IA con su propia pantalla; mover un PDF abierto en otro programa avisa en vez de dar WinError 32; el escáner AirScan reintenta mientras calienta la lámpara; Excel sin vista previa ya no da error.
 
             Novedades de la 3.0.2:
             - Seguridad: el enmascarado de datos personales se ha reforzado (nombres con etiqueta, «APELLIDOS, NOMBRE», NIF con 0 delante, direcciones abreviadas, NAF) y hay un vigilante final: si queda cualquier dato personal en el texto, no se envía nada a la IA y el documento queda «Para ti».

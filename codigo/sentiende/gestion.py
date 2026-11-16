@@ -605,3 +605,49 @@ class Gestion:
         self.db.execute("UPDATE cuarentena SET estado = ? WHERE id = ?", (estado, cid))
         self.db.commit()
         return salida
+
+
+# ------------------------------------------------------------------ 3.1.0 · datos leídos en los documentos de un expediente
+_TEL = re.compile(r"(?<![\d,.])(?:\+?34[ -]?)?([6789](?:[ -]?\d){8})(?![\d,])")
+_MAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_DIR = re.compile(r"(?:DOMICILIO(?: FISCAL| HABITUAL)?|DOMICILI|DIRECCI[OÓ]N)\s*(?:/\s*DOMICILI)?\s*[:¦]?\s*\n?\s*([^\n¦]{6,80})", re.I)
+_NO_TEL = ("900", "901", "902", "905", "91554", "915548", "913", "963774")      # centralitas de Hacienda, bancos…
+
+
+def datos_leidos(m, expediente_id):
+    """Datos principales de cada persona del expediente leídos en SUS documentos (no en los comunes, donde salen
+    notarios, vendedores o el banco): DNI, teléfonos, correos y dirección, por frecuencia. Y los contactos del banco."""
+    from collections import Counter
+    a = m.almacen
+    out = []
+    for p in a.personas_de(expediente_id):
+        tels, mails, dirs = Counter(), Counter(), Counter()
+        docs = a.documentos("expediente_id = ? AND persona_id = ? AND estado = 'guardado' AND (de_expediente = 0 OR de_expediente IS NULL)",
+                            (expediente_id, p["id"]))
+        for d in docs:
+            t = "\n".join(x["texto"] for x in a.textos_de(d["id"]).values())
+            for mt in _TEL.finditer(t):
+                n = re.sub(r"\D", "", mt.group(1))
+                if not n.startswith(_NO_TEL):
+                    tels[n] += 1
+            for mt in _MAIL.finditer(t):
+                mails[mt.group(0).lower()] += 1
+            for mt in _DIR.finditer(t):
+                v = re.sub(r"\s+", " ", mt.group(1)).strip(" :.-")
+                v = re.sub(r"^(?:[A-Z]\s+)+(?=[A-Z/]{2})", "", v.upper())          # restos del OCR delante («O C/ …»)
+                if (re.search(r"\d", v) and not re.match(r"(?:DEL?|DE LA|EN|A EFECTOS)\b", v)
+                        and not re.search(r"NOTAR|REGISTRO|AGENCIA|TESORER|BANCO|CAJA|OFICINA|INMUEBLE|SOCIAL", v)):
+                    calle = bool(re.match(r"(?:C/|CL\b|CALLE|CARRER|AV\b|AVDA|AVENIDA|AVINGUDA|PZ|PLAZA|PLAÇA|PASEO|PG|CTRA|CAMINO|CAMI|URB)", v))
+                    dirs[v] += 3 if calle else 1
+        moviles = [n for n, _ in tels.most_common() if n[0] in "67"]
+        fijos = [n for n, _ in tels.most_common() if n[0] in "89"]
+        out.append({"id": p["id"], "papel": p["papel"], "nombre": p["nombre"], "apellido1": p["apellido1"], "apellido2": p.get("apellido2") or "",
+                    "dni": p.get("dni") or "", "manual": bool(p.get("manual")),
+                    "telefonos": [f"{n[:3]} {n[3:5]} {n[5:7]} {n[7:]}" for n in (moviles + fijos)[:3]],
+                    "correos": [x for x, _ in mails.most_common(2)], "direccion": dirs.most_common(1)[0][0] if dirs else "",
+                    "documentos": len(docs)})
+    bancos = []
+    for b in m.negociacion.de_expediente(expediente_id).get("bancos", []):
+        for c in b.get("contactos") or []:
+            bancos.append({"banco": b.get("entidad"), **{k: c.get(k) or "" for k in ("nombre", "cargo", "telefono", "movil", "email", "oficina", "direccion")}})
+    return {"personas": out, "bancos": bancos}

@@ -378,6 +378,9 @@ def crear_manejador(app):
                         return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
                     if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
                     if m := re.fullmatch(r"/api/negociacion/(\d+)", p): return self._json(app.motor.negociacion.de_expediente(int(m.group(1))))
+                    if m := re.fullmatch(r"/api/datos_expediente/(\d+)", p):
+                        from sentiende.gestion import datos_leidos
+                        return self._json(datos_leidos(app.motor, int(m.group(1))))
                     g = app.motor.gestion
                     q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
                     if m := re.fullmatch(r"/api/operacion/(\d+)", p): return self._json(g.operacion(int(m.group(1))))
@@ -567,6 +570,12 @@ def crear_manejador(app):
                         m.almacen.db.executemany("UPDATE personas SET manual = 1 WHERE id = ?", [(x,) for x in manuales])
                         m.almacen.db.commit()
                         return self._json({"expediente": eid})
+                    if p == "/api/persona_manual":
+                        dni = (datos.get("dni") or "").strip().upper() or None
+                        existia = bool(dni and m.almacen.persona_por_dni(dni))
+                        pid = m.nueva_persona(datos["nombre"].strip(), (datos.get("apellido1") or "").strip(), (datos.get("apellido2") or "").strip(), dni)
+                        m.almacen.db.execute("UPDATE personas SET manual = 1 WHERE id = ?", (pid,)); m.almacen.db.commit()
+                        return self._json({"id": pid, "existia": existia})
                     if p == "/api/notificacion_cambiar":
                         return self._json(app.contexto.aplicar_cambio(int(datos["id"])) or {"ok": True})
                     if p == "/api/finalidad_expediente":

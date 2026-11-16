@@ -7,7 +7,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 
 const IC = {
   inbox: '<path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 5h14l1 8v6H4v-6z"/>',
-  motor: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  motor: '<path d="M12 2.5l1.6.3.4 2.1a7 7 0 0 1 1.9.8l1.8-1.2 1.2 1.1-1.2 1.8a7 7 0 0 1 .8 1.9l2.1.4.3 1.6-.3 1.6-2.1.4a7 7 0 0 1-.8 1.9l1.2 1.8-1.2 1.2-1.8-1.2a7 7 0 0 1-1.9.8l-.4 2.1-1.6.3-1.6-.3-.4-2.1a7 7 0 0 1-1.9-.8l-1.8 1.2-1.2-1.2 1.2-1.8a7 7 0 0 1-.8-1.9l-2.1-.4L2.5 12l.3-1.6 2.1-.4a7 7 0 0 1 .8-1.9L4.5 6.3l1.2-1.1 1.8 1.2a7 7 0 0 1 1.9-.8l.4-2.1z"/><circle cx="12" cy="12" r="3.2"/>',
   check: '<path d="m5 12 5 5 9-10"/>', folder: '<path d="M3 6h7l2 2h9v11H3z"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/>', limbo: '<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',
   edit: '<path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
@@ -70,7 +70,7 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor", ia_mirar: "motor" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", documentacion: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor", ia_mirar: "motor" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
@@ -80,9 +80,9 @@ function lateral() {
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
+      ${item("personas", "user", "Personas")}
       ${item("revision", "check", "Centro de revisión", c.revisar)}
       ${item("motor", "motor", "Motor de proceso", (c.pendientes - (c.revisar || 0)) + (c.cuarentena || 0))}
-      ${item("personas", "user", "Personas")}
       ${item("estadisticas", "chart", "Estadísticas")}
     </div>
     <div class="nav-iconos">
@@ -710,7 +710,8 @@ function vistaExpediente() {
   if (!EXP) return '<div class="tarjeta vacio">Cargando…</div>';
   const { e } = EXP, v = S.info.variante;
   const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
-  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
+  return `<a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 22)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
+  <div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
     <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · <label class="fin-cambiar" title="Tipo de financiación (pulsa para cambiarlo)">${ico("edit", 14)}<select id="exp-finalidad">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label> · carpeta <code>${esc(e.carpeta)}</code>
       <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
       <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
@@ -720,11 +721,35 @@ function vistaExpediente() {
   ${OPV && EXP.op ? panelOperacion(e) : ""}
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
+  ${tarjetaDatosLeidos()}
   ${EXP.neg ? `<div class="exp-notas">${panelNegBanco(e)}${panelNegCliente(e)}</div>` : ""}
   <div class="exp-cuerpo">
-    <div class="exp-izq">${tarjetaDocsExp(e)}${tarjetaPersonasExp(e)}</div>
+    <div class="exp-izq">${tarjetaPersonasExp(e)}</div>
     <aside class="exp-der">${tarjetaChecklist(e)}</aside>
   </div>${INFORME ? modalInforme() : ""}${dialogoEstado()}`;
+}
+// 3.1.0 · datos principales leídos en los documentos (personas del expediente y contactos del banco)
+function tarjetaDatosLeidos() {
+  const D = EXP.datos;
+  if (!D) return "";
+  const v = x => x ? esc(x) : '<span class="muted">—</span>';
+  const pers = D.personas.map(p => `<div class="dl-persona"><div class="dl-cab"><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2}`)}</b>${pill(p.papel, p.papel === "Titular" ? "ok" : "todo")}${p.manual ? ' <span class="pill p-todo" title="Datos metidos a mano: referencia segura">Manual</span>' : ""}</div>
+      <dl><dt>DNI / NIE</dt><dd class="mono">${v(p.dni)}</dd><dt>Teléfono</dt><dd class="mono">${p.telefonos.length ? p.telefonos.map(esc).join("<br>") : v("")}</dd>
+      <dt>Correo</dt><dd>${p.correos.length ? p.correos.map(esc).join("<br>") : v("")}</dd><dt>Dirección</dt><dd>${v(p.direccion)}</dd></dl></div>`).join("");
+  const bancos = D.bancos.map(c => `<div class="dl-persona banco"><div class="dl-cab"><b>${esc(c.nombre || "Contacto")}</b>${c.cargo ? `<span class="sub">${esc(c.cargo)}</span>` : ""}<span class="pill p-ia">${esc(c.banco || "Banco")}</span></div>
+      <dl><dt>Teléfono</dt><dd class="mono">${[c.movil, c.telefono].filter(Boolean).map(esc).join("<br>") || v("")}</dd><dt>Correo</dt><dd>${v(c.email)}</dd>
+      <dt>Oficina</dt><dd>${v([c.oficina, c.direccion].filter(Boolean).join(" · "))}</dd></dl></div>`).join("");
+  return `<section class="tarjeta datos-leidos"><div class="tcab"><h2>Datos leídos</h2><span class="sub">De los documentos de cada persona y de los contactos del banco. Para corregir un nombre o un DNI, entra en su ficha (Personas).</span></div>
+    <div class="dl-grid">${pers}${bancos || '<div class="dl-persona banco vacio-dl"><span class="sub">Sin contactos del banco todavía (se añaden en Negociación banco o con una tarjeta de visita).</span></div>'}</div></section>`;
+}
+// 3.1.0 · pantalla «Documentación» del expediente (archivo, tipo, de quién, Abrir, Mover y Papelera)
+function vistaDocumentacion() {
+  if (!EXP) return '<div class="tarjeta vacio">Cargando…</div>';
+  const { e } = EXP;
+  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a> › <a href="#expediente/${e.id}">${esc(e.nombre)}</a></small><h1>Documentación</h1>
+    <div class="sub">Todos los documentos guardados de este expediente. «Mover…» los lleva a otro expediente o a otra persona; la papelera nunca borra.</div></div>
+    <div class="acciones"><button class="btn" id="exp-carpeta">${ico("folder")}Abrir carpeta</button><a class="btn" href="#expediente/${e.id}">Volver al expediente</a></div></div>
+  ${tarjetaDocsExp(e)}`;
 }
 // ---------------- negociación banco (varios bancos, contactos) y negociación cliente (F-17)
 const NEG = { banco: 0, verBanco: false, contacto: null, historial: { banco: false, cliente: false } };
@@ -957,9 +982,9 @@ function activarExpediente(id) {
 async function cargarExpediente(id, suave) {
   if (!suave) { EXP = null; pintar(); }
   const e = S.expedientes.find(x => x.id === id) || (await api("expedientes")).find(x => x.id === id);
-  const [ck, docs, neg, op] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id)]);
+  const [ck, docs, neg, op, datos] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id), api("datos_expediente/" + id).catch(() => null)]);
   if (EXP?.e?.id !== id) { Object.assign(NEG, { banco: 0, verBanco: false, contacto: null }); OPV = false; DIALOGO = null; }
-  EXP = { e, ck, docs, neg, op }; ARR.unir = false; ARR.mover = null; pintar();
+  EXP = { e, ck, docs, neg, op, datos }; ARR.unir = false; ARR.mover = null; pintar();
 }
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
@@ -1182,6 +1207,7 @@ function pintar() {
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
+    documentacion: [vistaDocumentacion, () => activarExpediente(+id)],
     unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
     avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
@@ -1204,7 +1230,7 @@ async function ir() {
     if (objetivo) { if (objetivo !== S.docId || !S.doc) return cargarDoc(objetivo); }
     else { S.doc = null; S.docId = null; }
   }
-  if (r === "expediente") return cargarExpediente(+id);
+  if (r === "expediente" || r === "documentacion") return cargarExpediente(+id);
   if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
   if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
   if (["avisos", "avisos_se", "avisos_cliente"].includes(r)) AV = await api("avisos");
@@ -1407,7 +1433,11 @@ let PERS = null, FILTRO_P = "";
 function vistaPersonas() {
   if (!PERS) return '<div class="tarjeta vacio">Cargando…</div>';
   const f = normaliza(FILTRO_P), lista = PERS.filter(p => !f || normaliza(`${p.nombre} ${p.apellido1} ${p.apellido2} ${p.dni || ""}`).includes(f));
-  return `<div class="cab"><div><h1>Personas</h1><div class="sub">Todas las personas fichadas, con sus expedientes y papeles. Una persona puede estar en varios expedientes.</div></div></div>
+  return `<div class="cab"><div><h1>Personas</h1><div class="sub">Todas las personas fichadas, con sus expedientes y papeles. Una persona puede estar en varios expedientes.</div></div>
+    <div class="acciones"><button class="btn" id="p-exp-manual">${ico("folder", 16)}Expediente manual</button><button class="btn pri" id="p-nueva">＋ Nueva persona</button></div></div>
+  ${NUEVA_P ? `<section class="tarjeta"><h2>Nueva persona (datos a mano)</h2><span class="sub">Queda como referencia segura: si llegan documentos con un nombre o DNI muy parecido, se usarán estos datos y te avisará en la campanita. Para abrirle un expediente a la vez, usa «Expediente manual».</span>
+    <div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]].map(([k, l]) => `<div class="campo"><label>${l}</label><input data-np="${k}" value="${esc(NUEVA_P[k] || "")}"></div>`).join("")}</div>
+    <div class="acciones"><button class="btn pri" id="np-ok">${ico("check")}Guardar persona</button><button class="btn" id="np-no">Cancelar</button></div></section>` : ""}
   <div class="neg-nueva"><input id="p-filtro" placeholder="Buscar por nombre o DNI…" value="${esc(FILTRO_P)}"></div>
   <section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Persona</th><th>DNI / NIE</th><th>Expedientes</th><th>Documentos</th></tr></thead><tbody>
   ${lista.map(p => `<tr class="clic" data-persona-ir="${p.id}"><td><b>${esc(`${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`)}</b></td><td class="mono">${esc(p.dni || "sin DNI")}</td>
@@ -1423,7 +1453,17 @@ function vistaPersona(id) {
     <div class="acciones"><button class="btn pri" id="pf-ok">${ico("check")}Guardar ficha</button></div></section>
   <section class="tarjeta"><h2>Expedientes</h2>${p.expedientes.map(e => `<div class="dato"><a href="#expediente/${e.id}">${esc(e.nombre)}</a><span>${esc(e.papel)} · ${esc(e.estado)}</span></div>`).join("") || '<span class="sub">No está en ningún expediente.</span>'}</section>`;
 }
+let NUEVA_P = null;
 function activarPersonas() {
+  $("#p-nueva")?.addEventListener("click", () => { NUEVA_P = {}; pintar(); });
+  $("#np-no")?.addEventListener("click", () => { NUEVA_P = null; pintar(); });
+  $("#p-exp-manual")?.addEventListener("click", () => { NUEVO_EXP = { finalidad: (S.info.finalidades_visibles || [])[0], personas: [{}], manual: true }; location.hash = "expedientes"; });
+  document.querySelectorAll("[data-np]").forEach(i => i.addEventListener("input", () => (NUEVA_P[i.dataset.np] = i.value)));
+  $("#np-ok")?.addEventListener("click", async () => {
+    if (!NUEVA_P.nombre || !NUEVA_P.apellido1) return aviso("Falta el nombre o el primer apellido.", true);
+    try { const r = await api("persona_manual", NUEVA_P); NUEVA_P = null; PERS = await api("personas"); aviso(r.existia ? "Ya estaba fichada: queda marcada como dato manual" : "Persona guardada"); pintar(); }
+    catch (e) { aviso(e.message, true); }
+  });
   $("#p-filtro")?.addEventListener("input", e => { FILTRO_P = e.target.value; const pos = e.target.selectionStart; pintar(); const i = $("#p-filtro"); i.focus(); i.setSelectionRange(pos, pos); });
   document.querySelectorAll("[data-persona-ir]").forEach(tr => tr.addEventListener("click", () => (location.hash = "persona/" + tr.dataset.personaIr)));
 }

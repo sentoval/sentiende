@@ -169,3 +169,16 @@ class TestManual(unittest.TestCase):
             self.assertEqual(m.almacen.expediente(eid)["finalidad"], "licencia_taxi")
             self.assertTrue(m.almacen.expediente(eid)["nombre"].endswith("Préstamo licencia taxi"))
             m.almacen.db.close()
+
+
+class TestDatosLeidos(unittest.TestCase):
+    def test_datos_del_expediente(self):
+        from sentiende.gestion import datos_leidos
+        with tempfile.TemporaryDirectory() as t:
+            m, lote = lote_familia(t)
+            r = ContextoLote(m, ControladorIA(m)).aplicar(lote)
+            d = datos_leidos(m, r["expediente"])
+            tit = next(p for p in d["personas"] if p["papel"] == "Titular")
+            self.assertEqual(tit["dni"], "23456789D")
+            self.assertIn("bancos", d)
+            m.almacen.db.close()
