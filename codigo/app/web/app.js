@@ -1737,14 +1737,14 @@ function vistaIA() {
   const tarTxt = !tar.ultima ? "Todavía no se han comprobado." : tar.estado === "cambios" ? tar.detalle : tar.estado === "no_comprobado" ? tar.detalle : `Comprobado el ${tar.ultima.slice(8, 10)}/${tar.ultima.slice(5, 7)} a las ${tar.ultima.slice(11, 16)} · sin cambios.`;
   const comp = IAP.comparativa, maxH = Math.max(...comp.modelos.map(x => x.hasta));
   return `<div class="cab"><div><small>Ajustes › Controlador IA</small><h1>Controlador IA <span class="pill p-ia">3.0</span></h1><div class="sub">Resuelve solo lo que el programa no sabe y te informa de cada cosa que hace. Solo texto, sin datos personales.</div></div>
-    <div class="acciones"><a class="btn" href="#ajustes">Volver a Ajustes</a><button class="btn pri" id="ia-guardar">${ico("check")}Guardar cambios</button></div></div>
+    <div class="acciones"><button class="btn" id="ia-saldo" title="Abre la página de facturación de la consola de la API en tu navegador">${ico("link", 15)}Ver saldo de la API</button><a class="btn" href="#ajustes">Volver a Ajustes</a><button class="btn pri" id="ia-guardar">${ico("check")}Guardar cambios</button></div></div>
   <div class="ia-cols"><div class="ia-col">
   <section class="tarjeta"><h2>Controlador IA</h2>
     <div class="ia-estado ${a.activo ? "on" : ""}"><span class="ia-ico">${ico("ia", 26)}</span><span><b>${a.activo ? "Encendido · modo automático" : "Apagado · todo en local"}</b><span class="sub">${a.activo ? "Resuelve solo lo que el programa no sabe; cada acción se puede deshacer." : "Se enciende con el botón «Controlador IA» de la barra lateral o aquí."}</span></span>
       <button class="btn" id="ia-onoff">${a.activo ? "Apagar" : "Encender"}</button></div>
     <div class="campos-inline"><div class="campo" style="flex:2 1 320px"><label for="ia-clave">Clave de la API de Anthropic</label><input id="ia-clave" type="password" autocomplete="off" placeholder="${a.tiene_clave ? "•••••••• (guardada; escribe otra para cambiarla)" : "sk-ant-…"}"></div>
       <button class="btn" id="ia-probar">${ico("link", 15)}Probar conexión</button>${a.tiene_clave ? `<button class="btn peligro" id="ia-quitar">Quitar clave</button>` : ""}</div>
-    <span class="sub">Cifrada con tu usuario de Windows. Los créditos se compran en la consola de Anthropic (console.anthropic.com), no en claude.ai.</span>
+    <span class="sub">Cifrada con tu usuario de Windows. Los créditos se compran en la consola de la API (platform.claude.com), no en claude.ai.</span>
     <div class="campos-inline"><div class="campo"><label for="ia-modelo">Modelo</label><select id="ia-modelo">${Object.entries(M).map(([k, m]) => `<option value="${k}" ${k === a.modelo ? "selected" : ""}>${esc(m.nombre)} · ${esc(m.desc)}</option>`).join("")}</select></div>
       <div class="campo"><label for="ia-actua">Cuándo actúa</label><select id="ia-actua"><option value="lote" ${a.actua === "lote" ? "selected" : ""}>Al terminar cada lote del motor</option><option value="manual" ${a.actua === "manual" ? "selected" : ""}>Solo cuando pulse «Pasar a la IA»</option></select></div>
       <div class="campo" style="max-width:170px"><label for="ia-umbral">Seguridad para no marcar (%)</label><input id="ia-umbral" type="number" min="50" max="100" value="${a.umbral}"></div></div></section>
@@ -1816,6 +1816,7 @@ function activarIA() {
   $("#ia-tar")?.addEventListener("click", async ev => { ev.currentTarget.disabled = true; aviso("Comprobando las tarifas…"); try { await api("ia/tarifas", {}); await recargar(); aviso("Tarifas comprobadas"); } catch (e) { aviso(e.message, true); } });
   $("#ia-act-tar")?.addEventListener("click", async () => { try { IAP = await api("ia/actualizar_tarifas", {}); pintar(); aviso("Tabla de tarifas actualizada"); } catch (e) { aviso(e.message, true); } });
   $("#ia-consola")?.addEventListener("click", () => api("ia/consola", {}).catch(e => aviso(e.message, true)));
+  $("#ia-saldo")?.addEventListener("click", () => api("ia/consola", {}).then(() => aviso("Abriendo el saldo de la API en el navegador…")).catch(e => aviso(e.message, true)));
   $("#ia-exp")?.addEventListener("click", async () => { try { const r = await api("ia/exportar", {}); aviso("Guardado en " + r.ruta); abrirRuta(r.ruta, true); } catch (e) { aviso(e.message, true); } });
   $("#ia-imp")?.addEventListener("change", async e => {
     const f = e.target.files[0]; if (!f) return;

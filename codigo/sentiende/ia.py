@@ -28,7 +28,7 @@ from .correo import proteger, desproteger
 URL_API = "https://api.anthropic.com/v1/messages"
 URL_MODELOS = "https://api.anthropic.com/v1/models"
 URL_PRECIOS = "https://platform.claude.com/docs/en/about-claude/pricing"
-URL_CONSOLA = "https://console.anthropic.com/settings/billing"
+URL_CONSOLA = "https://platform.claude.com/settings/billing"     # saldo y compra de créditos de la API
 VERSION_API = "2023-06-01"
 
 MODELOS = {
