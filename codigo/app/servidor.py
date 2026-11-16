@@ -16,6 +16,7 @@ from sentiende.carpetas import libre
 from sentiende.negociacion import ErrorNegociacion
 from sentiende.gestion import ErrorGestion
 from sentiende.ia import ControladorIA, ErrorIA, URL_MODELOS, VERSION_API
+from sentiende.contexto import ContextoLote
 
 WEB = Path(__file__).resolve().parent / "web"
 CERROJO = threading.RLock()
@@ -34,6 +35,7 @@ class App:
         self.bluetooth = Bluetooth(lambda rutas: self.encolar(rutas, "bluetooth")[0])
         self.ia = ControladorIA(self.motor)
         self.ia.cerrojo = CERROJO
+        self.contexto = ContextoLote(self.motor, self.ia)
         self._ia_hilo = None
         threading.Thread(target=self._correo_auto, daemon=True).start()
         threading.Thread(target=self._ia_auto, daemon=True).start()
@@ -59,6 +61,8 @@ class App:
         while True:
             time.sleep(15)
             try:
+                if not self.trabajando:
+                    self.pasar_contexto()
                 with CERROJO:
                     aj = self.ia.ajustes()
                 if not aj["activo"]:
@@ -153,8 +157,24 @@ class App:
                 for d in pendientes:
                     with CERROJO:
                         self.motor._procesar_doc(self.motor.almacen.documento(d["id"]))
+            self.pasar_contexto()
         finally:
             self.trabajando = False
+
+    def pasar_contexto(self):
+        """Contexto del lote (en local) para los lotes que ya no tienen nada en proceso (y los rezagados)."""
+        with CERROJO:
+            if not self.contexto.ajustes()["activo"]:
+                return
+            for lid in self.contexto.pendientes():
+                try:
+                    self.contexto.aplicar(lid)
+                except Exception as e:           # el contexto nunca para el programa: se avisa y se sigue
+                    self.motor.almacen.evento(f"Contexto del lote {lid}: no se ha podido aplicar ({e}). Los documentos siguen en el Centro de revisión.", lote_id=lid, nivel="se")
+                    for d in self.motor.almacen.documentos("lote_id = ? AND estado = 'espera_emparejar'", (lid,)):
+                        datos = d["datos"] or {}
+                        datos["contexto"] = True
+                        self.motor.almacen.actualizar(d["id"], datos=datos)
 
     # ---------------- datos para las pantallas
     def info(self):
@@ -174,8 +194,10 @@ class App:
             e = extra[d["id"]]
             d.update(lote_id=e["lote_id"], padre_id=e["padre_id"], expediente_id=e["expediente_id"], nombre_final=e["nombre_final"], paginas=e["paginas"])
         ia_lotes = {r["lote_id"]: dict(r) for r in a.db.execute("SELECT l.*, (SELECT COUNT(*) FROM ia_acciones x WHERE x.lote_id = l.lote_id) AS acciones FROM ia_lotes l")}
+        acciones = {r[0]: r[1] for r in a.db.execute("SELECT lote_id, COUNT(*) FROM ia_acciones GROUP BY lote_id")}
         for l in lotes:
             l["ia"] = ia_lotes.get(l["id"])
+            l["acciones"] = acciones.get(l["id"], 0)
             l["documentos"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] not in ("separado", "deshecho")]
             l["separados"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] == "separado"]
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
@@ -183,7 +205,8 @@ class App:
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
                             "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
                             "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
-                            "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0]}}
+                            "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0],
+                            "notificaciones": a.db.execute("SELECT COUNT(*) FROM notificaciones WHERE visto = 0").fetchone()[0]}}
 
     def documento(self, did):
         m, a = self.motor, self.motor.almacen
@@ -339,7 +362,8 @@ def crear_manejador(app):
                     if p == "/api/propuestas_union": return self._json(app.motor.propuestas_union())
                     if p == "/api/avisos":
                         a = app.motor.almacen
-                        return self._json({"cliente": a.avisos_cliente(), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:]})
+                        return self._json({"cliente": a.avisos_cliente(), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:],
+                                           "notificaciones": app.contexto.notificaciones(todas=True)})
                     if m := re.fullmatch(r"/api/documento/(\d+)", p): return self._json(app.documento(int(m.group(1))))
                     if p == "/api/correo":
                         from sentiende.correo import PREDEFINIDOS
@@ -491,6 +515,9 @@ def crear_manejador(app):
                             m.no_es_tarjeta(int(datos["documento"])); return self._json({"ok": True})
                         return self._json(m.guardar_tarjeta(int(datos["documento"]), int(datos["expediente"]), datos.get("entidad"), datos.get("contacto") or {}))
                     g = m.gestion
+                    if p == "/api/notificacion_vista":
+                        app.contexto.visto(datos.get("id") and int(datos["id"]))
+                        return self._json({"ok": True})
                     if p == "/api/avisos_se_vistos":
                         ultimo = m.almacen.db.execute("SELECT COALESCE(MAX(id), 0) FROM eventos WHERE nivel = 'se'").fetchone()[0]
                         return self._json(g.guardar_ajustes({"avisos_se_visto": ultimo}))

@@ -61,9 +61,9 @@ class TestIA(unittest.TestCase):
             c.encender(True)
             prep = c.preparar(did)
             leida = prep["leidas"][0]["ficha"]
-            sim.respuestas = [{"tipo": "certificado_empresa" if "certificado_empresa" in m.variante.docs else m.almacen.documento(did)["tipo"] or "vida_laboral",
+            sim.respuestas = [{"documentos": [{"doc": f"D{did}", "tipo": "certempresa" if "certempresa" in m.variante.docs else m.almacen.documento(did)["tipo"] or "vidalaboral",
                                "persona": "[PERSONA_1]", "expediente": "[EXP_A]", "misma_persona": [{"es": leida, "igual_a": "[PERSONA_1]"}],
-                               "seguridad": 95, "motivo": "Mismo DNI sin letra y nombre abreviado."}]
+                               "seguridad": 95, "motivo": "Mismo DNI sin letra y nombre abreviado."}]}]
             r = c.ejecutar_lote(lote, threading.RLock())
             self.assertEqual(r["consultas"], 1)
             d = m.almacen.documento(did)
@@ -97,7 +97,7 @@ class TestIA(unittest.TestCase):
     def test_nunca_crea_expedientes(self):
         with tempfile.TemporaryDirectory() as t:
             m, pid, eid, lote, did = preparar(t)
-            sim = Simulada([{"tipo": None, "expediente": "NUEVO", "seguridad": 80, "motivo": "Persona sin expediente."}])
+            sim = Simulada([{"documentos": [{"doc": f"D{did}", "tipo": None, "expediente": "NUEVO", "seguridad": 80, "motivo": "Persona sin expediente."}]}])
             c = IA.ControladorIA(m, cliente=sim, descargar=lambda u, h=None: "")
             c.guardar({"clave": "sk-ant-prueba"}); c.encender(True)
             n = m.almacen.db.execute("SELECT COUNT(*) FROM expedientes").fetchone()[0]
@@ -118,7 +118,7 @@ class TestIA(unittest.TestCase):
             c0.save()
             lote, ids = m.recibir([ent / "dos.pdf"]); m.procesar(lote)
             padre = [d for d in m.almacen.documentos("lote_id = ?", (lote,)) if d["estado"] == "espera_emparejar"][0]["id"]
-            sim = Simulada([{"separar": [[1], [2]], "seguridad": 92, "motivo": "Dos meses distintos."}])
+            sim = Simulada([{"documentos": [{"doc": f"D{padre}", "separar": [[1], [2]], "seguridad": 92, "motivo": "Dos meses distintos."}]}])
             c = IA.ControladorIA(m, cliente=sim, descargar=lambda u, h=None: "")
             c.guardar({"clave": "sk-ant-prueba"}); c.encender(True)
             c.ejecutar_lote(lote, threading.RLock())
@@ -140,6 +140,7 @@ class TestIA(unittest.TestCase):
             acc = c.informe(lote)["acciones"]
             self.assertEqual((acc[0]["tipo"], acc[0]["titulo"]), ("para_ti", "Sin respuesta"))
             self.assertEqual(len(sim.recibido), 1)          # no se repite la consulta del mismo documento
+            self.assertIn("TAREA: estos documentos llegaron juntos", sim.recibido[0][1])      # una consulta por lote
             m.almacen.db.close()
 
     def test_reintenta_si_se_queda_sin_margen(self):

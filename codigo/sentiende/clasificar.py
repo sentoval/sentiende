@@ -40,6 +40,20 @@ class Clasificador:
             p = 3 * len(fuertes) + 2 * len(nombres) + len(sin)
             if p:
                 res.append((p, doc["id"], fuertes[:4] + sorted(nombres)[:2] + sin[:1]))
+        # 3.0.2 · título del documento: el nombre de un tipo en las primeras líneas pesa más
+        cabeza = t[:300]
+        titulo = {d["id"]: 5 for d in self.docs if not d.get("subtipo_de") and any(len(norm(x)) > 8 and _contiene(cabeza, x) for lang in d["nombres"].values() for x in lang)}
+        if titulo:
+            res = [(p + titulo.pop(i, 0), i, por) for p, i, por in res] + [(v, i, ["título"]) for i, v in titulo.items()]
+        # 3.0.2 · «MODELO 131», «MODELO 303»…: el número de modelo de Hacienda decide (los justificantes de presentación son iguales)
+        modelos = set(re.findall(r"MODELO\s*:?\s*(\d{3})\b", t[:1500]))
+        if modelos:
+            extra = {d["id"]: 10 for d in self.docs if not d.get("subtipo_de") and any(f"MODELO {n}" in [norm(k) for k in d["palabras_clave"]] + [norm(x) for lang in d["nombres"].values() for x in lang] for n in modelos)}
+            res = [(p + extra.pop(i, 0), i, por + ([f"modelo {', '.join(sorted(modelos))}"] if i in extra else [])) for p, i, por in res] + \
+                  [(v, i, [f"modelo {', '.join(sorted(modelos))}"]) for i, v in extra.items()]
+        # «RECIBO 13 DE 72»: recibo de un préstamo o financiación
+        if re.search(r"\b(?:RECIBO|CUOTA)\s+\d{1,3}\s+DE\s+\d{1,3}\b", t):
+            res = [(p + (6 if i == "prestamo" else 0), i, por) for p, i, por in res] + ([] if any(i == "prestamo" for _, i, _ in res) else [(6, "prestamo", ["recibo n de m"])])
         res.sort(key=lambda r: -r[0])
         return res
 

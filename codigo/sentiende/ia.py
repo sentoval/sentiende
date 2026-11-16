@@ -102,6 +102,37 @@ def letras(n):
 
 
 # ====================================================================== fichas (datos tapados)
+# Palabras de documento que también son nombres o apellidos: no se tapan sueltas (sí dentro de un nombre completo).
+COMUNES = {"SEGURIDAD", "SOCIAL", "AGENCIA", "TRIBUTARIA", "ESTATAL", "ADMINISTRACION", "HACIENDA", "BANCO", "CAJA", "RURAL", "GENERAL",
+           "VALENCIA", "VALENCIANA", "MADRID", "ESPAÑA", "ESPANA", "CASTILLA", "LEON", "MURCIA", "GRANADA", "TOLEDO", "SEVILLA", "CORDOBA",
+           "NOMINA", "TOTAL", "SALDO", "IMPORTE", "FECHA", "EUROS", "CUENTA", "LIQUIDO", "BRUTO", "NETO", "PERIODO", "EMPRESA", "CENTRO",
+           "NOTARIO", "NOTARIA", "REGISTRO", "PROPIEDAD", "MAYOR", "NUEVA", "NUEVO", "REAL", "CRUZ", "SANTOS", "REYES", "PAZ", "LUZ", "MAR",
+           "CAMPO", "MONTE", "PRADO", "VEGA", "PUERTO", "SIERRA", "TORRE", "TORRES", "PALACIO", "IGLESIA", "CALLE", "PLAZA", "SANTA", "SANTO",
+           "ROSA", "BLANCO", "BLANCA", "LUNA", "SOL", "ROMERO", "HERRERO", "PASTOR", "CABALLERO", "GUERRA", "MORENO", "DELGADO", "MEDINA",
+           "MERCADONA", "CAIXABANK", "BBVA", "SANTANDER", "UNICAJA", "SABADELL", "BANKINTER", "INGRESOS", "GASTOS", "PRESTAMO", "HIPOTECA"}
+
+
+def vigilar(texto, palabras=()):
+    """Última comprobación antes de enviar: qué tipos de dato personal siguen a la vista (sin decir cuáles).
+    Si devuelve algo, la consulta NO se envía."""
+    t = re.sub(r"\[[A-Z]+_[A-Z0-9]+\]", " ", texto or "")
+    fallos = []
+    if re.search(r"\b0?\d{8}\s?[A-Z]\b|\b[XYZ]\d{7}[A-Z]\b|\b\d{2}\.\d{3}\.\d{3}-?[A-Z]\b", t):
+        fallos.append("un DNI o NIE")
+    if re.search(r"(?:DNI|NIF|NIE|D\.N\.I|N\.I\.F|N\.I\.E)\.?[^\n]{0,14}?\b\d{7,9}\b", t):
+        fallos.append("un número de DNI o NIF")
+    if re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", t):
+        fallos.append("un correo")
+    if re.search(r"(?<![\d,.])[6789]\d{2}\s?\d{3}\s?\d{3}(?![\d,])", t):
+        fallos.append("un teléfono")
+    if re.search(r"\bES\d{2}(?:\s?\d{4}){5}\b", t):
+        fallos.append("una cuenta bancaria")
+    ws = {w for w in palabras if len(w) >= 4 and w not in PARTICULAS and w not in COMUNES}
+    if ws and set(re.findall(r"[A-ZÑÇ]{4,}", t)) & ws:
+        fallos.append("un nombre o apellido conocido")
+    return fallos
+
+
 class Mascara:
     """Cambia datos personales por fichas. mapa: ficha -> dato real (solo en el equipo)."""
 
@@ -122,7 +153,7 @@ class Mascara:
         return self._inv.get((clase, clave))
 
     # ------------------------------------------------------------------ texto
-    def tapar(self, texto, personas=()):
+    def tapar(self, texto, personas=(), palabras=()):
         """personas: [{'clave', 'nombre', 'apellido1', 'apellido2', 'dni', 'ficha'?}] (las leídas y las candidatas).
         Devuelve el texto en mayúsculas, sin tildes y sin datos personales."""
         t = norm(texto or "")
@@ -135,19 +166,27 @@ class Mascara:
         t = re.sub(r"\b\d{7}[A-Z]{2}\d{4}[A-Z]\d{4}[A-Z]{2}\b", lambda m: self.ficha("CATASTRO", m.group(0)), t)
         t = re.sub(r"((?:NACIMIENTO|NACIDO|NACIDA|NAIXEMENT|F\.?\s?NAC\.?|FECHA NAC\.?)[^\n\d]{0,25})(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})",
                    lambda m: m.group(1) + self.ficha("FNAC", m.group(2)), t)
-        # DNI / NIE / NIF (con letra, o de 8 cifras junto a la etiqueta) y CIF
+        # DNI / NIE / NIF (con letra, con un 0 delante, o de 8-9 cifras junto a la etiqueta) y CIF
         def dni(m):
-            raw = re.sub(r"[\s-]", "", m.group(0))
+            raw = re.sub(r"[\s.-]", "", m.group(0))
+            if len(raw) == 10 and raw[0] == "0":
+                raw = raw[1:]
             return self.ficha("DNI", raw, re.sub(r"[^0-9XYZ]", "", raw[:-1]) if raw[-1:].isalpha() and len(raw) > 8 else raw)
-        t = re.sub(r"\b[XYZ][ -]?\d{7}[ -]?[A-Z]\b|\b\d{8}[ -]?[A-Z]\b", dni, t)
-        t = re.sub(r"((?:DNI|NIF|NIE|D\.N\.I\.?|N\.I\.F\.?)[^\n\dA-Z]{0,6})(\d{8})\b", lambda m: m.group(1) + self.ficha("DNI", m.group(2), m.group(2)), t)
+        t = re.sub(r"\b[XYZ][ .-]?\d{7}[ -]?[A-Z]\b|\b0?\d{8}[ -]?[A-Z]\b|\b\d{2}\.\d{3}\.\d{3}[ -]?[A-Z]\b", dni, t)
+        t = re.sub(r"((?:DNI|NIF|NIE|D\.N\.I\.?|N\.I\.F\.?|N\.I\.E\.?)(?:[^\n\d\[]{0,4}(?:N[º°O2.]?|NUM\.?|NUMERO|NÚMERO)?)[^\n\dA-Z\[]{0,6})(\d{7,9}[ -]?[A-Z]?)\b",
+                   lambda m: m.group(1) + self.ficha("DNI", m.group(2), re.sub(r"\D", "", m.group(2))[-8:]), t)
         t = re.sub(r"\b[ABCDEFGHJNPQRSUVW][ -]?\d{7}[ -]?[0-9A-J]\b", lambda m: self.ficha("NIF", m.group(0), re.sub(r"\W", "", m.group(0))), t)
-        t = re.sub(r"\b\d{2}[ /]?\d{8}[ /]?\d{2}\b", lambda m: self.ficha("NAF", m.group(0), re.sub(r"\D", "", m.group(0))), t)
+        t = re.sub(r"\b\d{2}\s*/\s*\d{7,8}\s*[-/]?\s*\d{2}\b|\b\d{2}[ /]?\d{8}[ /]?\d{2}\b", lambda m: self.ficha("NAF", m.group(0), re.sub(r"\D", "", m.group(0))), t)
         t = re.sub(r"(?<![\d,.])(?:\+?34[ -]?)?[6789](?:[ -]?\d){8}(?![\d,])", lambda m: self.ficha("TEL", m.group(0), re.sub(r"\D", "", m.group(0))[-9:]), t)
         t = re.sub(r"\b\d{4}[ -]?[BCDFGHJKLMNPRSTVWXYZ]{3}\b", lambda m: self.ficha("MATRICULA", m.group(0), re.sub(r"\W", "", m.group(0))), t)
         t = re.sub(r"\b(?:C/|CALLE|CL\.|AVDA\.?|AVENIDA|AV\.|PLAZA|PZA\.?|PASEO|PG\.?|CAMINO|CTRA\.?|CARRETERA|PARTIDA|URBANIZACI[OÓ]N|URB\.|CARRER|PLAÇA|PASSEIG|AVINGUDA)\s+[^\n¦,;]{2,50}?(?:,?\s*(?:N[ºO°.]?\s*)?\d{1,4}[A-Z]?\b(?:[,\s]+(?:\d{1,2}[ºª°]?\s*[A-Z]?|ESC\.?\s*\w+|PTA\.?\s*\w+|PISO\s*\w+)){0,3})",
                    lambda m: self.ficha("DIRECCION", m.group(0)), t)
-        # personas: primero los nombres completos (en varios órdenes), después cada palabra suelta de su nombre
+        # abreviaturas sin punto al principio de una línea o de un campo: «AV GASPAR …», «CL MAYOR 12», «C SAN VICENTE 3»
+        t = re.sub(r"(?m)(^|¦|:)(\s*)((?:AV|AVD|AVDA|CL|C|CR|CRTA|PZ|PZA|PS|PSO|CM|CMNO|UR|URB|PG|PL|RD|TR|TRV|PJ|PTDA|CRER|PÇA)\s+[A-Z][^\n¦]{2,60})",
+                   lambda m: m.group(1) + m.group(2) + self.ficha("DIRECCION", m.group(3).strip()), t)
+        t = re.sub(r"((?:DOMICILIO|DIRECCI[OÓ]N|RESIDENCIA|DOMICILIADO EN|CON DOMICILIO EN|VECINO DE)(?:\s+FISCAL|\s+SOCIAL)?[\s:.]{1,4})(?!\[)([^\n¦]{4,70})",
+                   lambda m: m.group(1) + self.ficha("DIRECCION", m.group(2).strip()), t)
+        # personas conocidas: primero los nombres completos (en varios órdenes) y después cada palabra suelta
         reemplazos = []
         for p in personas:
             f = p.get("ficha")
@@ -167,13 +206,48 @@ class Mascara:
                     if len(w) >= 3 and w not in PARTICULAS:
                         sueltas.setdefault(w, p["ficha"])
         if sueltas:
-            t = re.sub(r"(?<![A-Z\[_])(" + "|".join(map(re.escape, sorted(sueltas, key=len, reverse=True))) + r")(?![A-Z\]])", lambda m: sueltas[m.group(1)], t)
-        # red de seguridad: dos o más palabras seguidas que parecen nombre y apellidos de otra persona
-        def otros(m):
-            pal = [w for w in m.group(0).split() if w not in PARTICULAS]
-            if len(pal) >= 2 and any(es_nombre(w) for w in pal) and sum(es_apellido(w) or es_nombre(w) for w in pal) >= len(pal) - 0:
-                return self.ficha("NOMBRE", m.group(0))
+            t = re.sub(r"(?<![A-Z\[_])(" + "|".join(map(re.escape, sorted(sueltas, key=len, reverse=True))) + r")(?![A-Z\]_])", lambda m: sueltas[m.group(1)], t)
+        # nombres detrás de una etiqueta: «NOMBRE: …», «TITULAR …», «D.ª …», «A NOMBRE DE …», «SOBRE … CON NIF»
+        pw = r"(?!(?:CON|NIF|DNI|NIE|CIF|EN|QUE|PARA|POR|SEGUN|MAYOR|EDAD|VECINO|VECINA|DOMICILIO|NACIDO|NACIDA|PROVISTO|PROVISTA|TITULAR|COMO|EL|LOS|LAS)\b)[A-ZÑÇ][A-ZÑÇ'-]+"
+        nom = pw + r"(?:[ ]+(?:(?:DE|DEL|LA|LAS|LOS|Y|I)[ ]+)?" + pw + r"){1,4}(?:[ ]*,[ ]*" + pw + r"(?:[ ]+" + pw + r"){0,2})?"
+        etiquetas = (r"APELLIDOS\s+Y\s+NOMBRE|NOMBRE\s+Y\s+APELLIDOS|APELLIDOS,?\s+NOMBRE|NOMBRE\s+COMPLETO|NOMBRE|APELLIDOS|COGNOMS\s+I\s+NOM|NOM\s+I\s+COGNOMS|NOM|COGNOMS|"
+                     r"TITULAR(?:ES)?|COTITULAR(?:ES)?|TRABAJADOR(?:A)?|TREBALLADOR(?:A)?|EMPLEADO(?:A)?|CONTRIBUYENTE|DECLARANTE|C[OÓ]NYUGE|PERCEPTOR(?:A)?|"
+                     r"SOLICITANTE|INTERESADO(?:A)?|BENEFICIARIO(?:A)?|PRESTATARIO(?:S|A|AS)?|AVALISTA(?:S)?|FIADOR(?:ES|A)?|COMPRADOR(?:ES|A)?|VENDEDOR(?:ES|A)?|"
+                     r"ARRENDATARIO(?:A)?|ARRENDADOR(?:A)?|PROPIETARIO(?:A)?|FIRMANTE|D\./D(?:Ñ|N)?A\.?|D\.ª|DÑA\.?|DNA\.|DOÑA|DON|D\.|SR\.|SRA\.|SENYOR(?:A)?|A NOMBRE DE|EN NOMBRE DE|A FAVOR DE")
+        def etiqueta(m):
+            v = m.group(3)
+            pal = [w for w in re.split(r"[ ,]+", v) if w and w not in PARTICULAS]
+            if len(pal) < 2:
+                return m.group(0)
+            return m.group(1) + m.group(2) + self.ficha("NOMBRE", v.strip(), norm(" ".join(sorted(pal))))
+        nom_l = nom.replace("[ ]", "[ \\n]")          # detrás de una etiqueta el nombre puede seguir en la línea siguiente
+        t = re.sub(r"(?<![A-Z])(" + etiquetas + r")([\s:.¦-]{0,4})(?!\[)(" + nom_l + r")", etiqueta, t)
+        t = re.sub(r"\b(SOBRE)(\s+)(?!\[)(" + nom + r")(?=\s*,?\s*(?:CON\s+)?(?:N\.?I\.?F|D\.?N\.?I|N\.?I\.?E|\[DNI_))", etiqueta, t)
+        # «APELLIDO APELLIDO, NOMBRE» en una línea o un campo (cabecera de las nóminas, listados…)
+        def coma(m):
+            izq, der = m.group(2), m.group(3)
+            if any(es_nombre(w) for w in der.split()) or any(es_apellido(w) for w in izq.split()):
+                return m.group(1) + self.ficha("NOMBRE", f"{izq}, {der}", norm(" ".join(sorted((izq + " " + der).split()))))
             return m.group(0)
+        t = re.sub(r"(?m)(^|¦|:\s)\s*([A-ZÑÇ][A-ZÑÇ'-]+(?:\s+(?:DE|DEL|LA|Y|I)?\s*[A-ZÑÇ][A-ZÑÇ'-]+){0,3})\s*,\s*([A-ZÑÇ][A-ZÑÇ'-]+(?:\s+[A-ZÑÇ][A-ZÑÇ'-]+){0,2})(?=\s*(?:$|¦|\d|\[))", coma, t)
+        # palabras de nombres de cualquier persona conocida (del lote o de la base) que sigan sueltas
+        if palabras:
+            ws = sorted({w for w in palabras if len(w) >= 4 and w not in PARTICULAS and w not in COMUNES}, key=len, reverse=True)
+            for k in range(0, len(ws), 300):
+                t = re.sub(r"(?<![A-Z\[_])(" + "|".join(map(re.escape, ws[k:k + 300])) + r")(?![A-Z\]_])", lambda m: self.ficha("NOMBRE", m.group(1)), t)
+        # red de seguridad: dos o más palabras seguidas, alguna de nombre de pila y el resto nombre o apellido
+        def otros(m):
+            texto_m = m.group(0)
+            cola = re.search(r"(\s+(?:CON|EN|QUE|PARA|POR|Y|DE|DEL|SEGUN|COMO|NIF|DNI|NIE))+$", texto_m)
+            if cola:                      # «… ROIG CON» → se tapa el nombre y se deja «CON»
+                return otros_n(texto_m[:cola.start()]) + texto_m[cola.start():]
+            return otros_n(texto_m)
+        def otros_n(texto_m):
+            pal = [w for w in texto_m.split() if w not in PARTICULAS]
+            if len(pal) >= 2 and any(es_nombre(w) for w in pal) and sum(es_apellido(w) or es_nombre(w) for w in pal) >= len(pal) - 1 \
+                    and not any(w in COMUNES for w in pal):
+                return self.ficha("NOMBRE", texto_m)
+            return texto_m
         t = re.sub(r"\b[A-ZÑÇ]{2,}(?:\s+(?:DE|DEL|LA|LOS|LAS|Y|I)?\s*[A-ZÑÇ]{2,}){1,4}\b", otros, t)
         return t
 
@@ -327,6 +401,9 @@ class ControladorIA:
         self.m, self.a = motor, motor.almacen
         self.db = self.a.db
         self.db.executescript(ESQUEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(ia_acciones)")}
+        if "origen" not in cols:          # 3.0.2: las acciones del contexto del lote (local) van en el mismo informe
+            self.db.execute("ALTER TABLE ia_acciones ADD COLUMN origen TEXT DEFAULT 'ia'"); self.db.commit()
         self.cliente = cliente or llamar_api
         self.descargar = descargar or self._descargar
         self.trabajando = False
@@ -651,9 +728,27 @@ class ControladorIA:
         cab, pie = lineas[:18], lineas[-10:]
         return "\n".join(cab) + f"\n[… {max(0, len(lineas) - 28)} líneas sin enviar …]\n" + "\n".join(pie)
 
+    def palabras_conocidas(self, lote_id=None):
+        """Todas las palabras de nombres que el programa conoce: fichas de personas (con sus alias) y
+        nombres leídos en los documentos del lote. Se tapan aunque aparezcan sueltas, y si alguna sigue a la vista no se envía nada."""
+        ws = set()
+        for r in self.a.db.execute("SELECT nombre, apellido1, apellido2, alias FROM personas"):
+            ws |= set(norm(" ".join(x or "" for x in r[:3])).split())
+            for al in json.loads(r[3] or "[]"):
+                ws |= set(norm(al).split())
+        q = "SELECT datos FROM documentos" + (" WHERE lote_id = ?" if lote_id else "")
+        for r in self.a.db.execute(q, (lote_id,) if lote_id else ()):
+            try:
+                for p in (json.loads(r[0] or "{}").get("personas") or []):
+                    ws |= set(norm(p.get("completo") or "").split())
+            except ValueError:
+                pass
+        return {w for w in ws if len(w) >= 4 and w.isalpha()}
+
     def preparar(self, doc_id):
         a, m = self.a, self.m
         d = a.documento(doc_id)
+        palabras = self.palabras_conocidas(d["lote_id"])
         mas = Mascara()
         cand, personas, exps, pers = self._candidatos(mas)
         datos = d["datos"] or {}
@@ -673,7 +768,7 @@ class ControladorIA:
         if not any(textos):
             textos = [x["texto"] for x in a.textos_de(doc_id).values()]
         tapar = leidas + personas
-        paginas = [f"--- página {i} ---\n" + self._recortar(mas.tapar(t, tapar)) for i, t in enumerate(textos, 1)]
+        paginas = [f"--- página {i} ---\n" + self._recortar(mas.tapar(t, tapar, palabras)) for i, t in enumerate(textos, 1)]
         terceros = [mas.buscar("PERSONA", "l" + nm) for nm in m.terceros_lote(d["lote_id"])]
         pistas = self._pistas(leidas, personas, "\n".join(textos), datos, mas)
         def _alt(x):
@@ -696,10 +791,11 @@ class ControladorIA:
         partes.append("EXPEDIENTES ABIERTOS QUE PUEDES USAR:\n" + cand)
         partes.append("TEXTO DEL DOCUMENTO:\n" + "\n".join(paginas))
         mensaje = "\n\n".join(partes)
-        return {"mensaje": mensaje, "mascara": mas, "exps": exps, "pers": pers, "leidas": leidas, "paginas": sel, "doc": d}
+        return {"mensaje": mensaje, "mascara": mas, "exps": exps, "pers": pers, "leidas": leidas, "paginas": sel, "doc": d, "palabras": palabras}
 
     def preparar_union(self, ids):
         mas = Mascara()
+        palabras = self.palabras_conocidas(self.a.documento(ids[0])["lote_id"])
         _, personas, _, _ = self._candidatos(mas)
         partes = ["TAREA: estas fotos o páginas sueltas llegaron juntas y parecen del mismo tipo. Di cuáles forman un mismo documento y en qué orden. "
                   'Responde solo JSON: {"grupos": [["D1","D3"],["D2"]], "seguridad": 0, "motivo": "…"} (cada D en un solo grupo; un grupo de uno = suelta).']
@@ -707,13 +803,86 @@ class ControladorIA:
             d = self.a.documento(i)
             leidas = [{**p, "ficha": mas.ficha("PERSONA", p.get("completo") or "", "l" + norm(p.get("completo") or ""))} for p in (d["datos"] or {}).get("personas") or []]
             c = self.a.texto_cache(f'{d["huella"]}:{(d.get("paginas_sel") or [1])[0]}')
-            t = mas.tapar(c["texto"] if c else "", leidas + personas)
+            t = mas.tapar(c["texto"] if c else "", [{**l, "leida": True} for l in leidas] + personas, palabras)
             ls = [x for x in t.splitlines() if x.strip()]
             partes.append(f"--- D{i} · tipo probable {d['tipo'] or '¿?'} ---\nprimeras líneas:\n" + "\n".join(ls[:8]) + "\núltimas líneas:\n" + "\n".join(ls[-6:]))
-        return {"mensaje": "\n\n".join(partes), "mascara": mas}
+        return {"mensaje": "\n\n".join(partes), "mascara": mas, "palabras": palabras}
+
+    def preparar_lote(self, doc_ids):
+        """Una sola consulta para varios documentos del lote: la IA ve el conjunto y supervisa lo que ha
+        decidido el contexto del lote (en local). Mismas fichas para todo el lote."""
+        a = self.a
+        mas = Mascara()
+        cand, personas, exps, pers = self._candidatos(mas)
+        lote_id = a.documento(doc_ids[0])["lote_id"]
+        palabras = self.palabras_conocidas(lote_id)
+        partes, preps = [], {}
+        for did in doc_ids:
+            d = a.documento(did)
+            datos = d["datos"] or {}
+            leidas = []
+            for i, p in enumerate(datos.get("personas") or []):
+                clave = set(norm(p.get("completo") or "").split())
+                ya = next((x for x in personas if x.get("dni") and p.get("dni") and x["dni"].upper() == p["dni"].upper()), None) or \
+                    next((x for x in personas if clave and (set(norm(f'{x["nombre"]} {x["apellido1"]} {x["apellido2"] or ""}').split()) == clave
+                          or norm(p.get("completo") or "").strip() in json.loads(x.get("alias") or "[]"))), None)
+                f = ya["ficha"] if ya else mas.ficha("PERSONA", p.get("completo") or "", "l" + norm(p.get("completo") or str(i)))
+                leidas.append({**p, "ficha": f, "fichada": ya["id"] if ya else None, "leida": True})
+            sel = d.get("paginas_sel") or list(range(1, (d["paginas"] or 1) + 1))
+            textos = [x["texto"] for x in a.textos_de(did).values()] if d["estado"] == "guardado" else []
+            if not textos:
+                for n in sel:
+                    c = a.texto_cache(f'{d["huella"]}:{n}')
+                    textos.append(c["texto"] if c else "")
+            if not any(textos):
+                textos = [x["texto"] for x in a.textos_de(did).values()]
+            cuerpo = "\n".join(f"(pág. {k}) " + self._recortar(mas.tapar(t, leidas + personas, palabras), 900) for k, t in enumerate(textos, 1))
+            if d["estado"] == "guardado":
+                pp = a.persona(d["persona_id"]) if d["persona_id"] else None
+                fe = mas.buscar("EXP", f"exp{d['expediente_id']}")
+                fp = mas.buscar("PERSONA", f"p{d['persona_id']}") if pp else None
+                local = f"guardado por el programa en {fe or '?'}, " + ("de todo el expediente" if d["de_expediente"] else f"de {fp or '?'}")
+            else:
+                prop = datos.get("ia_propuesta") or {}
+                fe = mas.buscar("EXP", f"exp{prop.get('expediente_id')}") if prop.get("expediente_id") else None
+                fp = mas.buscar("PERSONA", f"p{prop.get('persona_id')}") if prop.get("persona_id") else None
+                local = ("propuesto por el programa: " + (fe or "") + " " + ("todo el expediente" if prop.get("comun") else (fp or ""))) if fe else "sin decidir"
+            pistas = self._pistas(leidas, personas, "", datos, mas)
+            partes.append(f"=== D{did} · {len(textos)} pág. · tipo del programa: {d['tipo'] or 'no reconocido'} ({round((d['confianza'] or 0) * 100)} %) · {local}\n"
+                          f"Personas: " + (", ".join(l["ficha"] for l in leidas) or "ninguna reconocida") + "\n"
+                          + ("Pistas: " + "; ".join(pistas) + "\n" if pistas else "")
+                          + f"Fechas: " + (", ".join((datos.get("fechas") or [])[:6]) or "ninguna") + "\n" + cuerpo)
+            preps[did] = {"mascara": mas, "exps": exps, "pers": pers, "leidas": leidas, "paginas": sel, "doc": d, "palabras": palabras}
+        mensaje = ("TAREA: estos documentos llegaron juntos (un lote). El programa ya ha decidido algunos con el contexto del lote. "
+                   "Supervisa: confirma o corrige cada documento y decide los que quedan sin decidir.\n"
+                   'Responde solo JSON: {"documentos": [{"doc": "D12", ...mismas claves que para un documento...}]}, un objeto por documento.\n\n'
+                   "EXPEDIENTES ABIERTOS QUE PUEDES USAR:\n" + cand + "\n\n" + "\n\n".join(partes))
+        return {"mensaje": mensaje, "mascara": mas, "palabras": palabras, "preps": preps}
+
+    def _supervisar(self, preps, dec, cid, lote_id):
+        """Aplica la respuesta de la IA a un documento del lote (supervisando lo que hizo el contexto local)."""
+        did = preps["doc"]["id"]
+        d = self.a.documento(did)
+        if d["estado"] == "guardado":
+            exp_ia = preps["exps"].get(dec.get("expediente"))
+            per_ia = preps["pers"].get(dec.get("persona"))
+            igual = exp_ia == d["expediente_id"] and (bool(dec.get("comun")) == bool(d["de_expediente"]) and (dec.get("comun") or per_ia == d["persona_id"]))
+            if igual or not exp_ia and dec.get("expediente") in (None, ""):
+                return []
+            seg = int(dec.get("seguridad") or 0)
+            if seg < self.ajustes()["umbral"]:
+                return [self._accion(lote_id, did, cid, "para_ti", "La IA no está de acuerdo", f"Propone: {preps['mascara'].mapa.get(dec.get('expediente'), dec.get('expediente'))}",
+                                     str(dec.get("motivo") or ""), seg, "para_ti", {})]
+            for y in self.db.execute("SELECT id FROM ia_acciones WHERE documento_id = ? AND tipo = 'asignado' AND estado != 'deshecha'", (did,)).fetchall():
+                self.deshacer(y[0], aprender=False)
+            preps["doc"] = self.a.documento(did)
+        return self.aplicar(preps, dec, cid)
 
     # ------------------------------------------------------------------ consultar (sin el cerrojo del motor)
     def _consultar(self, prep, lote_id, doc_id, clase, cerrojo, max_tokens=4000):
+        fallos = vigilar(prep["mensaje"], prep.get("palabras") or ())
+        if fallos:            # mejor no consultar que enviar un dato personal
+            raise Bloqueado("No se ha enviado a la IA: quedaba " + " y ".join(fallos) + " sin tapar")
         with cerrojo:
             aj = self.ajustes(con_clave=True)
             sistema = self.manual()
@@ -749,10 +918,10 @@ class ControladorIA:
         return c.lastrowid, json_de(texto)
 
     # ------------------------------------------------------------------ aplicar (con el cerrojo del motor)
-    def _accion(self, lote_id, doc_id, consulta_id, tipo, titulo, detalle, motivo, seguridad, estado, deshacer):
-        c = self.db.execute("INSERT INTO ia_acciones(fecha, lote_id, documento_id, consulta_id, tipo, titulo, detalle, motivo, seguridad, estado, deshacer) "
-                            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (ahora(), lote_id, doc_id, consulta_id, tipo, titulo, detalle, motivo,
-                                                                     int(seguridad or 0), estado, json.dumps(deshacer or {}, ensure_ascii=False)))
+    def _accion(self, lote_id, doc_id, consulta_id, tipo, titulo, detalle, motivo, seguridad, estado, deshacer, origen="ia"):
+        c = self.db.execute("INSERT INTO ia_acciones(fecha, lote_id, documento_id, consulta_id, tipo, titulo, detalle, motivo, seguridad, estado, deshacer, origen) "
+                            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (ahora(), lote_id, doc_id, consulta_id, tipo, titulo, detalle, motivo,
+                                                                        int(seguridad or 0), estado, json.dumps(deshacer or {}, ensure_ascii=False), origen))
         self.db.commit()
         return c.lastrowid
 
@@ -907,7 +1076,9 @@ class ControladorIA:
             if self.db.execute("SELECT 1 FROM ia_lotes WHERE lote_id = ?", (r["id"],)).fetchone():
                 continue
             docs = self.a.documentos("lote_id = ?", (r["id"],))
-            if docs and not any(x["estado"] == "en_proceso" for x in docs) and any(x["estado"] == "espera_emparejar" for x in docs):
+            if any(x["estado"] == "espera_emparejar" and not (x["datos"] or {}).get("contexto") for x in docs):
+                continue          # primero el contexto del lote (en local); la IA lo supervisa después
+            if docs and not any(x["estado"] == "en_proceso" for x in docs) and any(x["estado"] in ("espera_emparejar", "guardado") for x in docs):
                 out.append(r["id"])
         return out
 
@@ -924,8 +1095,10 @@ class ControladorIA:
             for vuelta in range(3):
                 with cerrojo:
                     ya = {r[0] for r in self.db.execute("SELECT documento_id FROM ia_consultas WHERE lote_id = ? AND documento_id IS NOT NULL", (lote_id,))}
-                    docs = [x["id"] for x in self.a.documentos("lote_id = ? AND estado = 'espera_emparejar'", (lote_id,)) if x["id"] not in ya]
-                    fotos = [p for p in self.m.propuestas_union() if p["lote"] == lote_id and tuple(p["documentos"]) not in intentadas] if self.ajustes()["funciones"].get("separar") else []
+                    locales = {r[0] for r in self.db.execute("SELECT documento_id FROM ia_acciones WHERE lote_id = ? AND origen = 'local' AND tipo = 'asignado' AND estado != 'deshecha'", (lote_id,))}
+                    docs = [x["id"] for x in self.a.documentos("lote_id = ? AND estado IN ('espera_emparejar', 'guardado')", (lote_id,))
+                            if x["id"] not in ya and not (x["datos"] or {}).get("ia_vista") and (x["estado"] == "espera_emparejar" or x["id"] in locales)]
+                    fotos = [p for p in self.fotos_para_unir(lote_id) if tuple(p["documentos"]) not in intentadas] if self.ajustes()["funciones"].get("separar") else []
                     intentadas |= {tuple(p["documentos"]) for p in fotos}
                 if not docs and not fotos:
                     break
@@ -948,26 +1121,50 @@ class ControladorIA:
                         resumen["acciones"] += len(self._aplicar_union(grupo["documentos"], dec, cid, lote_id))
                         self.m.procesar(lote_id)
                 with cerrojo:
-                    docs = [x for x in docs if self.a.documento(x)["estado"] == "espera_emparejar"]
-                for did in docs:
+                    docs = [x for x in docs if self.a.documento(x)["estado"] in ("espera_emparejar", "guardado")]
+                for k in range(0, len(docs), 12):          # una consulta por cada 12 documentos del lote
+                    trozo = docs[k:k + 12]
                     with cerrojo:
-                        prep = self.preparar(did)
+                        prep = self.preparar_lote(trozo)
+                        bloq = []
+                        while vigilar(prep["mensaje"], prep["palabras"]) and trozo:
+                            # se busca qué documento tiene el dato que no se ha podido tapar y se aparta (queda para Joan)
+                            malo = next((x for x in trozo if vigilar(self.preparar_lote([x])["mensaje"], prep["palabras"])), None)
+                            if malo is None:
+                                break
+                            trozo = [x for x in trozo if x != malo]
+                            bloq.append(malo)
+                            self._accion(lote_id, malo, None, "para_ti", "No enviado a la IA",
+                                         "Quedaba " + " y ".join(vigilar(self.preparar_lote([malo])["mensaje"], prep["palabras"])) + " sin tapar: por seguridad no se ha enviado.",
+                                         "", 0, "para_ti", {})
+                            self._marcar_vista(malo)
+                            prep = self.preparar_lote(trozo) if trozo else None
+                    if not trozo or not prep:
+                        continue
                     try:
-                        cid, dec = self._consultar(prep, lote_id, did, "documento", cerrojo)
+                        cid, dec = self._consultar(prep, lote_id, None, "lote", cerrojo, 4000 + 600 * len(trozo))
                     except LimiteAlcanzado:
                         raise
                     except ErrorIA as e:
                         if self.error:            # sin conexión, clave o créditos: se para el lote
                             raise
-                        with cerrojo:             # respuesta que no se entiende: este documento se queda para Joan
-                            self._accion(lote_id, did, None, "para_ti", "Sin respuesta", f"{e}: queda para que lo decidas tú.", "", 0, "para_ti", {})
+                        with cerrojo:
+                            for did in trozo:
+                                self._accion(lote_id, did, None, "para_ti", "Sin respuesta", f"{e}: queda para que lo decidas tú.", "", 0, "para_ti", {})
+                                self._marcar_vista(did)
                         continue
                     resumen["consultas"] += 1
+                    respuestas = {str(x.get("doc", "")).strip(): x for x in (dec.get("documentos") or []) if isinstance(x, dict)}
                     with cerrojo:
-                        try:
-                            resumen["acciones"] += len(self.aplicar(prep, dec, cid))
-                        except Exception as e:      # lo que no se puede aplicar se queda para Joan
-                            self._accion(lote_id, did, cid, "para_ti", "No se ha podido aplicar", str(e), str(dec.get("motivo") or ""), int(dec.get("seguridad") or 0), "para_ti", {})
+                        for did in trozo:
+                            r = respuestas.get(f"D{did}")
+                            self._marcar_vista(did)
+                            if not r:
+                                continue
+                            try:
+                                resumen["acciones"] += len(self._supervisar(prep["preps"][did], r, cid, lote_id))
+                            except Exception as e:      # lo que no se puede aplicar se queda para Joan
+                                self._accion(lote_id, did, cid, "para_ti", "No se ha podido aplicar", str(e), str(r.get("motivo") or ""), int(r.get("seguridad") or 0), "para_ti", {})
                         self.m.procesar(lote_id)
             estado = "hecho"
         except LimiteAlcanzado as e:
@@ -987,10 +1184,36 @@ class ControladorIA:
                               + (f" · parado: {resumen['parado']}" if resumen["parado"] else ""), lote_id=lote_id, nivel="info")
         return resumen
 
+    INDIVIDUALES = {"nomina", "nominaatr", "nominaxtr", "extracto", "prestamo", "saldo", "retenciones", "aeat", "segsocial", "vidalaboral", "renta",
+                    "pension", "paro", "fraccionado", "iva", "ivaanual", "cuota", "cirbe", "sumasysaldos", "balance", "sociedades"}
+
+    def fotos_para_unir(self, lote_id):
+        """Solo fotos de verdad (imágenes de una página), nunca PDF; y nunca tipos que vienen de uno en uno (nóminas, extractos…)."""
+        IMG = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".webp", ".bmp")
+        out = []
+        for p in self.m.propuestas_union():
+            if p["lote"] != lote_id or p["tipo"] in self.INDIVIDUALES:
+                continue
+            ids = [i for i in p["documentos"] if (self.a.documento(i)["extension"] or "").lower() in IMG]
+            if len(ids) > 1:
+                out.append({**p, "documentos": ids})
+        return out
+
+    def _marcar_vista(self, did):
+        d = self.a.documento(did)
+        if d:
+            datos = d["datos"] or {}
+            datos["ia_vista"] = True
+            self.a.actualizar(did, datos=datos)
+
     def _aplicar_union(self, ids, dec, cid, lote_id):
         hechas = []
         seg = int(dec.get("seguridad") or 0)
-        est = "hecha" if seg >= self.ajustes()["umbral"] else "por_revisar"
+        if seg < self.ajustes()["umbral"]:          # unir mal es peor que no unir: por debajo del umbral, nada
+            self._accion(lote_id, ids[0], cid, "para_ti", "Fotos sin unir", f"La IA no está segura ({seg} %) de qué fotos van juntas: decídelo tú.",
+                         str(dec.get("motivo") or ""), seg, "para_ti", {})
+            return hechas
+        est = "hecha"
         validos = {f"D{i}": i for i in ids}
         usados = set()
         for g in dec.get("grupos") or []:
@@ -1046,6 +1269,40 @@ class ControladorIA:
                     raise ErrorIA(f"Una parte ya se ha guardado a mano ({hd['nombre_final']}): deshazla antes desde el expediente.")
                 a.actualizar(h, estado="deshecho", motivo="Separación de la IA deshecha")
             a.actualizar(did, estado="espera_emparejar", fase=7, paginas_sel=u.get("paginas_sel"), motivo="Deshecha la separación de la IA")
+        elif t == "expediente_creado":
+            eid = u.get("expediente_id")
+            for y in self.db.execute("SELECT id FROM ia_acciones WHERE lote_id = ? AND tipo IN ('asignado', 'cotitular') AND estado != 'deshecha' AND id != ?",
+                                     (x["lote_id"], accion_id)).fetchall():
+                self.deshacer(y[0], aprender=False)
+            if self.db.execute("SELECT COUNT(*) FROM documentos WHERE expediente_id = ? AND estado IN ('guardado', 'contacto')", (eid,)).fetchone()[0]:
+                raise ErrorIA("El expediente ya tiene documentos guardados a mano: muévelos o elimínalo desde el expediente.")
+            e = a.expediente(eid)
+            pids = [r[0] for r in self.db.execute("SELECT persona_id FROM expediente_personas WHERE expediente_id = ?", (eid,))]
+            self.db.execute("DELETE FROM expediente_personas WHERE expediente_id = ?", (eid,))
+            self.db.execute("DELETE FROM expedientes WHERE id = ?", (eid,))
+            for pid in pids:      # fichas creadas por el contexto y que no están en ningún otro sitio
+                if pid == u.get("persona_creada") and not self.db.execute("SELECT 1 FROM expediente_personas WHERE persona_id = ?", (pid,)).fetchone() \
+                        and not self.db.execute("SELECT 1 FROM documentos WHERE persona_id = ?", (pid,)).fetchone():
+                    self.db.execute("DELETE FROM personas WHERE id = ?", (pid,))
+            self.db.commit()
+            if e:
+                for base in (m.carpetas.documentos, m.carpetas.originales):
+                    try:
+                        (base / e["carpeta"]).rmdir()           # solo si ha quedado vacía
+                    except OSError:
+                        pass
+            self.db.execute("UPDATE notificaciones SET visto = 1 WHERE expediente_id = ?", (eid,)) if self.db.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'notificaciones'").fetchone() else None
+            self.db.commit()
+        elif t == "cotitular":
+            eid, pid = u.get("expediente_id"), u.get("persona_id")
+            if self.db.execute("SELECT COUNT(*) FROM documentos WHERE expediente_id = ? AND persona_id = ? AND estado = 'guardado'", (eid, pid)).fetchone()[0]:
+                for y in self.db.execute("SELECT a.id FROM ia_acciones a JOIN documentos d ON d.id = a.documento_id WHERE a.tipo = 'asignado' AND a.estado != 'deshecha' "
+                                         "AND d.expediente_id = ? AND d.persona_id = ?", (eid, pid)).fetchall():
+                    self.deshacer(y[0], aprender=False)
+            if self.db.execute("SELECT COUNT(*) FROM documentos WHERE expediente_id = ? AND persona_id = ? AND estado = 'guardado'", (eid, pid)).fetchone()[0]:
+                raise ErrorIA("Esa persona ya tiene documentos guardados a mano en el expediente.")
+            self.db.execute("DELETE FROM expediente_personas WHERE expediente_id = ? AND persona_id = ?", (eid, pid)); self.db.commit()
         elif t == "unido":
             for y in self.db.execute("SELECT id FROM ia_acciones WHERE documento_id = ? AND estado != 'deshecha' AND id != ?", (did, accion_id)).fetchall():
                 self.deshacer(y[0], aprender=False)
@@ -1137,7 +1394,8 @@ class ControladorIA:
             d = self.a.documento(x["documento_id"]) if x["documento_id"] else None
             x["documento"] = {"id": d["id"], "archivo": d["nombre_recibido"], "estado": d["estado"], "expediente_id": d["expediente_id"],
                               "nombre_final": d["nombre_final"]} if d else None
-            x.pop("deshacer", None)
+            u = json.loads(x.pop("deshacer", None) or "{}")
+            x["expediente_id"] = u.get("expediente_id")
         docs = [x for x in self.a.documentos("lote_id = ?", (lote_id,)) if x["estado"] not in ("separado", "unido", "deshecho")]
         por_ia = {x["documento_id"] for x in acc if x["tipo"] in ("asignado", "limbo") and x["estado"] != "deshecha"}
         l = self.db.execute("SELECT * FROM ia_lotes WHERE lote_id = ?", (lote_id,)).fetchone()
@@ -1163,10 +1421,14 @@ class ControladorIA:
         return c
 
     def acciones_doc(self, doc_id):
-        return [dict(r) for r in self.db.execute("SELECT id, tipo, titulo, detalle, motivo, seguridad, estado, revisada, lote_id, consulta_id FROM ia_acciones WHERE documento_id = ? AND estado != 'deshecha' ORDER BY id", (doc_id,))]
+        return [dict(r) for r in self.db.execute("SELECT id, tipo, titulo, detalle, motivo, seguridad, estado, revisada, lote_id, consulta_id, origen FROM ia_acciones WHERE documento_id = ? AND estado != 'deshecha' ORDER BY id", (doc_id,))]
 
     def por_revisar(self):
         return [dict(r) for r in self.db.execute("SELECT id, lote_id, documento_id, tipo, titulo, detalle, seguridad, estado FROM ia_acciones WHERE estado IN ('por_revisar', 'para_ti') AND revisada = 0 ORDER BY id DESC LIMIT 100")]
+
+
+class Bloqueado(ErrorIA):
+    """La comprobación final ha encontrado un dato personal: la consulta no sale del equipo."""
 
 
 class LimiteAlcanzado(ErrorIA):

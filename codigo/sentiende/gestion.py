@@ -92,6 +92,13 @@ class Gestion:
             aj["escaneres"] = [{k: x.get(k) for k in ("via", "nombre", "url", "conexion")} for x in nuevos["escaneres"] if x.get("url")]
         if "avisos_se_visto" in nuevos:
             aj["avisos_se_visto"] = int(nuevos["avisos_se_visto"])
+        if "contexto" in nuevos:         # 3.0.2 · contexto del lote
+            c = nuevos["contexto"] or {}
+            ti, co = float(c.get("titular", 60)), float(c.get("cotitular", 50))
+            if not (30 <= ti <= 100 and 10 <= co <= 100):
+                raise ErrorGestion("Los porcentajes del contexto del lote tienen que estar entre 30 y 100 (titular) y entre 10 y 100 (cotitular).")
+            aj["contexto"] = {"activo": bool(c.get("activo", True)), "titular": ti, "cotitular": co, "guardar": bool(c.get("guardar", True)),
+                              "minimo_docs": max(1, int(c.get("minimo_docs", 2)))}
         self.m.carpetas.datos.mkdir(parents=True, exist_ok=True)
         self._ruta_ajustes.write_text(json.dumps(aj, ensure_ascii=False, indent=1), encoding="utf-8")
         self.aplicar()
