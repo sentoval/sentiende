@@ -74,7 +74,7 @@ function lateral() {
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
-    ${c.avisos_se ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos Se: problemas del programa">${ico("bell", 18)}<span>Avisos del programa</span><b>${c.avisos_se}</b></a>` : ""}
+    ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
@@ -945,6 +945,7 @@ function vistaAvisosSe() {
   const nuevos = S.estado.cuentas.avisos_se || 0;
   return `<div class="cab"><div><h1>Avisos del programa</h1><div class="sub">Problemas del motor, de la versión o de los archivos (Avisos Se). La campanita del menú solo aparece cuando hay alguno nuevo.</div></div>
     <div class="acciones">${nuevos ? `<button class="btn pri" id="se-vistos">${ico("check")}Marcar como vistos</button>` : ""}</div></div>
+  ${notificacionesHTML()}
   <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
 }
 function vistaLimbo() {
@@ -970,6 +971,7 @@ function vistaAjustes() {
   return `<div class="cab"><div><small>Ajustes</small><h1>Ajustes</h1><div class="sub">${esc(S.info.compatibilidad)}</div></div></div>
   <section class="tarjeta ia-tarjeta-aj"><div class="cab"><div><h2>${ico("ia")} Controlador IA <span class="pill p-ia">3.0</span></h2><span class="sub">Resuelve solo, con la API de Anthropic, lo que el programa no sabe, sin enviar datos personales. Viene apagado.</span></div>
     <a class="btn" href="#ia">Abrir ajustes de la IA</a></div></section>
+  ${tarjetaContexto()}
   <section class="tarjeta"><h2>Carpetas</h2>
     ${[["entrada", "Entrada (lo que llega)"], ["documentos", "SeDocumentos (los ordenados)"], ["originales", "Doc_original (originales sin tocar)"], ["papelera", "Papelera"]]
       .map(([k, l]) => `<div class="fila-carpeta"><label for="cp-${k}">${l}</label><input id="cp-${k}" data-carpeta="${k}" value="${esc(c[k])}"><button class="btn peq" data-abrir="${esc(c[k])}">Abrir</button></div>`).join("")}
@@ -1110,6 +1112,12 @@ function activarAjustes() {
     try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
   });
   $("#ap-t")?.addEventListener("input", e => { $("#ap-v").textContent = e.target.value + " %"; });
+  $("#ctx-guardar")?.addEventListener("click", async () => {
+    try {
+      S.ajustes = await api("ajustes", { contexto: { activo: $("#ctx-act").checked, guardar: $("#ctx-g").checked, titular: +$("#ctx-t").value, cotitular: +$("#ctx-c").value, minimo_docs: +$("#ctx-m").value } });
+      aviso("Ajustes del contexto del lote guardados");
+    } catch (e) { aviso(e.message, true); }
+  });
   $("#ap-t")?.addEventListener("change", async e => { S.ajustes = await api("ajustes", { apariencia: { tamano: +e.target.value } }); aplicarApariencia(); });
   $("#copia")?.addEventListener("click", async () => { try { const r = await api("copia", {}); aviso("Copia hecha: " + r.ruta.split(/[\\/]/).pop()); abrirRuta(r.ruta, true); } catch (e) { aviso(e.message, true); } });
   $("#co-proveedor")?.addEventListener("change", ev => { const f = leerCorreoForm(), p = CORREO.proveedores[ev.target.value]; f.proveedor = ev.target.value; if (p.servidor) { f.servidor = p.servidor; f.puerto = p.puerto; } pintar(); });
@@ -1142,7 +1150,7 @@ function pintar() {
   const vistas = { motor: [vistaMotor, activarMotor], revision: [vistaRevision, activarRevision],
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, () => {}], avisos_se: [vistaAvisosSe, () => $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); })],
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
     avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
@@ -1591,7 +1599,7 @@ function activarAvisoPausaIA() {
 }
 function botonesLoteIA(l) {
   const ia = S.estado?.ia, b = [];
-  if (l.ia) b.push(`<a class="btn ia-b" href="#ia_informe/${l.id}">${ico("ia", 16)}Informe de la IA</a>`);
+  if (l.ia || l.acciones) b.push(`<a class="btn ia-b" href="#ia_informe/${l.id}">${ico("ia", 16)}Informe del lote</a>`);
   if (ia?.activo && ia.estado !== "pausa" && l.documentos.some(d => d.estado === "espera_emparejar") && !ia.trabajando) b.push(`<button class="btn" id="ia-pasar" data-lote="${l.id}">${ico("ia", 16)}Pasar a la IA</button>`);
   if (l.ia?.estado === "trabajando" && ia?.trabajando) b.push(`<span class="pill p-ia">La IA está trabajando…</span>`);
   return b.join("");
@@ -1601,7 +1609,8 @@ function bannerIA(d) {
   const misma = acc.filter(x => x.tipo === "misma_persona");
   const otras = acc.filter(x => x.tipo !== "misma_persona");
   if (!acc.length && !prop) return "";
-  return `<section class="ia-banner"><div class="cab"><div><b>${ico("ia", 16)} El Controlador IA ha mirado este documento</b>
+  const local = prop && prop.origen === "local" && !acc.some(x => x.origen !== "local");
+  return `<section class="ia-banner"><div class="cab"><div><b>${ico(local ? "motor" : "ia", 16)} ${local ? "Propuesta del contexto del lote" : "El Controlador IA ha mirado este documento"}</b>
       ${prop?.texto ? `<span class="sub">${esc(prop.texto)} · seguridad ${prop.seguridad} %</span>` : ""}</div>
       ${acc[0]?.lote_id ? `<a class="btn peq" href="#ia_informe/${acc[0].lote_id}">Ver el informe</a>` : ""}</div>
     ${misma.map(x => `<div class="ia-misma"><span><b>Misma persona</b> · ${esc(x.detalle)}</span><button class="btn peq" data-ia-deshacer="${x.id}">${ico("undo", 14)}Deshacer y decidir yo</button><button class="btn peq" data-ia-bien="${x.id}">Está bien</button></div>`).join("")}
@@ -1720,23 +1729,23 @@ function vistaInformeIA() {
   if (!INF) return '<div class="tarjeta vacio">No hay informe de la IA para este lote.</div>';
   const c = INF.cuentas, acc = INF.acciones;
   const grupos = { todo: () => true, clasificar: x => x.tipo === "clasificado", separar: x => ["separado", "ordenado", "unido"].includes(x.tipo),
-    personas: x => ["misma_persona", "tercero"].includes(x.tipo), asignar: x => ["asignado", "limbo"].includes(x.tipo), ti: x => x.tipo === "para_ti" };
+    personas: x => ["misma_persona", "tercero", "cotitular"].includes(x.tipo), asignar: x => ["asignado", "limbo", "expediente_creado"].includes(x.tipo), ti: x => x.tipo === "para_ti" };
   const nombres = { todo: "Todo", clasificar: "Clasificar", separar: "Separar y unir", personas: "Personas", asignar: "Asignar", ti: "Para ti" };
   const vis = acc.filter(x => x.tipo !== "para_ti" && grupos[INF_FILTRO](x) || INF_FILTRO === "ti" && x.tipo === "para_ti" || INF_FILTRO === "todo" && x.tipo === "para_ti");
   const paraTi = acc.filter(x => x.tipo === "para_ti" && x.estado !== "deshecha" && !x.revisada);
-  const ICO_T = { clasificado: "check", separado: "scan", ordenado: "scan", unido: "link", misma_persona: "user", tercero: "user", asignado: "folder", limbo: "limbo", para_ti: "lock" };
+  const ICO_T = { expediente_creado: "folder", cotitular: "user", clasificado: "check", separado: "scan", ordenado: "scan", unido: "link", misma_persona: "user", tercero: "user", asignado: "folder", limbo: "limbo", para_ti: "lock" };
   const fila = x => {
     const d = x.documento, des = x.estado === "deshecha";
-    const ver = !d ? "" : d.estado === "guardado" && d.expediente_id ? `#expediente/${d.expediente_id}` : ["espera_emparejar", "parado"].includes(d.estado) ? `#revision/${d.id}` : "";
+    const ver = !d ? (x.expediente_id && x.estado !== "deshecha" ? `#expediente/${x.expediente_id}` : "") : d.estado === "guardado" && d.expediente_id ? `#expediente/${d.expediente_id}` : ["espera_emparejar", "parado"].includes(d.estado) ? `#revision/${d.id}` : "";
     return `<div class="ia-fila ${des ? "deshecha" : ""}"><span class="ia-fico">${ico(ICO_T[x.tipo] || "ia", 17)}</span>
-      <span class="ia-que">${pill(x.titulo, x.tipo === "para_ti" ? "warn" : "ia")}${x.estado === "por_revisar" && !des ? pill("Para mirar", "warn") : ""}${des ? pill("Deshecho", "todo") : ""}${x.revisada && !des && x.tipo !== "para_ti" ? pill("Revisado", "ok") : ""}
+      <span class="ia-que">${x.origen === "local" ? pill("Local", "ok") : pill("IA", "ia")}${pill(x.titulo, x.tipo === "para_ti" ? "warn" : "ia")}${x.estado === "por_revisar" && !des ? pill("Para mirar", "warn") : ""}${des ? pill("Deshecho", "todo") : ""}${x.revisada && !des && x.tipo !== "para_ti" ? pill("Revisado", "ok") : ""}
         <b>${esc(d?.archivo || "")}</b><span>${esc(x.detalle || "")}</span></span>
       <span class="ia-porque"><b>Por qué:</b> ${esc(x.motivo || "—")}</span>
       <span class="ia-seg">Seguridad<b style="color:${x.seguridad >= (IAP?.ajustes?.umbral || 90) ? "var(--ok)" : "var(--warn)"}">${x.seguridad} %</b></span>
       <span class="ia-acc">${!des && x.tipo !== "para_ti" ? `<button class="btn peq" data-ia-des="${x.id}">${ico("undo", 14)}Deshacer</button>` : ""}${ver ? `<a class="btn peq" href="${ver}">${ico("eye", 14)}Ver</a>` : ""}${x.consulta_id ? `<a class="btn peq" href="#ia_envio/${x.consulta_id}" title="Lo que se envió a la IA">Envío</a>` : ""}</span></div>`;
   };
   const tile = (t, v, col) => `<div class="ia-tile"><span>${t}</span><b style="color:${col}">${v}</b></div>`;
-  return `<div class="cab"><div><small>Motor de proceso › Lote ${INF.lote}</small><h1>Informe del Controlador IA</h1>${INF.estado?.estado?.startsWith("limite") ? `<div class="sub" style="color:var(--warn)">La IA se paró en este lote: ${INF.estado.estado === "limite_lote" ? "límite del lote" : "límite de gasto"} alcanzado.</div>` : INF.estado?.estado === "error" ? `<div class="sub" style="color:var(--bad)">La IA se paró por un error: ${esc(JSON.parse(INF.estado.nota || "{}").parado || "")}</div>` : ""}</div>
+  return `<div class="cab"><div><small>Motor de proceso › Lote ${INF.lote}</small><h1>Informe del lote</h1><div class="sub">Lo que ha hecho el contexto del lote (Local) y el Controlador IA (IA). Todo se puede deshacer.</div>${INF.estado?.estado?.startsWith("limite") ? `<div class="sub" style="color:var(--warn)">La IA se paró en este lote: ${INF.estado.estado === "limite_lote" ? "límite del lote" : "límite de gasto"} alcanzado.</div>` : INF.estado?.estado === "error" ? `<div class="sub" style="color:var(--bad)">La IA se paró por un error: ${esc(JSON.parse(INF.estado.nota || "{}").parado || "")}</div>` : ""}</div>
     <div class="acciones"><a class="btn" href="#motor/${INF.lote}">Volver al lote</a><button class="btn peligro" id="ia-des-todo">${ico("undo")}Deshacer todo lo de la IA</button><button class="btn pri" id="ia-revisado">${ico("check")}Dar por revisado</button></div></div>
   <div class="ia-tiles">${tile("Documentos del lote", c.documentos, "var(--text)")}${tile("Resueltos en local", c.local, "var(--ok)")}${tile("Resueltos por la IA", c.ia, "#C4B5FD")}${tile("Para ti", c.para_ti, "var(--warn)")}${tile("Coste del lote", eurIA(INF.coste), "var(--text)")}</div>
   ${paraTi.length ? `<div class="ia-pausa">${ico("lock", 22)}<span class="t"><b>${paraTi.length} cosa(s) esperan tu decisión</b><span>${paraTi.slice(0, 3).map(x => esc(x.titulo + ": " + (x.detalle || ""))).join(" · ")}</span></span>
@@ -1779,3 +1788,35 @@ function vistaEnvioIA() {
         .map(([a, b]) => `<div class="dato"><span>${a}</span><b>${esc(b)}</b></div>`).join("")}</section></div></div>`;
 }
 document.addEventListener("click", e => { if (e.target.closest("#ia-copiar") && ENV) { navigator.clipboard?.writeText(ENV.enviado || ""); aviso("Texto copiado"); } });
+
+
+// ---------------- Contexto del lote (3.0.2): ajustes y avisos de expedientes creados solos
+function tarjetaContexto() {
+  const c = (S.ajustes && S.ajustes.contexto) || {};
+  const v = (k, d) => (c[k] ?? d);
+  return `<section class="tarjeta"><div class="cab"><div><h2>${ico("motor")} Contexto del lote <span class="pill p-ia">3.0.2</span></h2>
+      <span class="sub">Antes de decidir, mira todo el lote junto: de quién es la mayoría, el cotitular y los terceros. Si el expediente no existe, lo crea y te avisa en la campanita. En local, sin IA.</span></div>
+      <button class="btn pri" id="ctx-guardar">${ico("check")}Guardar</button></div>
+    <label class="ia-tog" for="ctx-act"><input type="checkbox" id="ctx-act" ${v("activo", true) ? "checked" : ""}><span class="sw"></span><span><b>Usar el contexto del lote</b><span class="sub">Si lo apagas, cada documento se decide solo como antes.</span></span></label>
+    <label class="ia-tog" for="ctx-g"><input type="checkbox" id="ctx-g" ${v("guardar", true) ? "checked" : ""}><span class="sw"></span><span><b>Guardar solo lo que está claro</b><span class="sub">Tipo seguro y persona del expediente clara. Lo demás queda propuesto en el Centro de revisión. Todo se puede deshacer en el informe del lote.</span></span></label>
+    <div class="campos-inline"><div class="campo"><label for="ctx-t">Titular: % de documentos del lote</label><input id="ctx-t" type="number" min="30" max="100" value="${v("titular", 60)}"></div>
+      <div class="campo"><label for="ctx-c">Cotitular: % de documentos compartidos</label><input id="ctx-c" type="number" min="10" max="100" value="${v("cotitular", 50)}"></div>
+      <div class="campo"><label for="ctx-m">Mínimo de documentos para crear expediente</label><input id="ctx-m" type="number" min="1" max="20" value="${v("minimo_docs", 2)}"></div></div>
+    <span class="sub">Un DNI solo se da por bueno si aparece en al menos 2 documentos del lote. El cotitular se busca solo en documentos compartidos (renta, padrón, cuentas, préstamos, escrituras…), nunca en nóminas.</span></section>`;
+}
+function notificacionesHTML() {
+  const ns = (AV && AV.notificaciones) || [];
+  if (!ns.length) return "";
+  const nuevas = ns.filter(n => !n.visto), viejas = ns.filter(n => n.visto).slice(0, 5);
+  const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico("folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
+      ${n.expediente_id && n.expediente ? `<a class="btn peq" href="#expediente/${n.expediente_id}">Revisar expediente</a>` : ""}${n.visto ? '<span class="muted">visto</span>' : `<button class="btn peq" data-noti-visto="${n.id}">${ico("check", 14)}Visto</button>`}</span></div>`;
+  return `<section class="tarjeta"><div class="cab"><div><h2>Expedientes creados solos</h2><span class="sub">El contexto del lote los ha creado porque no existían. Revísalos y dales «Visto» para que salgan de la campanita.</span></div>
+    ${nuevas.length > 1 ? `<button class="btn" data-noti-visto="todas">Marcar todos como vistos</button>` : ""}</div>
+    ${nuevas.map(fila).join("") || '<span class="sub">Nada nuevo.</span>'}${viejas.length ? `<details><summary class="sub">Vistos antes</summary>${viejas.map(fila).join("")}</details>` : ""}</section>`;
+}
+function activarNotificaciones() {
+  document.querySelectorAll("[data-noti-visto]").forEach(b => b.addEventListener("click", async () => {
+    await api("notificacion_vista", b.dataset.notiVisto === "todas" ? {} : { id: +b.dataset.notiVisto });
+    await refrescar(false); await ir();
+  }));
+}

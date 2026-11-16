@@ -46,25 +46,33 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.0.1_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.0.2_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v3.0.1_windows
-          path: SeFinancia_v3.0.1_windows.zip
+          name: SeFinancia_v3.0.2_windows
+          path: SeFinancia_v3.0.2_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0.1
-          name: SeFinancia v3.0.1
+          tag_name: v3.0.2
+          name: SeFinancia v3.0.2
           prerelease: false
           make_latest: true
-          files: SeFinancia_v3.0.1_windows.zip
+          files: SeFinancia_v3.0.2_windows.zip
           body: |
-            SeFinancia 3.0.1 · motor Sentiende 3.0.1 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v3.0.1_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 3.0.2 · motor Sentiende 3.0.2 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v3.0.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+
+            Novedades de la 3.0.2:
+            - Seguridad: el enmascarado de datos personales se ha reforzado (nombres con etiqueta, «APELLIDOS, NOMBRE», NIF con 0 delante, direcciones abreviadas, NAF) y hay un vigilante final: si queda cualquier dato personal en el texto, no se envía nada a la IA y el documento queda «Para ti».
+            - Contexto del lote (sin internet): el programa mira todo el lote junto, decide el titular y los cotitulares, crea el expediente si no existe y te avisa en la campanita («Revisar expediente» / «Visto»).
+            - Un DNI solo vale si aparece en al menos 2 documentos (o ya está en una ficha); los documentos sin nombre se relacionan por cuenta, teléfono, correo, matrícula o referencia catastral.
+            - La IA (si está activada) revisa el lote entero en una consulta y supervisa lo que ha hecho el contexto; en el informe se ve qué hizo el programa (Local) y qué la IA.
+            - Las fotos solo se unen entre sí (nunca PDFs ni documentos individuales como nóminas) y por debajo del umbral no se une nada.
+            - Aprendizaje: liquidaciones de TPV (nuevo tipo), modelos 131/303, CAP en valenciano, certificado de saldo, solicitud de aval, PIAS, CIRBE, DNI, recibos de préstamo y listas de nombres y apellidos ampliadas.
 
             Arreglos sobre la 3.0 (primera prueba real):
             - La IA piensa antes de contestar: ahora tiene margen suficiente para la respuesta (y repite una vez si se queda corta) y trabaja siempre con esfuerzo «bajo».
