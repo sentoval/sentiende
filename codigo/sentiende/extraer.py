@@ -197,6 +197,7 @@ def extraer(texto, base=None):
     tri = trimestre(texto)
     d = {
         "cuentas": cuentas, "prestamos": prestamos,
+        "modelo": (m.group(1) if (m := re.search(r"\bMODELO\s*:?\s*(\d{3})\b", t[:2000])) else None),   # n.º de modelo de Hacienda (131, 303…)
         "dni": dnis, "dni_letra_calculada": dnis_calc, "cif": cifs, "iban": ibans,
         "fechas": [f.isoformat() for f in fs], "importes": importes(texto),
         "periodo": (p.isoformat() if (p := periodo(texto)) else None),

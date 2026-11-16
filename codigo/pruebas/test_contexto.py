@@ -140,3 +140,32 @@ class TestSeries(unittest.TestCase):
             self.assertEqual(len(nombres), 3)
             self.assertEqual([n.rsplit("_", 1)[-1] for n in nombres], ["0426.pdf", "0526.pdf", "0626.pdf"], nombres)   # sin «-2», «-3»
             m.almacen.db.close()
+
+
+class TestManual(unittest.TestCase):
+    def test_expediente_manual_es_la_referencia(self):
+        """Expediente abierto a mano con un DNI casi igual al leído: se usan los datos manuales y se avisa para confirmarlo."""
+        with tempfile.TemporaryDirectory() as t:
+            m = Motor(Path(t), VAR)
+            c = ContextoLote(m, ControladorIA(m))
+            pid = m.nueva_persona("Pilar", "Sanz", "Roig", "23456780D")
+            eid = m.crear_expediente(pid, "hipotecario")
+            m.almacen.db.execute("UPDATE personas SET manual = 1 WHERE id = ?", (pid,)); m.almacen.db.commit()
+            m.almacen.db.close()
+            m, lote = lote_familia(t)
+            c = ContextoLote(m, ControladorIA(m))
+            r = c.aplicar(lote)
+            self.assertEqual(r["expediente"], eid)                      # no crea otro expediente
+            self.assertFalse(r["creado"])
+            ns = [n for n in c.notificaciones() if n["tipo"] == "parecido"]
+            self.assertEqual(len(ns), 1, c.notificaciones())
+            self.assertIn("23456789D", ns[0]["mensaje"])
+            self.assertEqual(m.almacen.persona(pid)["dni"], "23456780D")   # manda lo manual
+            c.aplicar_cambio(ns[0]["id"])                                   # «Cambiar por los del documento»
+            self.assertEqual(m.almacen.persona(pid)["dni"], "23456789D")
+            self.assertEqual([n for n in c.notificaciones() if n["tipo"] == "parecido"], [])
+            # cambiar la financiación del expediente
+            m.cambiar_finalidad(eid, "licencia_taxi")
+            self.assertEqual(m.almacen.expediente(eid)["finalidad"], "licencia_taxi")
+            self.assertTrue(m.almacen.expediente(eid)["nombre"].endswith("Préstamo licencia taxi"))
+            m.almacen.db.close()

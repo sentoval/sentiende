@@ -10,6 +10,7 @@ const IC = {
   motor: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   check: '<path d="m5 12 5 5 9-10"/>', folder: '<path d="M3 6h7l2 2h9v11H3z"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/>', limbo: '<circle cx="12" cy="12" r="8"/><path d="M8 12h8"/>',
+  edit: '<path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14.8c2.4.6 4 2.3 4 5.2"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
@@ -51,7 +52,8 @@ function aviso(txt, mal = false) {
   clearTimeout(aviso.t); aviso.t = setTimeout(() => (a.className = ""), mal ? 6000 : 3000);
 }
 const pill = (t, c = "todo") => `<span class="pill p-${c}">${esc(t)}</span>`;
-const nombreTipo = id => (S.info.tipos.find(t => t.id === id) || {}).nombre || id || "—";
+// «(130/131) Pago fraccionado…»: si se sabe el modelo del documento, solo el suyo («(131) …»)
+const nombreTipo = (id, modelo) => { const n = (S.info.tipos.find(t => t.id === id) || {}).nombre || id || "—"; return modelo && /^\([\d/]+\) /.test(n) && n.includes(modelo) ? n.replace(/^\([\d/]+\)/, `(${modelo})`) : n; };
 const ESTADOS = { en_proceso: ["Trabajando", "acc"], espera_emparejar: ["Para revisar", "warn"], parado: ["Parado", "bad"], guardado: ["Guardado", "ok"], contacto: ["Contacto de banco", "ok"],
   limbo: ["En el Limbo", "todo"], unido: ["Unido a otro", "todo"], deshecho: ["Deshecho", "todo"], sustituido: ["Sustituido", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
 const est = e => pill(...(ESTADOS[e] || [e, "todo"]));
@@ -98,6 +100,7 @@ function lateral() {
         <button class="btn" id="b-correo" title="Recibir por correo" aria-label="Recibir por correo">${ico("mail", 22)}</button>
         <button class="btn" id="b-bt" title="Recibir por Bluetooth" aria-label="Recibir por Bluetooth">${ico("bt", 22)}</button>
         <button class="btn" id="b-scan" title="Escanear" aria-label="Escanear">${ico("scan", 22)}</button></span>
+      <button class="btn lat-manual" id="b-exp-manual" title="Abrir un expediente metiendo los datos a mano: será la referencia segura para lo que llegue después">${ico("users", 16)}Expediente manual</button>
       ${CORREO_TXT ? `<span class="lat-estado">${esc(CORREO_TXT)}</span>` : ""}${BT?.activo ? `<span class="lat-estado">${ico("bt", 13)} ${esc(BT.mensaje)}</span>` : ""}
       ${S.estado?.trabajando ? '<span class="trabajando">El motor está trabajando…</span>' : ""}
     </div>
@@ -110,6 +113,7 @@ function activarZona() {
   ["dragleave", "drop"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("encima"); }));
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
+  $("#b-exp-manual")?.addEventListener("click", e => { e.stopPropagation(); NUEVO_EXP = { finalidad: (S.info.finalidades_visibles || [])[0], personas: [{}], manual: true }; location.hash = "expedientes"; pintar(); });
   $("#b-correo").addEventListener("click", revisarCorreo);
   $("#b-ia")?.addEventListener("click", pulsarIA);
   $("#b-scan").addEventListener("click", abrirEscaner);
@@ -206,7 +210,7 @@ function vistaMotor() {
     <div class="pipeline" style="padding-bottom:230px;margin-bottom:-220px">${pipe}</div></section>
   <section class="tarjeta sinp"><div class="tcab"><h2>Documentos del lote</h2><span class="sub">Pulsa uno para revisarlo</span></div>
     <table class="tabla"><thead><tr><th>Documento</th><th>Fase</th><th>Tipo</th><th>Dónde está ahora</th><th>Estado</th></tr></thead><tbody>
-    ${docs.map(d => `<tr ${["espera_emparejar", "parado"].includes(d.estado) ? `class="clic" data-doc="${d.id}"` : ""}><td>${esc(d.archivo)}${d.nombre_final ? `<div class="mono muted">${esc(d.nombre_final)}</div>` : ""}</td><td>${fbar(d.fase, d.estado)}</td><td>${esc(d.tipo ? nombreTipo(d.tipo) : "—")}</td>
+    ${docs.map(d => `<tr ${["espera_emparejar", "parado"].includes(d.estado) ? `class="clic" data-doc="${d.id}"` : ""}><td>${esc(d.archivo)}${d.nombre_final ? `<div class="mono muted">${esc(d.nombre_final)}</div>` : ""}</td><td>${fbar(d.fase, d.estado)}</td><td>${esc(d.tipo ? nombreTipo(d.tipo, d.modelo) : "—")}</td>
       <td>${Object.entries(d.donde).filter(([, v]) => v).map(([k, v]) => `<div class="mono"><span class="muted">${esc(k)}:</span> ${esc(v)}</div>`).join("")}</td><td>${est(d.estado)}</td></tr>`).join("")}
     </tbody></table></section>`;
 }
@@ -293,7 +297,7 @@ function vistaRevision() {
   const cola = colaRevision();
   if (!cola.length) return `<div class="cab"><div><small>Centro de revisión</small><h1>Centro de revisión</h1></div></div><div class="tarjeta vacio">No hay nada pendiente de revisar. ${S.estado.trabajando ? "El motor sigue trabajando: aparecerá aquí lo que necesite tu respuesta." : ""}</div>`;
   const d = S.doc;
-  const lista = cola.map(x => `<a href="#revision/${x.id}" ${S.docId === x.id ? 'aria-current="true"' : ""}><b>${esc(x.archivo)}</b><small>${x.estado === "parado" ? esc(x.motivo) : x.tipo ? esc(nombreTipo(x.tipo)) + " · " + Math.round((x.confianza || 0) * 100) + " %" + (x.motivo ? " · revisar" : "") : "No reconocido"}</small></a>`).join("");
+  const lista = cola.map(x => `<a href="#revision/${x.id}" ${S.docId === x.id ? 'aria-current="true"' : ""}><b>${esc(x.archivo)}</b><small>${x.estado === "parado" ? esc(x.motivo) : x.tipo ? esc(nombreTipo(x.tipo, x.modelo)) + " · " + Math.round((x.confianza || 0) * 100) + " %" + (x.motivo ? " · revisar" : "") : "No reconocido"}</small></a>`).join("");
   if (!d || !S.rev) return `<div class="rev-abajo"><nav class="cola" aria-label="Pendientes">${lista}</nav><div class="tarjeta vacio">Cargando…</div></div>`;
   const datos = d.datos || {}, v = S.info.variante, R = S.rev, P = R.nuevo;
   const leidas = datos.personas || [];
@@ -640,7 +644,7 @@ function vistaUnir() {
   const resto = cola.filter(x => !UNIR.includes(x.id));
   const tarjeta = (x, i) => `<figure class="pag">
       <button type="button" class="miniatura" data-zoom="${x.id}" aria-label="Ver ${esc(x.archivo)} en grande"><img src="/api/vista/${x.id}/1" alt="" loading="lazy"></button>
-      <figcaption><b>${i + 1}.</b> ${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo))}</span></figcaption>
+      <figcaption><b>${i + 1}.</b> ${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo, x.modelo))}</span></figcaption>
       <span class="acciones"><button class="btn peq" data-mover="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Antes">${ico("left", 14)}</button>
       <button class="btn peq" data-mover="${i}" data-dir="1" ${i === UNIR.length - 1 ? "disabled" : ""} aria-label="Después">${ico("right", 14)}</button>
       <button class="btn peq" data-sacar="${x.id}" aria-label="Quitar">${ico("x", 14)}</button></span></figure>`;
@@ -650,7 +654,7 @@ function vistaUnir() {
   <section class="tarjeta"><h2>Páginas del documento, en orden</h2><div class="pags">${UNIR.map((id, i) => tarjeta(porId[id], i)).join("") || '<span class="sub">Añade abajo las fotos que forman el documento.</span>'}</div></section>
   ${resto.length ? `<section class="tarjeta"><h2>Otros documentos pendientes</h2><div class="pags">${resto.map(x => `<figure class="pag otro-doc">
       <button type="button" class="miniatura" data-zoom="${x.id}" aria-label="Ver ${esc(x.archivo)} en grande"><img src="/api/vista/${x.id}/1" alt="" loading="lazy"></button>
-      <figcaption>${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo))}</span></figcaption>
+      <figcaption>${esc(x.archivo)}<br><span class="muted">${esc(nombreTipo(x.tipo, x.modelo))}</span></figcaption>
       <button class="btn peq" data-meter="${x.id}">Añadir al final</button></figure>`).join("")}</div></section>` : ""}
   ${zoomModal()}`;
 }
@@ -684,7 +688,7 @@ function vistaExpediente() {
   const { e } = EXP, v = S.info.variante;
   const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
   return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
-    <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · ${esc(v.finalidades[e.finalidad] || e.finalidad)} · carpeta <code>${esc(e.carpeta)}</code>
+    <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · <label class="fin-cambiar" title="Tipo de financiación (pulsa para cambiarlo)">${ico("edit", 14)}<select id="exp-finalidad">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label> · carpeta <code>${esc(e.carpeta)}</code>
       <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
       <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
       <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 16)}</button></div></div>
@@ -815,7 +819,7 @@ function panelUnirExp(e) {
 function tarjetaDocsExp(e) {
   if (!EXP.docs) return "";
   const d0 = EXP.docs.find(d => d.id === ARR.mover);
-  const filas = EXP.docs.map(d => `<tr><td class="mono">${esc(d.nombre_final)}</td><td>${esc(nombreTipo(d.tipo))}</td><td>${d.de_expediente ? "Todo el expediente" : esc(d.persona)}${d.privado ? ' <span class="pill p-todo">Privado</span>' : ""}</td>
+  const filas = EXP.docs.map(d => `<tr><td class="mono">${esc(d.nombre_final)}</td><td>${esc(nombreTipo(d.tipo, d.modelo))}</td><td>${d.de_expediente ? "Todo el expediente" : esc(d.persona)}${d.privado ? ' <span class="pill p-todo">Privado</span>' : ""}</td>
     <td class="der"><button class="btn peq" data-abrir-doc="${esc(d.ruta_final || "")}" title="Ver en la carpeta">Abrir</button> ${e.estado === "abierto" ? `<button class="btn peq" data-mover="${d.id}">${ico("play", 14)}Mover…</button>` : ""} <button class="btn peq" data-eliminar-doc="${d.id}" title="A la Papelera">${ico("trash", 14)}</button></td></tr>
     ${d0 && d0.id === d.id ? `<tr class="fila-mover"><td colspan="4">${panelMover(e, d)}</td></tr>` : ""}`).join("");
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Documentos guardados · ${EXP.docs.length}</h2></div>
@@ -838,6 +842,11 @@ function panelMover(e, d) {
 }
 function activarExpediente(id) {
   const recargar = async () => { S.expedientes = await api("expedientes"); EXP.e = S.expedientes.find(x => x.id === id) || EXP.e; await cargarExpediente(id, true); };
+  $("#exp-finalidad")?.addEventListener("change", async ev => {
+    const fin = ev.target.value, n = S.info.variante.finalidades[fin];
+    if (!confirm(`¿Cambiar el tipo de financiación de este expediente a «${n}»? La checklist pasará a ser la de «${n}».`)) { ev.target.value = EXP.e.finalidad; return; }
+    try { await api("finalidad_expediente", { expediente: id, finalidad: fin }); aviso("Tipo de financiación cambiado"); await recargar(); } catch (er) { aviso(er.message, true); }
+  });
   activarOperacion(id, recargar);
   const n = EXP?.neg;
   document.querySelectorAll("[data-nota]").forEach(b => b.addEventListener("click", async () => {
@@ -952,7 +961,7 @@ function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
   return `<div class="cab"><div><small>Motor de proceso › Limbo</small><h1>Limbo</h1><div class="sub">Documentos sin expediente todavía, guardados en <code>${esc(S.info.carpetas.documentos)}\\_Limbo\\</code>.</div></div></div>
   ${pestanasMotor("limbo")}
-  ${docs.length ? `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Archivo recibido</th><th>Tipo</th><th>Nombre en el Limbo</th><th></th></tr></thead><tbody>${docs.map(d => `<tr><td>${esc(d.archivo)}</td><td>${esc(nombreTipo(d.tipo))}</td><td class="mono">${esc(d.nombre_final)}</td>
+  ${docs.length ? `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Archivo recibido</th><th>Tipo</th><th>Nombre en el Limbo</th><th></th></tr></thead><tbody>${docs.map(d => `<tr><td>${esc(d.archivo)}</td><td>${esc(nombreTipo(d.tipo, d.modelo))}</td><td class="mono">${esc(d.nombre_final)}</td>
     <td class="der"><button type="button" class="btn peq" data-sacar="${d.id}">${ico("check", 14)} Revisar y asignar expediente</button></td></tr>`).join("")}</tbody></table>
     <div class="pie-tabla sub">«Revisar y asignar expediente» lo devuelve al Centro de revisión con lo que ya se había leído; al confirmar se guarda en su expediente y el original sale de <code>_Limbo</code>.</div></section>` : '<div class="tarjeta vacio">El Limbo está vacío.</div>'}`;
 }
@@ -1266,7 +1275,7 @@ function formNuevoExp() {
   const fila = (p, i) => `<div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]]
     .map(([k, l]) => `<div class="campo"><label>${l}</label><input data-ne="${i}" data-k="${k}" value="${esc(p[k] || "")}"></div>`).join("")}
     ${i ? `<div class="campo"><label>Papel</label><select data-ne="${i}" data-k="papel">${["Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior"].map(x => `<option ${p.papel === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>` : '<div class="campo"><label>Papel</label><input value="Titular" disabled></div>'}</div>`;
-  return `<section class="tarjeta"><h2>Nuevo expediente</h2>
+  return `<section class="tarjeta"><h2>Nuevo expediente (datos a mano)</h2><span class="sub">Lo que escribas aquí será la referencia segura: si después llegan documentos con un nombre o DNI muy parecido, se usarán estos datos y te avisará en la campanita para confirmarlo.</span>
     <div class="fin-pills">${fin.map(k => `<button type="button" class="fin-pill ${f.finalidad === k ? "sel" : ""}" data-ne-fin="${k}">${esc(S.info.variante.finalidades[k])}</button>`).join("")}</div>
     ${f.personas.map(fila).join("")}
     <div class="acciones"><button class="btn" id="ne-mas">＋ Otra persona</button><button class="btn pri" id="ne-ok">${ico("check")}Crear expediente</button><button class="btn" id="ne-no">Cancelar</button></div></section>`;
@@ -1440,7 +1449,7 @@ function vistaBuscar() {
   return `<div class="cab"><div><h1>Buscar en documentos</h1><div class="sub">Busca en el texto leído de todos los documentos (no en los PRIVADOS). Sin tildes ni mayúsculas.</div></div></div>
   <div class="neg-nueva"><input id="b-q" placeholder="Por ejemplo: Mercadona, 46013, IBAN, nombre…" value="${esc(BUS.q)}"><button class="btn pri" id="b-ir">${ico("search", 16)}Buscar</button></div>
   ${BUS.res === null ? "" : !BUS.res.length ? '<div class="tarjeta vacio">No se ha encontrado nada.</div>' : `<section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Documento</th><th>Expediente</th><th>Texto</th><th></th></tr></thead><tbody>
-  ${BUS.res.map(r => `<tr><td><b>${esc(r.nombre)}</b><div class="sub">${esc(nombreTipo(r.tipo))} · ${esc(r.estado)}</div></td><td>${r.expediente_id ? `<a href="#expediente/${r.expediente_id}">${esc(r.expediente)}</a>` : '<span class="muted">—</span>'}</td>
+  ${BUS.res.map(r => `<tr><td><b>${esc(r.nombre)}</b><div class="sub">${esc(nombreTipo(r.tipo, r.modelo))} · ${esc(r.estado)}</div></td><td>${r.expediente_id ? `<a href="#expediente/${r.expediente_id}">${esc(r.expediente)}</a>` : '<span class="muted">—</span>'}</td>
     <td class="trozo">…${esc(r.trozo)}…</td><td class="der">${["espera_emparejar", "parado"].includes(r.estado) ? `<a class="btn peq" href="#revision/${r.id}">Revisar</a>` : `<button class="btn peq" data-abrir-doc="${esc(r.ruta)}">Abrir</button>`}</td></tr>`).join("")}</tbody></table></section>`}`;
 }
 function activarBuscar() {
@@ -1816,13 +1825,20 @@ function notificacionesHTML() {
   const ns = (AV && AV.notificaciones) || [];
   if (!ns.length) return "";
   const nuevas = ns.filter(n => !n.visto), viejas = ns.filter(n => n.visto).slice(0, 5);
-  const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico("folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
-      ${n.expediente_id && n.expediente ? `<a class="btn peq" href="#expediente/${n.expediente_id}">Revisar expediente</a>` : ""}${n.visto ? '<span class="muted">visto</span>' : `<button class="btn peq" data-noti-visto="${n.id}">${ico("check", 14)}Visto</button>`}</span></div>`;
-  return `<section class="tarjeta"><div class="cab"><div><h2>Expedientes creados solos</h2><span class="sub">El contexto del lote los ha creado porque no existían. Revísalos y dales «Visto» para que salgan de la campanita.</span></div>
+  const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico(n.tipo === "parecido" ? "user" : "folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
+      ${n.expediente_id && n.expediente ? `<a class="btn peq" href="#expediente/${n.expediente_id}">Revisar expediente</a>` : ""}
+      ${n.tipo === "parecido" && !n.visto && n.datos && /"(nombre|dni)"/.test(n.datos) ? `<button class="btn peq" data-noti-cambiar="${n.id}">Cambiar por los del documento</button>` : ""}
+      ${n.visto ? '<span class="muted">visto</span>' : `<button class="btn peq" data-noti-visto="${n.id}">${ico("check", 14)}${n.tipo === "parecido" ? "Visto (dejar los míos)" : "Visto"}</button>`}</span></div>`;
+  return `<section class="tarjeta"><div class="cab"><div><h2>Avisos del contexto</h2><span class="sub">Expedientes creados solos y datos parecidos a los que metiste a mano. Revísalos y dales «Visto» para que salgan de la campanita.</span></div>
     ${nuevas.length > 1 ? `<button class="btn" data-noti-visto="todas">Marcar todos como vistos</button>` : ""}</div>
     ${nuevas.map(fila).join("") || '<span class="sub">Nada nuevo.</span>'}${viejas.length ? `<details><summary class="sub">Vistos antes</summary>${viejas.map(fila).join("")}</details>` : ""}</section>`;
 }
 function activarNotificaciones() {
+  document.querySelectorAll("[data-noti-cambiar]").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("¿Cambiar el nombre o el DNI de la ficha por los leídos en el documento? Se renombran sus archivos.")) return;
+    try { await api("notificacion_cambiar", { id: +b.dataset.notiCambiar }); aviso("Ficha cambiada"); } catch (e) { aviso(e.message, true); }
+    await refrescar(false); await ir();
+  }));
   document.querySelectorAll("[data-noti-visto]").forEach(b => b.addEventListener("click", async () => {
     await api("notificacion_vista", b.dataset.notiVisto === "todas" ? {} : { id: +b.dataset.notiVisto });
     await refrescar(false); await ir();

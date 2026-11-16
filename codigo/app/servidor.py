@@ -391,7 +391,7 @@ def crear_manejador(app):
                         out = []
                         for d in a.documentos("expediente_id = ? AND estado = 'guardado'", (int(m.group(1)),)):
                             per = a.persona(d["persona_id"]) or {}
-                            out.append({k: d[k] for k in ("id", "nombre_final", "tipo", "nombre_recibido", "persona_id", "de_expediente", "privado", "ruta_final")}
+                            out.append({k: d.get(k) for k in ("id", "nombre_final", "tipo", "modelo", "nombre_recibido", "persona_id", "de_expediente", "privado", "ruta_final")}
                                        | {"persona": f'{per.get("nombre", "")} {per.get("apellido1", "")}'.strip()})
                         return self._json(sorted(out, key=lambda x: x["nombre_final"] or ""))
                     if m := re.fullmatch(r"/api/checklist/(\d+)", p): return self._json(checklist.evaluar(app.motor.variante, app.motor.almacen, int(m.group(1))))
@@ -545,12 +545,21 @@ def crear_manejador(app):
                     if p == "/api/expediente_manual":
                         pe = datos["persona"]
                         pid = m.nueva_persona(pe["nombre"], pe.get("apellido1", ""), pe.get("apellido2", ""), (pe.get("dni") or "").upper() or None)
+                        manuales = [pid]
                         eid = m.crear_expediente(pid, datos["finalidad"])
                         for o in datos.get("otras") or []:
                             if o.get("nombre") and o.get("apellido1"):
                                 oid = m.nueva_persona(o["nombre"], o.get("apellido1", ""), o.get("apellido2", ""), (o.get("dni") or "").upper() or None)
                                 m.almacen.anadir_persona(eid, oid, o.get("papel") or "Cotitular")
+                                manuales.append(oid)
+                        # datos metidos a mano: referencia segura para lo que llegue después (3.0.3)
+                        m.almacen.db.executemany("UPDATE personas SET manual = 1 WHERE id = ?", [(x,) for x in manuales])
+                        m.almacen.db.commit()
                         return self._json({"expediente": eid})
+                    if p == "/api/notificacion_cambiar":
+                        return self._json(app.contexto.aplicar_cambio(int(datos["id"])) or {"ok": True})
+                    if p == "/api/finalidad_expediente":
+                        return self._json(m.cambiar_finalidad(int(datos["expediente"]), datos["finalidad"]))
                     if p == "/api/cuarentena":
                         rutas = g.resolver_cuarentena(int(datos["id"]), datos["accion"])
                         if rutas:

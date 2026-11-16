@@ -634,3 +634,8 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 .ia-fila-mini { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .ia-tarjeta-aj { border-color: var(--ia); }
 .ia-tarjeta-aj h2 svg { vertical-align: -3px; color: var(--iaClaro); }
+
+/* 3.0.3 · expediente manual y cambio de financiación */
+.lat-manual{width:100%;justify-content:center;margin-top:8px;gap:6px;font-size:13px}
+.fin-cambiar{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.fin-cambiar select{border:1px solid var(--border);border-radius:6px;padding:1px 4px;font:inherit;background:var(--surface);color:var(--text)}

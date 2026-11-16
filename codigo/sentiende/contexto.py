@@ -23,9 +23,9 @@ from .extraer import norm, letra_dni, PARTICULAS, claves_cuenta
 # Documentos que pueden ser de varias personas a la vez (para el cotitular)
 COMPARTIDOS = {"renta", "padron", "extracto", "saldo", "prestamo", "escritura", "notasimple", "compraventa", "arras", "tasacion",
                "ibi", "planahorro", "fondos", "valores", "leasing", "renting", "solicitudaval", "aval", "estadocivil", "divorcio",
-               "cuota", "presupuesto", "proyecto", "licencia", "autorizacionvt"}
+               "cuota", "presupuesto", "proyecto", "licencia", "autorizacionvt", "contratobanco"}
 # Documentos con muchos nombres donde casi todos son terceros
-CON_TERCEROS = {"escritura", "compraventa", "notasimple", "arras", "tasacion", "constitucion", "divorcio", "aval", "solicitudaval"}
+CON_TERCEROS = {"escritura", "compraventa", "notasimple", "arras", "tasacion", "constitucion", "divorcio", "aval", "solicitudaval", "contratobanco"}
 # Finalidad que se deduce por los tipos que trae el lote (si la variante no tiene checklist que encaje mejor)
 PISTAS_FINALIDAD = {"licencia_taxi": {"licencia", "cap", "autorizacionvt", "fichatecnica", "carnet"},
                     "pyme": {"cif", "sociedades", "balance", "sumasysaldos", "iva", "ivaanual", "constitucion", "censo"},
@@ -119,6 +119,12 @@ class ContextoLote:
         CREATE TABLE IF NOT EXISTS notificaciones(id INTEGER PRIMARY KEY, fecha TEXT, tipo TEXT, mensaje TEXT,
             expediente_id INTEGER, lote_id INTEGER, visto INTEGER DEFAULT 0);
         """)
+        # 3.0.3: datos de la notificación (para «cambiar») y personas metidas a mano (referencia segura)
+        if "datos" not in [r[1] for r in self.db.execute("PRAGMA table_info(notificaciones)")]:
+            self.db.execute("ALTER TABLE notificaciones ADD COLUMN datos TEXT")
+        if "manual" not in [r[1] for r in self.db.execute("PRAGMA table_info(personas)")]:
+            self.db.execute("ALTER TABLE personas ADD COLUMN manual INTEGER DEFAULT 0")
+        self.db.commit()
 
     # ------------------------------------------------------------------ ajustes
     def ajustes(self):
@@ -465,6 +471,9 @@ class ContextoLote:
     # ------------------------------------------------------------------ persona: buscar la ficha o crearla
     def _persona(self, ident, crear):
         a = self.a
+        manual = self._manual_parecida(ident)
+        if manual:
+            return manual, False
         if ident.get("dni"):
             for r in a.db.execute("SELECT * FROM personas WHERE dni IS NOT NULL"):
                 if _clave_dni(r["dni"]) == _clave_dni(ident["dni"]):
@@ -483,6 +492,64 @@ class ContextoLote:
         pid = self.m.nueva_persona(p["nombre"], p.get("apellido1") or "", p.get("apellido2") or "", ident.get("dni"))
         return a.persona(pid), True
 
+    def _manual_parecida(self, ident):
+        """Personas metidas a mano (expediente manual): son la referencia segura. Si lo leído en los documentos
+        es igual o muy parecido (mismo DNI con otro nombre, o nombre compatible con un DNI casi igual), se usa la
+        persona manual y, si algo no coincide exacto, se avisa en la campanita para confirmarlo o cambiarlo."""
+        p = ident.get("persona") or {}
+        dni = ident.get("dni")
+        for r in self.db.execute("SELECT * FROM personas WHERE manual = 1"):
+            r = dict(r)
+            k_doc, k_man = _clave_dni(dni), _clave_dni(r.get("dni"))
+            mismo_dni = bool(k_doc and k_man and k_doc == k_man)
+            dni_casi = bool(k_doc and k_man and k_doc != k_man and len(k_doc) == len(k_man) and sum(x != y for x, y in zip(k_doc, k_man)) <= 1)
+            nombre_ok = bool(p) and compatibles(r, p)
+            if not (mismo_dni or (nombre_ok and (not k_doc or not k_man or dni_casi or mismo_dni))):
+                continue
+            dif = []
+            leido = norm(p.get("completo") or " ".join(x for x in (p.get("nombre"), p.get("apellido1"), p.get("apellido2")) if x)).strip()
+            propio = norm(f'{r["nombre"]} {r["apellido1"]} {r["apellido2"] or ""}').strip()
+            if leido and leido != propio:
+                dif.append(f"nombre leído «{leido.title()}»")
+            if dni and r.get("dni") and not mismo_dni:
+                dif.append(f"DNI leído {dni}")
+            elif dni and r.get("dni") and dni.upper() != r["dni"].upper():
+                dif.append(f"DNI leído {dni}")
+            if dif and not self._ya_avisado(r["id"], dif):
+                exps = [x[0] for x in self.db.execute("SELECT expediente_id FROM expediente_personas WHERE persona_id = ? ORDER BY expediente_id DESC", (r["id"],))]
+                cambio = {"persona_id": r["id"], "_dif": "; ".join(dif)}
+                if leido and leido != propio and p.get("nombre") and p.get("apellido1"):
+                    cambio.update(nombre=p["nombre"], apellido1=p.get("apellido1") or "", apellido2=p.get("apellido2") or "")
+                if dni and r.get("dni") and dni.upper() != r["dni"].upper():
+                    cambio["dni"] = dni
+                self.notificar("parecido", f"Datos parecidos a los que metiste a mano para {propio.title()} ({r.get('dni') or 'sin DNI'}): "
+                               + "; ".join(dif) + ". Se han usado los tuyos. Confírmalo con «Visto» o cámbialos por los del documento.",
+                               exps[0] if exps else None, None, cambio)
+            return r
+        return None
+
+    def _ya_avisado(self, pid, dif):
+        clave = "; ".join(dif)
+        for (d,) in self.db.execute("SELECT datos FROM notificaciones WHERE tipo = 'parecido'"):
+            try:
+                x = json.loads(d or "{}")
+            except ValueError:
+                continue
+            if x.get("persona_id") == pid and x.get("_dif") == clave:
+                return True
+        return False
+
+    def aplicar_cambio(self, nid):
+        """Botón «Cambiar por los del documento» de una notificación «parecido»."""
+        r = self.db.execute("SELECT datos FROM notificaciones WHERE id = ?", (nid,)).fetchone()
+        x = json.loads((r and r[0]) or "{}")
+        if not x.get("persona_id"):
+            raise ValueError("Esta notificación no tiene datos para cambiar.")
+        campos = {k: x[k] for k in ("nombre", "apellido1", "apellido2", "dni") if k in x}
+        res = self.m.gestion.editar_persona(x["persona_id"], campos) if campos else {}
+        self.visto(nid)
+        return res
+
     def _apuntar_alias(self, persona, ident):
         al = json.loads(persona.get("alias") or "[]")
         propio = norm(f'{persona["nombre"]} {persona["apellido1"]} {persona["apellido2"] or ""}').strip()
@@ -495,9 +562,10 @@ class ContextoLote:
             self.db.execute("UPDATE personas SET dni = ? WHERE id = ?", (ident["dni"], persona["id"]))
             self.db.commit()
 
-    def notificar(self, tipo, mensaje, expediente_id=None, lote_id=None):
-        self.db.execute("INSERT INTO notificaciones(fecha, tipo, mensaje, expediente_id, lote_id) VALUES(?, ?, ?, ?, ?)",
-                        (datetime.datetime.now().isoformat(timespec="seconds"), tipo, mensaje, expediente_id, lote_id))
+    def notificar(self, tipo, mensaje, expediente_id=None, lote_id=None, datos=None):
+        self.db.execute("INSERT INTO notificaciones(fecha, tipo, mensaje, expediente_id, lote_id, datos) VALUES(?, ?, ?, ?, ?, ?)",
+                        (datetime.datetime.now().isoformat(timespec="seconds"), tipo, mensaje, expediente_id, lote_id,
+                         json.dumps(datos, ensure_ascii=False) if datos is not None else None))
         self.db.commit()
 
     def notificaciones(self, todas=False):
@@ -610,7 +678,7 @@ class ContextoLote:
                     continue
                 quien = "todo el expediente" if comun else f'{a.persona(pid)["nombre"]} {a.persona(pid)["apellido1"]}'
                 ctrl._accion(lote_id, d["id"], None, "asignado", "Asignado (contexto del lote)",
-                             f"{m.variante.docs[d['tipo']]['nombres']['es'][0]} · {a.expediente(eid)['nombre']} · {quien} · {g['nombre_final']}",
+                             f"{m.variante.etiqueta(d['tipo'], d.get('modelo'))} · {a.expediente(eid)['nombre']} · {quien} · {g['nombre_final']}",
                              f"Por {dec.get('por')}", 95, "hecha", {"datos": datos}, origen="local")
                 hechos["asignados"] += 1
                 continue

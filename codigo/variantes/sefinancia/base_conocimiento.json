@@ -812,6 +812,7 @@
    ],
    "nombres": {
     "es": [
+     "Modificación del contrato de trabajo",
      "Ampliación de contrato",
      "Modificación de contrato",
      "Prórroga de contrato",
@@ -853,7 +854,10 @@
     "MODIFICACIÓN DE CLAVE IDENTIFICATIVA",
     "COMUNICACIÓN SOBRE MODIFICACIÓN",
     "AMPLIACIÓN DE JORNADA",
-    "AMPLIACIÓN DE CONTRATO"
+    "AMPLIACIÓN DE CONTRATO",
+    "MODIFICACIÓN DEL CONTRATO DE TRABAJO",
+    "NOVACIÓN DEL CONTRATO",
+    "CAMBIO DE JORNADA"
    ],
    "emisores": [
     "empresa",
@@ -2951,7 +2955,6 @@
     "SOLICITUD DE AVAL",
     "SOCIEDAD DE GARANTÍA RECÍPROCA",
     "SGR",
-    "DECLARACIÓN DE BIENES",
     "PERSONA DE RESPONSABILIDAD PÚBLICA",
     "AFIN SGR",
     "SOLICITANTE",
@@ -3057,32 +3060,77 @@
    "validez_meses": null,
    "subtipo_de": null,
    "requiere": [],
-   "id": "formbanco",
-   "nombrecorto": "formbanco",
+   "id": "contratobanco",
+   "nombrecorto": "contratobanco",
    "familia": "Banco y patrimonio",
-   "zzzz": "Fecha MMAA",
+   "zzzz": "Firma MMAA",
    "finalidades": [],
    "nombres": {
     "es": [
-     "Formulario de la entidad",
-     "Declaración de residencia fiscal",
-     "Declaración de bienes",
+     "Contrato bancario",
+     "Contrato de cuenta",
      "Vías de contacto y comunicación",
-     "Conocimiento del cliente"
+     "Condiciones generales del contrato"
     ],
     "ca": [
-     "Formulari de l'entitat",
-     "Declaració de residència fiscal"
+     "Contracte bancari",
+     "Contracte de compte"
     ],
     "eu": [
-     "Erakundearen inprimakia"
+     "Contrato bancario"
     ],
     "gl": [
-     "Formulario da entidade"
+     "Contrato bancario"
     ]
    },
    "sinonimos": [
-    "formulario KYC",
+    "contrato con el banco",
+    "contrato marco"
+   ],
+   "palabras_clave": [
+    "VÍAS DE CONTACTO Y COMUNICACIÓN",
+    "RELACIÓN NEGOCIAL",
+    "RELACIÓN NEGOCIAL Y/O CONTRACTUAL",
+    "CONTRATO DE CUENTA",
+    "CONTRATO MARCO",
+    "CONDICIONES GENERALES",
+    "CONDICIONES PARTICULARES",
+    "EN ADELANTE LA ENTIDAD",
+    "LA ENTIDAD",
+    "EL CLIENTE",
+    "CONTRATACIÓN A DISTANCIA"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "residenciafiscal",
+   "nombrecorto": "resfiscal",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Emisión MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Declaración de residencia fiscal",
+     "Autocertificación de residencia fiscal"
+    ],
+    "ca": [
+     "Declaració de residència fiscal"
+    ],
+    "eu": [
+     "Declaración de residencia fiscal"
+    ],
+    "gl": [
+     "Declaración de residencia fiscal"
+    ]
+   },
+   "sinonimos": [
+    "residencia fiscal",
     "FATCA",
     "CRS"
    ],
@@ -3090,19 +3138,61 @@
     "DECLARACIÓN DE RESIDENCIA FISCAL",
     "RESIDENCIA FISCAL",
     "PAÍS DE RESIDENCIA",
-    "VÍAS DE CONTACTO Y COMUNICACIÓN",
-    "RELACIÓN NEGOCIAL",
-    "CONOCIMIENTO DEL CLIENTE",
-    "ORIGEN DE LOS FONDOS",
-    "DATOS DE LOS TITULARES",
-    "SIN BIENES",
-    "CONTRATACIÓN ELECTRÓNICA",
+    "Nº DE IDENTIFICACIÓN FISCAL EN EL PAÍS DE RESIDENCIA",
+    "AUTOCERTIFICACIÓN",
+    "FATCA",
+    "CRS",
     "NÚMERO PERSONA"
    ],
    "emisores": [
     "banco"
    ],
    "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "bienes",
+   "nombrecorto": "bienes",
+   "familia": "Banco y patrimonio",
+   "zzzz": "Emisión MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Declaración de bienes",
+     "Declaración patrimonial"
+    ],
+    "ca": [
+     "Declaració de béns"
+    ],
+    "eu": [
+     "Declaración de bienes"
+    ],
+    "gl": [
+     "Declaración de bienes"
+    ]
+   },
+   "sinonimos": [
+    "patrimonio declarado"
+   ],
+   "palabras_clave": [
+    "DECLARACIÓN DE BIENES",
+    "DATOS DE LOS TITULARES",
+    "SIN BIENES",
+    "RELACIÓN DE BIENES",
+    "BIENES INMUEBLES",
+    "DECLARACIÓN PATRIMONIAL"
+   ],
+   "emisores": [
+    "banco"
+   ],
+   "privado_por_defecto": false,
+   "excluir": [
+    "PERSONA DE RESPONSABILIDAD PÚBLICA",
+    "AFIN SGR",
+    "CUMPLIMENTAR EN CASO DE POSEER BIENES"
+   ]
   }
  ],
  "entidades_financieras": [

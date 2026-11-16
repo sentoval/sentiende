@@ -333,7 +333,7 @@ class Gestion:
                 clave = unicodedata.normalize("NFD", (q.split() or [""])[0]).encode("ascii", "ignore").decode().lower()
                 i = plano.find(clave)
                 trozo = completo[max(0, i - 70): i + 110].replace("\n", " ").replace("¦", " ") if i >= 0 else completo[:150].replace("\n", " ")
-                out.append({"id": d["id"], "nombre": d["nombre_final"] or d["nombre_recibido"], "tipo": d["tipo"], "estado": d["estado"],
+                out.append({"id": d["id"], "nombre": d["nombre_final"] or d["nombre_recibido"], "tipo": d["tipo"], "modelo": d.get("modelo"), "estado": d["estado"],
                             "expediente_id": d["expediente_id"], "expediente": (exps.get(d["expediente_id"]) or {}).get("nombre", ""),
                             "trozo": trozo, "ruta": d["ruta_final"] or d["ruta_original"]})
                 if len(out) >= limite:

@@ -971,7 +971,7 @@ class ControladorIA:
         tipo = dec.get("tipo") if dec.get("tipo") in m.variante.docs else None
         if tipo and fn.get("clasificar") and tipo != d["tipo"]:
             a.actualizar(did, tipo=tipo, confianza=max(d["confianza"] or 0, seg / 100), motivo=f"Tipo propuesto por la IA ({seg} %)")
-            nombre_tipo = m.variante.etiqueta(tipo)
+            nombre_tipo = m.variante.etiqueta(tipo, d.get("modelo"))
             hechas.append(self._accion(lote, did, consulta_id, "clasificado", "Clasificado", f"{nombre_tipo} (antes: {d['tipo'] or 'no reconocido'})",
                                        motivo, seg, est, {"tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"]}))
             d = a.documento(did)

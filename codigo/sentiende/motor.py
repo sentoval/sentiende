@@ -351,6 +351,25 @@ class Motor:
         self.almacen.anadir_persona(eid, persona_id, "Titular")
         return eid
 
+    def cambiar_finalidad(self, expediente_id, finalidad):
+        """Cambia el tipo de financiación de un expediente (p. ej. lo creó el contexto como hipotecario y es de taxi).
+        El nombre del expediente cambia si era el automático («Apellidos · Finalidad»); la carpeta no se toca."""
+        a = self.almacen
+        e = a.expediente(expediente_id)
+        fins = self.variante.meta.get("finalidades", {})
+        if not e:
+            raise MotorError("No existe ese expediente.")
+        if finalidad not in fins:
+            raise MotorError(f"Finalidad desconocida: {finalidad}")
+        antes = e["finalidad"]
+        nombre = e["nombre"]
+        if antes in fins and nombre.endswith(" · " + fins[antes]):
+            nombre = nombre[: -len(fins[antes])] + fins[finalidad]
+        a.db.execute("UPDATE expedientes SET finalidad = ?, nombre = ? WHERE id = ?", (finalidad, nombre, expediente_id))
+        a.db.commit()
+        a.evento(f"Finalidad del expediente «{e['nombre']}» cambiada: {fins.get(antes, antes)} → {fins[finalidad]}", nivel="info")
+        return {"ok": True, "nombre": nombre}
+
     def vincular_personas(self, expediente_id, otros, doc_id=None):
         """Las demás personas de un documento (p. ej. el segundo declarante de la renta):
         'cotitular' → se añade a este expediente como Cotitular; 'separado' → se ficha con su propio
@@ -780,6 +799,6 @@ class Motor:
             else:
                 donde = {"original": d["ruta_original"], "trabajo": d["ruta_trabajo"]}
             out.append({"id": d["id"], "archivo": d["nombre_recibido"], "fase": d["fase"], "fase_nombre": NOMBRE_FASE.get(d["fase"], "Recibir"),
-                        "estado": d["estado"], "tipo": d["tipo"], "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde,
+                        "estado": d["estado"], "tipo": d["tipo"], "modelo": d.get("modelo"), "confianza": d["confianza"], "motivo": d["motivo"], "donde": donde,
                         "expediente_id": d["expediente_id"], "persona_id": d["persona_id"], "nombre_final": d["nombre_final"]})
         return out
