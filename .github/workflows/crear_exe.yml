@@ -46,25 +46,31 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.0_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.0.1_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v3.0_windows
-          path: SeFinancia_v3.0_windows.zip
+          name: SeFinancia_v3.0.1_windows
+          path: SeFinancia_v3.0.1_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0
-          name: SeFinancia v3.0
+          tag_name: v3.0.1
+          name: SeFinancia v3.0.1
           prerelease: false
           make_latest: true
-          files: SeFinancia_v3.0_windows.zip
+          files: SeFinancia_v3.0.1_windows.zip
           body: |
-            SeFinancia 3.0 · motor Sentiende 3.0.0 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v3.0_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 3.0.1 · motor Sentiende 3.0.1 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v3.0.1_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+
+            Arreglos sobre la 3.0 (primera prueba real):
+            - La IA piensa antes de contestar: ahora tiene margen suficiente para la respuesta (y repite una vez si se queda corta) y trabaja siempre con esfuerzo «bajo».
+            - Si una consulta no trae respuesta útil, ese documento (o ese grupo de fotos) queda «Para ti» con el motivo y el lote sigue; antes se paraba entero.
+            - El gasto previsto se calcula con una respuesta habitual, no con el máximo.
+            - «Informe de la IA» visible en cada lote que haya pasado por la IA, aunque no haya hecho nada.
 
             Novedades sobre la 1.3 · Controlador IA (viene apagado):
             - Botón «Controlador IA» en la barra lateral: encendido brilla y muestra el gasto; en pausa, fondo mostaza; apagado, gris.

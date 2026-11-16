@@ -1591,7 +1591,7 @@ function activarAvisoPausaIA() {
 }
 function botonesLoteIA(l) {
   const ia = S.estado?.ia, b = [];
-  if (l.ia?.acciones) b.push(`<a class="btn ia-b" href="#ia_informe/${l.id}">${ico("ia", 16)}Informe de la IA</a>`);
+  if (l.ia) b.push(`<a class="btn ia-b" href="#ia_informe/${l.id}">${ico("ia", 16)}Informe de la IA</a>`);
   if (ia?.activo && ia.estado !== "pausa" && l.documentos.some(d => d.estado === "espera_emparejar") && !ia.trabajando) b.push(`<button class="btn" id="ia-pasar" data-lote="${l.id}">${ico("ia", 16)}Pasar a la IA</button>`);
   if (l.ia?.estado === "trabajando" && ia?.trabajando) b.push(`<span class="pill p-ia">La IA está trabajando…</span>`);
   return b.join("");
