@@ -18,6 +18,10 @@ const IC = {
   scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/>',
   bt: '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>', mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>', paste: '<rect x="7" y="4" width="10" height="4" rx="1"/><path d="M7 6H5v15h14V6h-2"/>',
   left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>', play: '<path d="M8 5v14l11-7z"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  ia: '<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>', undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
+  download: '<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>', link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   logo: '<path d="M12 3c-3 0-5 2-5 4.5C5 8 4 10 4 12c0 2.5 2 4.5 4.5 4.5H9v3h6v-3h.5c2.5 0 4.5-2 4.5-4.5 0-2-1-4-3-4.5C17 5 15 3 12 3z"/><path d="M12 7v10M9 11h6"/>',
 };
 const ico = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ""}</svg>`;
@@ -49,7 +53,7 @@ function aviso(txt, mal = false) {
 const pill = (t, c = "todo") => `<span class="pill p-${c}">${esc(t)}</span>`;
 const nombreTipo = id => (S.info.tipos.find(t => t.id === id) || {}).nombre || id || "—";
 const ESTADOS = { en_proceso: ["Trabajando", "acc"], espera_emparejar: ["Para revisar", "warn"], parado: ["Parado", "bad"], guardado: ["Guardado", "ok"], contacto: ["Contacto de banco", "ok"],
-  limbo: ["En el Limbo", "todo"], unido: ["Unido a otro", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
+  limbo: ["En el Limbo", "todo"], unido: ["Unido a otro", "todo"], deshecho: ["Deshecho", "todo"], sustituido: ["Sustituido", "todo"], duplicado: ["Duplicado", "warn"], separado: ["Separado", "todo"], error: ["Error", "bad"] };
 const est = e => pill(...(ESTADOS[e] || [e, "todo"]));
 function fbar(fase, estado) {
   const n = ["guardado", "limbo", "contacto"].includes(estado) ? 10 : fase;
@@ -64,7 +68,7 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
@@ -84,14 +88,16 @@ function lateral() {
       <a href="#papelera" title="Papelera" aria-label="Papelera" ${r === "papelera" ? 'aria-current="page"' : ""}>${ico("trash", 20)}</a>
       <a href="#buscar" title="Buscar en documentos" aria-label="Buscar en documentos" ${r === "buscar" ? 'aria-current="page"' : ""}>${ico("search", 20)}</a>
     </div>
+    ${botonIA()}
     <div class="lat-zona" id="zona">
       <span class="ico">${ico("upload", 20)}</span>
       <b>Arrastra aquí</b>
       <span class="sub">PDF, fotos, Word o Excel. También Ctrl+V o la carpeta <code title="${esc(S.info.carpetas.entrada)}">Entrada</code>.</span>
-      <label class="btn peq pri">${ico("upload", 15)}Elegir archivos…<input type="file" id="elegir" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.docx,.xlsx"></label>
-      <span class="lat-btns"><button class="btn peq" id="b-correo" title="Recoger los adjuntos de los correos nuevos">${ico("mail", 15)}Correo</button>
-      <button class="btn peq" id="b-bt" title="Abrir la recepción por Bluetooth de Windows">${ico("bt", 15)}Bluetooth</button></span>
-      <button class="btn peq lat-escaner" id="b-scan" title="Escanear con el escáner conectado a este equipo">${ico("scan", 15)}Escanear</button>
+      <span class="lat-iconos">
+        <label class="btn pri" title="Elegir archivos" aria-label="Elegir archivos">${ico("folder", 22)}<input type="file" id="elegir" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.docx,.xlsx"></label>
+        <button class="btn" id="b-correo" title="Recibir por correo" aria-label="Recibir por correo">${ico("mail", 22)}</button>
+        <button class="btn" id="b-bt" title="Recibir por Bluetooth" aria-label="Recibir por Bluetooth">${ico("bt", 22)}</button>
+        <button class="btn" id="b-scan" title="Escanear" aria-label="Escanear">${ico("scan", 22)}</button></span>
       ${CORREO_TXT ? `<span class="lat-estado">${esc(CORREO_TXT)}</span>` : ""}${BT?.activo ? `<span class="lat-estado">${ico("bt", 13)} ${esc(BT.mensaje)}</span>` : ""}
       ${S.estado?.trabajando ? '<span class="trabajando">El motor está trabajando…</span>' : ""}
     </div>
@@ -105,6 +111,7 @@ function activarZona() {
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
   $("#b-correo").addEventListener("click", revisarCorreo);
+  $("#b-ia")?.addEventListener("click", pulsarIA);
   $("#b-scan").addEventListener("click", abrirEscaner);
   $("#b-bt").addEventListener("click", async () => {
     try { BT = await api("bluetooth", {}); aviso("Asistente de Bluetooth de Windows abierto: envía los archivos desde el móvil. Lo recibido entra solo."); vigilarBT(); }
@@ -189,9 +196,11 @@ function vistaMotor() {
   <div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
     <div class="acciones">${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
   ${pestanasMotor("motor")}
+  ${avisoPausaIA()}
   ${parado ? `<div class="tarjeta" style="border-color:var(--bad);background:var(--badSoft)"><b>El motor se ha parado: ${esc(parado.motivo || "")}</b><span class="sub">Nada se ha perdido: el original sigue en Entrada\\. Corrige la causa y pulsa «Reanudar lo pendiente».</span></div>` : ""}
   <nav class="lotes" aria-label="Lotes">${lotes.slice(0, 12).map(x => `<a href="#motor/${x.id}" ${x.id === l.id ? 'aria-current="true"' : ""}>Lote ${x.id}${pendiente(x) ? " ·  en curso" : ""}</a>`).join("")}</nav>
-  <section class="tarjeta"><div class="cab"><div><h2>Lote ${l.id} · ${esc(l.origen)}</h2><span class="sub">${titulo}</span></div><b style="font-size:22px;color:${parado ? "var(--bad)" : "var(--accent)"}">${pct} %</b></div>
+  <section class="tarjeta"><div class="cab"><div><h2>Lote ${l.id} · ${esc(l.origen)}</h2><span class="sub">${titulo}</span></div>
+    <div class="acciones">${botonesLoteIA(l)}<b style="font-size:22px;color:${parado ? "var(--bad)" : "var(--accent)"}">${pct} %</b></div></div>
     <div class="progreso"><i style="width:${pct}%;${parado ? "background:var(--bad)" : ""}"></i></div>
     <div class="ubic"><span>${ico("folder", 14)} Originales: <code>Entrada\\</code> hasta guardar</span><span>${ico("folder", 14)} Copia de trabajo: <code>Datos\\Trabajo\\lote_${l.id}\\</code></span><span>${ico("folder", 14)} Al terminar: <code>SeDocumentos\\</code> y <code>Doc_original\\</code></span></div>
     <div class="pipeline" style="padding-bottom:230px;margin-bottom:-220px">${pipe}</div></section>
@@ -203,6 +212,8 @@ function vistaMotor() {
 }
 function activarMotor() {
   $("#reanudar")?.addEventListener("click", async () => { await api("procesar", {}); aviso("Reanudando…"); refrescar(true); });
+  activarAvisoPausaIA();
+  $("#ia-pasar")?.addEventListener("click", async e => { try { await api("ia/lote", { lote: +e.currentTarget.dataset.lote }); aviso("Pasando el lote a la IA…"); refrescar(true); } catch (er) { aviso(er.message, true); } });
   document.querySelectorAll("tr[data-doc]").forEach(tr => tr.addEventListener("click", () => (location.hash = "revision/" + tr.dataset.doc)));
 }
 
@@ -388,7 +399,7 @@ function vistaRevision() {
     </div>
     <div class="acciones"><button class="btn pri" id="tj-si">${ico("check")}Sí, guardar como contacto del banco</button><button class="btn" id="tj-no">No, es un documento normal</button></div></section>` : "";
   R.tarjetaPendiente = !!tj;
-  return `${preguntaTarjeta}
+  return `${preguntaTarjeta}${bannerIA(d)}
   <section class="barra-rev ${tj ? "bloqueada" : ""}" aria-label="Revisar">
     <div class="barra-cab"><b>Revisar</b><span class="sub">${esc(d.nombre_recibido)} · ${d.motivo ? esc(d.motivo) : "clasificado con " + Math.round((d.confianza || 0) * 100) + " %"} · ${cola.length} pendiente(s)</span>${union}</div>
     <div class="barra-pasos">
@@ -957,6 +968,8 @@ function activarLimbo() {
 function vistaAjustes() {
   const c = S.info.carpetas, mb = b => (b / 1e6).toFixed(1).replace(".", ",") + " MB";
   return `<div class="cab"><div><small>Ajustes</small><h1>Ajustes</h1><div class="sub">${esc(S.info.compatibilidad)}</div></div></div>
+  <section class="tarjeta ia-tarjeta-aj"><div class="cab"><div><h2>${ico("ia")} Controlador IA <span class="pill p-ia">3.0</span></h2><span class="sub">Resuelve solo, con la API de Anthropic, lo que el programa no sabe, sin enviar datos personales. Viene apagado.</span></div>
+    <a class="btn" href="#ia">Abrir ajustes de la IA</a></div></section>
   <section class="tarjeta"><h2>Carpetas</h2>
     ${[["entrada", "Entrada (lo que llega)"], ["documentos", "SeDocumentos (los ordenados)"], ["originales", "Doc_original (originales sin tocar)"], ["papelera", "Papelera"]]
       .map(([k, l]) => `<div class="fila-carpeta"><label for="cp-${k}">${l}</label><input id="cp-${k}" data-carpeta="${k}" value="${esc(c[k])}"><button class="btn peq" data-abrir="${esc(c[k])}">Abrir</button></div>`).join("")}
@@ -1133,7 +1146,8 @@ function pintar() {
     avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
-    bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)] };
+    bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)],
+    ia: [vistaIA, activarIA], ia_informe: [vistaInformeIA, activarInformeIA], ia_envio: [vistaEnvioIA, () => {}] };
   const [v, act] = vistas[r] || vistas.motor;
   const y = $("#vista").scrollTop;
   $("#vista").innerHTML = v();
@@ -1159,6 +1173,9 @@ async function ir() {
   if (r === "papelera") PAP = await api("papelera");
   if (r === "estadisticas") EST = await api("estadisticas");
   if (r === "reglas" && !REG) REG = await api("reglas");
+  if (r === "ia") IAP = await api("ia");
+  if (r === "ia_informe") INF = id ? await api("ia/informe/" + id) : null;
+  if (r === "ia_envio") ENV = await api("ia/consulta/" + id);
   if (r === "separar") { SEP = { id: +id, doc: await api("documento/" + id), cortes: new Set() }; }
   if (r === "ajustes") { [TMP, FIN, REP, CORREO, S.ajustes] = await Promise.all([api("temporales"), api("finalidades"), api("personas_repetidas"), api("correo"), api("ajustes")]); CORREO.form = { ...CORREO.ajustes, clave: "" }; }
   pintar();
@@ -1168,6 +1185,7 @@ async function refrescar(repintar) {
   [S.estado, S.expedientes] = await Promise.all([api("estado"), api("expedientes")]);
   const cambio = antes !== JSON.stringify(S.estado);
   const r = S.ruta.split("/")[0] || "motor";
+  if (cambio && r === "ia_informe" && !repintar) return ir();
   if (repintar || (cambio && ["motor", "limbo", "cuarentena", ""].includes(r))) pintar();
   else if (cambio) { lateral(); if (r === "revision" && !S.editando && !S.doc) ir(); }
 }
@@ -1530,3 +1548,234 @@ function pintarEscaner() {
     ESC.ocupado = false; if ($("#escaner")) pintarEscaner();
   });
 }
+
+
+// ================================================================== Controlador IA (versión 3.0)
+let IAP = null, INF = null, ENV = null, INF_FILTRO = "todo";
+const eurIA = v => (+v || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: (+v || 0) < 0.1 ? 4 : 2 }) + " €";
+const usd = v => (+v || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + " $";
+const fichasHTML = t => esc(t).replace(/\[[A-Z]+_[A-Z0-9]+\]/g, m => `<span class="ficha">${m}</span>`);
+
+function botonIA() {
+  const ia = S.estado?.ia;
+  if (!ia) return "";
+  const on = ia.activo, e = ia.estado;
+  const cls = !on ? "apagado" : e === "pausa" ? "pausa" : e === "sin_conexion" ? "red" : "on";
+  const sub = !on ? "" : e === "pausa" ? `En pausa: límite del ${ia.pausa?.motivo === "mes" ? "mes" : "día"} alcanzado`
+    : e === "sin_conexion" ? "Sin conexión: sigue en local" : e === "trabajando" ? "Trabajando…" : `Activo · ${eurIA(ia.hoy)} de ${eurIA(ia.limites.dia)} hoy`;
+  return `<div class="ia-lat"><button type="button" id="b-ia" class="ia-btn ${cls}" aria-pressed="${on}" title="${on ? "Pulsa para apagar el Controlador IA" : "Pulsa para encender el Controlador IA"}">
+      <span class="ia-cab"><span class="ia-ico">${ico(on && e === "pausa" ? "pause" : "ia", 18)}</span>Controlador IA</span>${sub ? `<span class="ia-sub">${esc(sub)}</span>` : ""}</button>
+    <a class="ia-enlace" href="#ia">Ajustes de la IA${ia.por_revisar ? ` · <b>${ia.por_revisar} para mirar</b>` : ""}</a></div>`;
+}
+async function pulsarIA() {
+  const ia = S.estado?.ia;
+  if (!ia) return;
+  if (!ia.activo && !ia.tiene_clave) { aviso("Primero escribe tu clave de la API de Anthropic."); location.hash = "ia"; return; }
+  try { S.estado.ia = await api("ia/encender", { activo: !ia.activo }); aviso(ia.activo ? "Controlador IA apagado: todo sigue en local" : "Controlador IA encendido"); lateral(); if (S.ruta.startsWith("ia")) ir(); }
+  catch (e) { aviso(e.message, true); }
+}
+function avisoPausaIA() {
+  const ia = S.estado?.ia;
+  if (!ia?.activo || ia.estado !== "pausa") return "";
+  const m = ia.pausa?.motivo === "mes" ? "mes" : "día";
+  return `<div class="ia-pausa" role="status"><span>${ico("pause", 24)}</span><span class="t"><b>Controlador IA en pausa · límite del ${m} alcanzado (${eurIA(m === "mes" ? ia.limites.mes : ia.limites.dia)})</b>
+    <span>El motor sigue trabajando en local. Lo pendiente espera en el Centro de revisión; ${m === "día" ? "mañana se reanuda solo" : "el mes que viene se reanuda solo"}, o puedes subir el límite.</span></span>
+    ${m === "día" ? `<button class="btn" id="ia-subir">Subir límite de hoy…</button>` : `<a class="btn" href="#ia">Cambiar límites</a>`}<a class="btn" href="#revision">Pasar a revisión manual</a></div>`;
+}
+function activarAvisoPausaIA() {
+  $("#ia-subir")?.addEventListener("click", async () => {
+    const v = prompt("¿Cuántos euros más quieres permitir hoy?", "0,50");
+    if (v === null) return;
+    try { await api("ia/limite_hoy", { euros: v }); aviso("Límite de hoy subido: la IA sigue"); refrescar(true); } catch (e) { aviso(e.message, true); }
+  });
+}
+function botonesLoteIA(l) {
+  const ia = S.estado?.ia, b = [];
+  if (l.ia?.acciones) b.push(`<a class="btn ia-b" href="#ia_informe/${l.id}">${ico("ia", 16)}Informe de la IA</a>`);
+  if (ia?.activo && ia.estado !== "pausa" && l.documentos.some(d => d.estado === "espera_emparejar") && !ia.trabajando) b.push(`<button class="btn" id="ia-pasar" data-lote="${l.id}">${ico("ia", 16)}Pasar a la IA</button>`);
+  if (l.ia?.estado === "trabajando" && ia?.trabajando) b.push(`<span class="pill p-ia">La IA está trabajando…</span>`);
+  return b.join("");
+}
+function bannerIA(d) {
+  const acc = d.ia_acciones || [], prop = (d.datos || {}).ia_propuesta;
+  const misma = acc.filter(x => x.tipo === "misma_persona");
+  const otras = acc.filter(x => x.tipo !== "misma_persona");
+  if (!acc.length && !prop) return "";
+  return `<section class="ia-banner"><div class="cab"><div><b>${ico("ia", 16)} El Controlador IA ha mirado este documento</b>
+      ${prop?.texto ? `<span class="sub">${esc(prop.texto)} · seguridad ${prop.seguridad} %</span>` : ""}</div>
+      ${acc[0]?.lote_id ? `<a class="btn peq" href="#ia_informe/${acc[0].lote_id}">Ver el informe</a>` : ""}</div>
+    ${misma.map(x => `<div class="ia-misma"><span><b>Misma persona</b> · ${esc(x.detalle)}</span><button class="btn peq" data-ia-deshacer="${x.id}">${ico("undo", 14)}Deshacer y decidir yo</button><button class="btn peq" data-ia-bien="${x.id}">Está bien</button></div>`).join("")}
+    ${otras.map(x => `<div class="ia-fila-mini">${pill(x.titulo, x.estado === "para_ti" ? "warn" : "ia")}<span>${esc(x.detalle || "")}</span></div>`).join("")}</section>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-ia-deshacer],[data-ia-bien]");
+  if (!b) return;
+  try {
+    if (b.dataset.iaDeshacer) { await api("ia/deshacer", { accion: +b.dataset.iaDeshacer }); aviso("Deshecho: decide tú"); }
+    else { await api("ia/revisada", { accion: +b.dataset.iaBien }); aviso("Marcado como revisado"); }
+    await refrescar(false);
+    if (S.ruta.startsWith("revision")) { S.doc = null; await ir(); } else await ir();
+  } catch (er) { aviso(er.message, true); }
+});
+
+// ---------------- Ajustes › Controlador IA
+function vistaIA() {
+  if (!IAP) return '<div class="tarjeta vacio">Cargando…</div>';
+  const a = IAP.ajustes, r = IAP.resumen, M = IAP.modelos, F = IAP.funciones;
+  const med = (t, u, l) => `<div class="ia-medidor"><span>${t}</span><b>${eurIA(u)} <small>de ${eurIA(l)}</small></b><span class="barra"><i style="width:${Math.min(100, Math.round(100 * u / (l || 1)))}%"></i></span></div>`;
+  const tog = (id, on, tit, sub) => `<label class="ia-tog" for="${id}"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span class="sw" aria-hidden="true"></span><span><b>${tit}</b><span class="sub">${sub}</span></span></label>`;
+  const tar = a.tarifas || {};
+  const tarTxt = !tar.ultima ? "Todavía no se han comprobado." : tar.estado === "cambios" ? tar.detalle : tar.estado === "no_comprobado" ? tar.detalle : `Comprobado el ${tar.ultima.slice(8, 10)}/${tar.ultima.slice(5, 7)} a las ${tar.ultima.slice(11, 16)} · sin cambios.`;
+  const comp = IAP.comparativa, maxH = Math.max(...comp.modelos.map(x => x.hasta));
+  return `<div class="cab"><div><small>Ajustes › Controlador IA</small><h1>Controlador IA <span class="pill p-ia">3.0</span></h1><div class="sub">Resuelve solo lo que el programa no sabe y te informa de cada cosa que hace. Solo texto, sin datos personales.</div></div>
+    <div class="acciones"><a class="btn" href="#ajustes">Volver a Ajustes</a><button class="btn pri" id="ia-guardar">${ico("check")}Guardar cambios</button></div></div>
+  <div class="ia-cols"><div class="ia-col">
+  <section class="tarjeta"><h2>Controlador IA</h2>
+    <div class="ia-estado ${a.activo ? "on" : ""}"><span class="ia-ico">${ico("ia", 26)}</span><span><b>${a.activo ? "Encendido · modo automático" : "Apagado · todo en local"}</b><span class="sub">${a.activo ? "Resuelve solo lo que el programa no sabe; cada acción se puede deshacer." : "Se enciende con el botón «Controlador IA» de la barra lateral o aquí."}</span></span>
+      <button class="btn" id="ia-onoff">${a.activo ? "Apagar" : "Encender"}</button></div>
+    <div class="campos-inline"><div class="campo" style="flex:2 1 320px"><label for="ia-clave">Clave de la API de Anthropic</label><input id="ia-clave" type="password" autocomplete="off" placeholder="${a.tiene_clave ? "•••••••• (guardada; escribe otra para cambiarla)" : "sk-ant-…"}"></div>
+      <button class="btn" id="ia-probar">${ico("link", 15)}Probar conexión</button>${a.tiene_clave ? `<button class="btn peligro" id="ia-quitar">Quitar clave</button>` : ""}</div>
+    <span class="sub">Cifrada con tu usuario de Windows. Los créditos se compran en la consola de Anthropic (console.anthropic.com), no en claude.ai.</span>
+    <div class="campos-inline"><div class="campo"><label for="ia-modelo">Modelo</label><select id="ia-modelo">${Object.entries(M).map(([k, m]) => `<option value="${k}" ${k === a.modelo ? "selected" : ""}>${esc(m.nombre)} · ${esc(m.desc)}</option>`).join("")}</select></div>
+      <div class="campo"><label for="ia-actua">Cuándo actúa</label><select id="ia-actua"><option value="lote" ${a.actua === "lote" ? "selected" : ""}>Al terminar cada lote del motor</option><option value="manual" ${a.actua === "manual" ? "selected" : ""}>Solo cuando pulse «Pasar a la IA»</option></select></div>
+      <div class="campo" style="max-width:170px"><label for="ia-umbral">Seguridad para no marcar (%)</label><input id="ia-umbral" type="number" min="50" max="100" value="${a.umbral}"></div></div></section>
+  <section class="tarjeta"><div><h2>Qué puede resolver</h2><span class="sub">Lo que el programa ya resuelve en local no se envía nunca.</span></div>
+    ${Object.entries(F).map(([k, f]) => tog("ia-f-" + k, a.funciones[k], f[0], f[1])).join("")}
+    <div class="ia-nota warn">${ico("lock")}<span><b>Expedientes nuevos: siempre tú.</b> Si la IA cree que un documento es de alguien sin expediente, te lo deja con su propuesta. Tampoco añade personas a un expediente.</span></div></section>
+  <section class="tarjeta"><div><h2>Instrucciones para la IA</h2><span class="sub">Tus reglas propias, escritas como se lo explicarías a una persona. Van en el manual que acompaña a cada consulta.</span></div>
+    <textarea id="ia-instr" rows="7">${esc(a.instrucciones)}</textarea>
+    <span class="sub">Con las reglas del programa, los tipos de documento y ${IAP.ejemplos} ejemplo(s) anónimo(s) de tus correcciones. No hace falta entrenar el modelo.</span>
+    <div class="acciones"><button class="btn" id="ia-manual">${ico("eye", 15)}Ver el manual completo</button><button class="btn" id="ia-serie">Restaurar instrucciones de serie</button></div>
+    <pre id="ia-manual-txt" class="ia-pre" hidden></pre></section>
+  </div><div class="ia-col estrecha">
+  <section class="tarjeta"><div><h2>Gasto</h2><span class="sub">Lo que cobra Anthropic, calculado consulta a consulta.</span></div>
+    <div class="ia-medidores">${med("Hoy", r.hoy, r.limites.dia)}${med("Este mes", r.mes, r.limites.mes)}</div>
+    <div class="campos-inline"><div class="campo"><label for="ia-ld">Límite por día (€)</label><input id="ia-ld" value="${String(a.limite_dia).replace(".", ",")}"></div>
+      <div class="campo"><label for="ia-lm">Límite por mes (€)</label><input id="ia-lm" value="${String(a.limite_mes).replace(".", ",")}"></div>
+      <div class="campo"><label for="ia-ll">Límite por lote (€)</label><input id="ia-ll" value="${String(a.limite_lote).replace(".", ",")}"></div></div>
+    ${tog("ia-pausar", a.pausar, "Pausar y avisar al llegar al límite", "La IA se para; el programa sigue en local y lo pendiente espera en el Centro de revisión.")}
+    <div class="dato"><span>Consultas este mes</span><span>${r.consultas_mes} · media ${eurIA(IAP.media)}</span></div></section>
+  <section class="tarjeta"><div><h2>Tarifas</h2><span class="sub">Precio por modelo y comparativa para elegir.</span></div>
+    <table class="tabla ia-tarifas"><thead><tr><th>Modelo</th><th>Entrada</th><th>Salida</th><th>Caché</th></tr></thead><tbody>
+    ${Object.entries(M).map(([k, m]) => { const p = a.precios[k] || {}; return `<tr><td><b>${esc(m.nombre.replace("Claude ", ""))}</b>${k.includes("haiku") ? '<br><span class="muted" style="font-size:11.5px">hasta 100.000 tokens</span>' : ""}</td>${["entrada", "salida", "cache"].map(c => `<td><input class="ia-precio" data-m="${k}" data-c="${c}" value="${String(p[c] ?? "").replace(".", ",")}" aria-label="${m.nombre} ${c}"></td>`).join("")}</tr>`; }).join("")}</tbody></table>
+    <span class="sub">Dólares por millón de tokens, como cobra Anthropic. Editable por si cambian.</span>
+    <div class="campos-inline"><div class="campo" style="max-width:170px"><label for="ia-cambio">1 $ son (€)</label><input id="ia-cambio" value="${String(a.cambio).replace(".", ",")}"></div></div>
+    <div class="ia-nota ${tar.estado === "cambios" ? "warn" : tar.estado === "no_comprobado" ? "" : "ok"}">${ico(tar.estado === "cambios" ? "bell" : "check")}<span>${esc(tarTxt)} Como máximo una vez al día: al encender la IA si hoy aún no se ha comprobado, o a las 24 h si sigue encendida.</span></div>
+    ${tar.estado === "cambios" ? `<div class="acciones"><button class="btn pri" id="ia-act-tar">Actualizar la tabla con las tarifas nuevas</button></div>` : ""}
+    <div class="ia-comp"><b>Lote de ${comp.documentos} documentos típicos, todos consultados</b><span class="sub">Cálculo del ${comp.fecha}: ${esc(comp.supuesto)}. El tramo alto es con documentos largos (rentas enteras) o sin la rebaja de caché.</span>
+      ${comp.modelos.map(x => `<div class="ia-barra-m ${x.modelo === a.modelo ? "sel" : ""}"><span>${esc(M[x.modelo].nombre.replace("Claude ", ""))}</span><span class="barra"><i style="width:${Math.max(4, Math.round(100 * x.hasta / maxH))}%"></i></span><b>${usd(x.desde)} – ${usd(x.hasta)}</b></div>`).join("")}
+      <span class="sub">Con el límite de ${eurIA(a.limite_dia)} al día: unos ${Math.floor(a.limite_dia / (comp.modelos[0].hasta * a.cambio))} lotes con Haiku, ${Math.floor(a.limite_dia / (comp.modelos[1].hasta * a.cambio))} con Sonnet o ${Math.floor(a.limite_dia / (comp.modelos[2].hasta * a.cambio))} con Opus.</span></div>
+    <div class="acciones"><button class="btn" id="ia-tar">${ico("link", 15)}Comprobar ahora</button><button class="btn" id="ia-consola">${ico("key", 15)}Comprar créditos en la consola</button></div></section>
+  <section class="tarjeta"><div><h2>Datos personales bloqueados</h2><span class="sub">Se sustituyen por fichas antes de salir del equipo.</span></div>
+    ${IAP.fichas.map(([t, f]) => `<div class="dato"><span>${esc(t)}</span><span class="mono ia-ficha-t">${esc(f)}</span></div>`).join("")}
+    <div class="dato"><span>Importes y fechas del documento</span><span style="color:var(--ok);font-weight:600">se envían</span></div>
+    <div class="ia-nota">${ico("lock")}<span>La tabla que traduce las fichas al dato real se queda en este equipo. Para comparar se envían pistas de parecido: «[DNI_2] ≈ DNI de [PERSONA_1]: 8 de 8 cifras iguales, falta la letra».</span></div>
+    <div class="acciones">${IAP.ultima_consulta ? `<a class="btn" href="#ia_envio/${IAP.ultima_consulta}">${ico("eye", 15)}Ver lo que se envía</a>` : '<span class="sub">«Ver lo que se envía» estará disponible tras la primera consulta.</span>'}</div></section>
+  <section class="tarjeta"><h2>Aprendizaje</h2>
+    ${tog("ia-aprender", a.aprender, "Aprender de mis correcciones", "Cada vez que deshaces o corriges algo de la IA se guarda como ejemplo anónimo, en este equipo.")}
+    <div class="dato"><span>Ejemplos guardados</span><b>${IAP.ejemplos}</b></div>
+    <div class="acciones"><button class="btn" id="ia-exp">${ico("download", 15)}Exportar aprendizaje</button><label class="btn">Importar<input type="file" id="ia-imp" accept=".json" hidden></label><button class="btn peligro" id="ia-borrar">Borrar</button></div>
+    <span class="sub">El archivo exportado no lleva datos personales: sirve para otro equipo o para otra variante.</span></section>
+  </div></div>`;
+}
+function leerIA() {
+  const v = id => $("#" + id)?.value ?? "";
+  const precios = {};
+  document.querySelectorAll(".ia-precio").forEach(i => { (precios[i.dataset.m] ||= {})[i.dataset.c] = i.value; });
+  const funciones = {};
+  Object.keys(IAP.funciones).forEach(k => (funciones[k] = !!$("#ia-f-" + k)?.checked));
+  return { modelo: v("ia-modelo"), actua: v("ia-actua"), umbral: v("ia-umbral"), limite_dia: v("ia-ld"), limite_mes: v("ia-lm"), limite_lote: v("ia-ll"),
+    cambio: v("ia-cambio"), pausar: !!$("#ia-pausar")?.checked, aprender: !!$("#ia-aprender")?.checked, instrucciones: v("ia-instr"), funciones, precios };
+}
+function activarIA() {
+  if (!IAP) return;
+  const recargar = async () => { IAP = await api("ia"); S.estado.ia = IAP.resumen; pintar(); };
+  $("#ia-guardar")?.addEventListener("click", async () => {
+    try { const d = leerIA(); const c = $("#ia-clave").value.trim(); if (c) d.clave = c; IAP = await api("ia/ajustes", d); S.estado.ia = IAP.resumen; aviso("Ajustes de la IA guardados"); pintar(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#ia-onoff")?.addEventListener("click", async () => {
+    try { const c = $("#ia-clave").value.trim(); if (c) await api("ia/ajustes", { clave: c }); await api("ia/encender", { activo: !IAP.ajustes.activo }); await recargar(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#ia-probar")?.addEventListener("click", async ev => {
+    const b = ev.currentTarget; b.disabled = true; aviso("Conectando con la API…");
+    try { const r = await api("ia/probar", { clave: $("#ia-clave").value.trim() }); aviso(`Conexión correcta · ${r.modelos.length} modelos disponibles`); } catch (e) { aviso(e.message, true); }
+    b.disabled = false;
+  });
+  $("#ia-quitar")?.addEventListener("click", async () => { if (!confirm("¿Quitar la clave? El Controlador IA se apagará.")) return; try { await api("ia/ajustes", { clave: "" }); await recargar(); aviso("Clave quitada"); } catch (e) { aviso(e.message, true); } });
+  $("#ia-manual")?.addEventListener("click", async () => { const pre = $("#ia-manual-txt"); if (!pre.hidden) { pre.hidden = true; return; } pre.textContent = (await api("ia/manual")).texto; pre.hidden = false; });
+  $("#ia-serie")?.addEventListener("click", () => { $("#ia-instr").value = IAP.instrucciones_serie; aviso("Instrucciones de serie puestas: pulsa «Guardar cambios»"); });
+  $("#ia-tar")?.addEventListener("click", async ev => { ev.currentTarget.disabled = true; aviso("Comprobando las tarifas…"); try { await api("ia/tarifas", {}); await recargar(); aviso("Tarifas comprobadas"); } catch (e) { aviso(e.message, true); } });
+  $("#ia-act-tar")?.addEventListener("click", async () => { try { IAP = await api("ia/actualizar_tarifas", {}); pintar(); aviso("Tabla de tarifas actualizada"); } catch (e) { aviso(e.message, true); } });
+  $("#ia-consola")?.addEventListener("click", () => api("ia/consola", {}).catch(e => aviso(e.message, true)));
+  $("#ia-exp")?.addEventListener("click", async () => { try { const r = await api("ia/exportar", {}); aviso("Guardado en " + r.ruta); abrirRuta(r.ruta, true); } catch (e) { aviso(e.message, true); } });
+  $("#ia-imp")?.addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const r = await api("ia/importar", { datos: JSON.parse(await f.text()) }); aviso(`${r.importados} ejemplo(s) importado(s)`); await recargar(); } catch (er) { aviso("No se ha podido importar: " + er.message, true); }
+  });
+  $("#ia-borrar")?.addEventListener("click", async () => { if (!confirm("¿Borrar todos los ejemplos aprendidos?")) return; await api("ia/borrar_aprendizaje", {}); await recargar(); });
+}
+
+// ---------------- Informe del lote
+function vistaInformeIA() {
+  if (!INF) return '<div class="tarjeta vacio">No hay informe de la IA para este lote.</div>';
+  const c = INF.cuentas, acc = INF.acciones;
+  const grupos = { todo: () => true, clasificar: x => x.tipo === "clasificado", separar: x => ["separado", "ordenado", "unido"].includes(x.tipo),
+    personas: x => ["misma_persona", "tercero"].includes(x.tipo), asignar: x => ["asignado", "limbo"].includes(x.tipo), ti: x => x.tipo === "para_ti" };
+  const nombres = { todo: "Todo", clasificar: "Clasificar", separar: "Separar y unir", personas: "Personas", asignar: "Asignar", ti: "Para ti" };
+  const vis = acc.filter(x => x.tipo !== "para_ti" && grupos[INF_FILTRO](x) || INF_FILTRO === "ti" && x.tipo === "para_ti" || INF_FILTRO === "todo" && x.tipo === "para_ti");
+  const paraTi = acc.filter(x => x.tipo === "para_ti" && x.estado !== "deshecha" && !x.revisada);
+  const ICO_T = { clasificado: "check", separado: "scan", ordenado: "scan", unido: "link", misma_persona: "user", tercero: "user", asignado: "folder", limbo: "limbo", para_ti: "lock" };
+  const fila = x => {
+    const d = x.documento, des = x.estado === "deshecha";
+    const ver = !d ? "" : d.estado === "guardado" && d.expediente_id ? `#expediente/${d.expediente_id}` : ["espera_emparejar", "parado"].includes(d.estado) ? `#revision/${d.id}` : "";
+    return `<div class="ia-fila ${des ? "deshecha" : ""}"><span class="ia-fico">${ico(ICO_T[x.tipo] || "ia", 17)}</span>
+      <span class="ia-que">${pill(x.titulo, x.tipo === "para_ti" ? "warn" : "ia")}${x.estado === "por_revisar" && !des ? pill("Para mirar", "warn") : ""}${des ? pill("Deshecho", "todo") : ""}${x.revisada && !des && x.tipo !== "para_ti" ? pill("Revisado", "ok") : ""}
+        <b>${esc(d?.archivo || "")}</b><span>${esc(x.detalle || "")}</span></span>
+      <span class="ia-porque"><b>Por qué:</b> ${esc(x.motivo || "—")}</span>
+      <span class="ia-seg">Seguridad<b style="color:${x.seguridad >= (IAP?.ajustes?.umbral || 90) ? "var(--ok)" : "var(--warn)"}">${x.seguridad} %</b></span>
+      <span class="ia-acc">${!des && x.tipo !== "para_ti" ? `<button class="btn peq" data-ia-des="${x.id}">${ico("undo", 14)}Deshacer</button>` : ""}${ver ? `<a class="btn peq" href="${ver}">${ico("eye", 14)}Ver</a>` : ""}${x.consulta_id ? `<a class="btn peq" href="#ia_envio/${x.consulta_id}" title="Lo que se envió a la IA">Envío</a>` : ""}</span></div>`;
+  };
+  const tile = (t, v, col) => `<div class="ia-tile"><span>${t}</span><b style="color:${col}">${v}</b></div>`;
+  return `<div class="cab"><div><small>Motor de proceso › Lote ${INF.lote}</small><h1>Informe del Controlador IA</h1>${INF.estado?.estado?.startsWith("limite") ? `<div class="sub" style="color:var(--warn)">La IA se paró en este lote: ${INF.estado.estado === "limite_lote" ? "límite del lote" : "límite de gasto"} alcanzado.</div>` : INF.estado?.estado === "error" ? `<div class="sub" style="color:var(--bad)">La IA se paró por un error: ${esc(JSON.parse(INF.estado.nota || "{}").parado || "")}</div>` : ""}</div>
+    <div class="acciones"><a class="btn" href="#motor/${INF.lote}">Volver al lote</a><button class="btn peligro" id="ia-des-todo">${ico("undo")}Deshacer todo lo de la IA</button><button class="btn pri" id="ia-revisado">${ico("check")}Dar por revisado</button></div></div>
+  <div class="ia-tiles">${tile("Documentos del lote", c.documentos, "var(--text)")}${tile("Resueltos en local", c.local, "var(--ok)")}${tile("Resueltos por la IA", c.ia, "#C4B5FD")}${tile("Para ti", c.para_ti, "var(--warn)")}${tile("Coste del lote", eurIA(INF.coste), "var(--text)")}</div>
+  ${paraTi.length ? `<div class="ia-pausa">${ico("lock", 22)}<span class="t"><b>${paraTi.length} cosa(s) esperan tu decisión</b><span>${paraTi.slice(0, 3).map(x => esc(x.titulo + ": " + (x.detalle || ""))).join(" · ")}</span></span>
+    ${paraTi[0].documento && ["espera_emparejar", "parado"].includes(paraTi[0].documento.estado) ? `<a class="btn pri" href="#revision/${paraTi[0].documento.id}">Decidir ahora</a>` : ""}</div>` : ""}
+  <section class="tarjeta"><div><h2>Lo que ha hecho la IA</h2><span class="sub">Cada acción con su motivo. «Deshacer» la devuelve al Centro de revisión y la guarda como ejemplo para la próxima vez.</span></div>
+    <div class="chips">${Object.keys(grupos).map(k => `<button class="chip ${INF_FILTRO === k ? "sel" : ""}" data-ia-filtro="${k}">${nombres[k]} · ${acc.filter(grupos[k]).length}</button>`).join("")}</div>
+    ${vis.map(fila).join("") || '<span class="sub">Nada en este apartado.</span>'}</section>
+  <div class="ia-nota">${ico("ia")}<span>Los documentos que ha tocado la IA llevan su marca en el Centro de revisión hasta que los des por revisados.</span></div>`;
+}
+function activarInformeIA() {
+  document.querySelectorAll("[data-ia-filtro]").forEach(b => b.addEventListener("click", () => { INF_FILTRO = b.dataset.iaFiltro; pintar(); }));
+  document.querySelectorAll("[data-ia-des]").forEach(b => b.addEventListener("click", async () => {
+    try { await api("ia/deshacer", { accion: +b.dataset.iaDes }); aviso("Deshecho: vuelve al Centro de revisión"); await refrescar(false); await ir(); } catch (e) { aviso(e.message, true); }
+  }));
+  $("#ia-des-todo")?.addEventListener("click", async () => {
+    if (!confirm("¿Deshacer todo lo que ha hecho la IA en este lote? Los documentos vuelven al Centro de revisión.")) return;
+    try { const r = await api("ia/deshacer_lote", { lote: INF.lote }); aviso(`${r.deshechas} acción(es) deshecha(s)` + (r.fallos.length ? ` · ${r.fallos.length} no se han podido` : "")); await refrescar(false); await ir(); } catch (e) { aviso(e.message, true); }
+  });
+  $("#ia-revisado")?.addEventListener("click", async () => { await api("ia/revisada", { lote: INF.lote }); aviso("Lote dado por revisado"); await refrescar(false); await ir(); });
+}
+
+// ---------------- Lo que se envía a la IA
+function vistaEnvioIA() {
+  if (!ENV) return '<div class="tarjeta vacio">Cargando…</div>';
+  const e = ENV, mapa = Object.entries(e.mapa || {});
+  return `<div class="cab"><div><small>Controlador IA › Lote ${e.lote_id ?? "—"} › Consulta ${e.id}</small><h1>Lo que se envía a la IA</h1></div>
+    <div class="acciones"><button class="btn" id="ia-copiar">Copiar texto</button><a class="btn pri" href="${e.lote_id ? "#ia_informe/" + e.lote_id : "#ia"}">Cerrar</a></div></div>
+  <div class="ia-cols"><div class="ia-col">
+    <section class="tarjeta"><div><h2>Texto enviado</h2><span class="sub">Exactamente lo que sale del equipo: solo texto, sin imágenes ni archivos. Las fichas moradas sustituyen a los datos personales. Además va el manual (reglas, tipos de documento, tus instrucciones y ${e.manual.ejemplos} ejemplo(s) anónimo(s)).</span></div>
+      <pre class="ia-pre">${fichasHTML(e.enviado || "")}</pre></section>
+    <section class="tarjeta"><div><h2>Respuesta recibida</h2><span class="sub">${e.error ? "La consulta falló: " + esc(e.error) : "Se traduce en el equipo con la tabla de la derecha antes de aplicarla."}</span></div>
+      <pre class="ia-pre">${fichasHTML(e.respuesta || "—")}</pre></section></div>
+  <div class="ia-col estrecha">
+    <section class="tarjeta"><div><h2>Tabla de traducción · solo en este equipo</h2><span class="sub">Para que tú veas a quién corresponde cada ficha.</span></div>
+      ${mapa.map(([f, v]) => `<div class="dato"><span class="mono ia-ficha-t">${esc(f)}</span><span>${esc(v)}</span></div>`).join("") || '<span class="sub">Sin datos tapados.</span>'}
+      <div class="ia-nota">${ico("lock")}<span>Esta tabla nunca se envía.</span></div></section>
+    <section class="tarjeta"><h2>Esta consulta</h2>
+      ${[["Modelo", (IAP?.modelos?.[e.modelo]?.nombre) || e.modelo], ["Tokens enviados", (e.t_entrada + e.t_cache + e.t_escritura).toLocaleString("es-ES") + (e.t_cache ? ` (${e.t_cache.toLocaleString("es-ES")} del manual en caché)` : "")],
+         ["Tokens de respuesta", (e.t_salida || 0).toLocaleString("es-ES")], ["Coste", eurIA(e.coste_eur)], ["Tiempo", e.segundos ? String(e.segundos).replace(".", ",") + " s" : "—"]]
+        .map(([a, b]) => `<div class="dato"><span>${a}</span><b>${esc(b)}</b></div>`).join("")}</section></div></div>`;
+}
+document.addEventListener("click", e => { if (e.target.closest("#ia-copiar") && ENV) { navigator.clipboard?.writeText(ENV.enviado || ""); aviso("Texto copiado"); } });
