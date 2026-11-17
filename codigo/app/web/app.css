@@ -739,3 +739,18 @@ td.centro { text-align: center; }
 .pestanas[aria-label="Motor de proceso"] > .engranajes .eng { gap: 2px; font-size: 15px; }
 .pestanas[aria-label="Motor de proceso"] > .engranajes .eng small { font-size: 15px; font-weight: 600; line-height: 1; padding: 10px 0 14px; }
 .cab-motor { min-height: 96px; align-items: center; }   /* deja sitio a los engranajes, que suben desde la fila de pestañas */
+
+/* 3.1.2 · «Dónde está ahora»: una línea por ruta y la completa al pasar el ratón */
+td.donde { max-width: 560px; }
+.ruta-corta { position: relative; white-space: nowrap; overflow: visible; cursor: default; line-height: 1.6; }
+.ruta-corta > .mono { display: inline-block; max-width: calc(100% - 70px); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.ruta-tip { display: none; position: absolute; z-index: 40; left: 0; top: calc(100% + 4px); min-width: 320px; max-width: min(760px, 70vw); white-space: normal; word-break: break-all;
+  background: var(--surface2, #1F2633); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 13px; }
+.ruta-tip b { display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+.ruta-corta:hover .ruta-tip, .ruta-corta:focus .ruta-tip { display: block; }
+
+.ruta-corta { display: flex; align-items: baseline; min-width: 0; }
+.ruta-corta .etq { flex: none; margin-right: 6px; }
+.ruta-corta .dir { flex: 0 1 auto; min-width: 2em; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ruta-corta .fich { flex: none; white-space: nowrap; }
+td.donde { max-width: 640px; min-width: 420px; }

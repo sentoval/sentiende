@@ -180,6 +180,19 @@ function bailaoras() {
 }
 // Engranajes del Motor de proceso: el del motor gira cuando el equipo trabaja; el de la IA, con los colores del botón IA
 const ENGRANAJE = '<path d="M12 2.5l1.6.3.4 2.1a7 7 0 0 1 1.9.8l1.8-1.2 1.2 1.1-1.2 1.8a7 7 0 0 1 .8 1.9l2.1.4.3 1.6-.3 1.6-2.1.4a7 7 0 0 1-.8 1.9l1.2 1.8-1.2 1.2-1.8-1.2a7 7 0 0 1-1.9.8l-.4 2.1-1.6.3-1.6-.3-.4-2.1a7 7 0 0 1-1.9-.8l-1.8 1.2-1.2-1.2 1.2-1.8a7 7 0 0 1-.8-1.9l-2.1-.4L2.5 12l.3-1.6 2.1-.4a7 7 0 0 1 .8-1.9L4.5 6.3l1.2-1.1 1.8 1.2a7 7 0 0 1 1.9-.8l.4-2.1z"/><circle cx="12" cy="12" r="3.2"/>';
+// 3.1.2 (Joan 18:51) · ruta en una sola línea, abreviada por el medio (C:\…\SeFinancia\SeDocumentos\Carpeta\fichero.pdf);
+// al pasar el ratón (o con el teclado) sale un cuadro con la dirección completa
+function abreviarRuta(r) {
+  const sep = r.includes("\\") ? "\\" : "/";
+  const p = r.split(/[\\/]/).filter((x, i) => x || i === 0);
+  return p.length <= 5 ? r : p[0] + sep + "…" + sep + p.slice(-4).join(sep);
+}
+function rutaCorta(etq, ruta) {
+  // si no cabe, se recorta la parte de las carpetas, nunca el nombre del archivo
+  const corta = abreviarRuta(ruta), sep = corta.includes("\\") ? "\\" : "/", i = corta.lastIndexOf(sep);
+  return `<div class="ruta-corta" tabindex="0"><span class="muted etq">${esc(etq)}:</span><span class="mono dir">${esc(corta.slice(0, i))}</span><span class="mono fich">${esc(corta.slice(i))}</span>
+    <span class="ruta-tip" role="tooltip"><b>${esc(etq)}</b><span class="mono">${esc(ruta)}</span></span></div>`;
+}
 function engranajes(lateral = false) {
   const ia = S.estado?.ia || {}, motor = !!S.estado?.trabajando;
   const iaCls = !ia.activo ? "apagado" : ia.estado === "pausa" ? "pausa" : ia.estado === "trabajando" ? "on gira" : "on";
@@ -230,7 +243,7 @@ function vistaMotor() {
   <section class="tarjeta sinp"><div class="tcab"><h2>Documentos del lote</h2><span class="sub">Pulsa uno para revisarlo</span></div>
     <table class="tabla"><thead><tr><th>Documento</th><th>Fase</th><th>Tipo</th><th>Dónde está ahora</th><th>Estado</th></tr></thead><tbody>
     ${docs.map(d => `<tr ${["espera_emparejar", "parado"].includes(d.estado) ? `class="clic" data-doc="${d.id}"` : ""}><td>${esc(d.archivo)}${d.nombre_final ? `<div class="mono muted">${esc(d.nombre_final)}</div>` : ""}</td><td>${fbar(d.fase, d.estado)}</td><td>${esc(d.tipo ? nombreTipo(d.tipo, d.modelo) : "—")}</td>
-      <td>${Object.entries(d.donde).filter(([, v]) => v).map(([k, v]) => `<div class="mono"><span class="muted">${esc(k)}:</span> ${esc(v)}</div>`).join("")}</td><td>${est(d.estado)}</td></tr>`).join("")}
+      <td class="donde">${Object.entries(d.donde).filter(([, v]) => v).map(([k, v]) => rutaCorta(k, v)).join("")}</td><td>${est(d.estado)}</td></tr>`).join("")}
     </tbody></table></section>`;
 }
 function activarMotor() {
