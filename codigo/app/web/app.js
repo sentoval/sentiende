@@ -408,7 +408,8 @@ function vistaRevision() {
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
           .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}${expSel ? `<select class="misma ${String((R.otros || {})[x.i] || "").startsWith("misma:") ? "sel" : ""}" data-misma="${x.i}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${expSel.personas.map(q => `<option value="${q.id}" ${(R.otros || {})[x.i] === "misma:" + q.id ? "selected" : ""}>${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}</span>`}</div>`).join("")}</div></div>` : "";
   const pendientesOtras = otras.filter(x => !x.yaEsta).length;
-  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a></div>` : ""; })();
+  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} hojas parecen el mismo documento${pr.porcentaje ? ` (${pr.porcentaje} %)` : ""}.</b> <span class="muted">${esc((pr.motivos || []).join(" · "))}</span>
+    <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a> <button type="button" class="btn peq" id="no-unir" data-docs="${pr.documentos.join(",")}" title="No se volverá a proponer y el programa aprende de ello">No, son distintos</button></div>` : ""; })();
   // ¿tarjeta de visita? Se pregunta siempre, arriba y en grande: no se puede confirmar sin responder
   const tj = datos.tarjeta && !datos.tarjeta_descartada ? datos.tarjeta : null;
   if (tj && !R.tj) { const lm2 = loteMayoritario(d); R.tj = { ...tj, expediente: lm2 ? lm2.exp.id : (abiertos[0] || {}).id || "" }; }
@@ -478,6 +479,11 @@ async function cargarDoc(id) {
   pintar();
 }
 function activarRevision() {
+  $("#no-unir")?.addEventListener("click", async ev => {
+    const b = ev.currentTarget; b.disabled = true;
+    try { await api("no_unir", { documentos: b.dataset.docs.split(",").map(Number) }); S.prop = await api("propuestas_union"); aviso("Anotado: no se volverán a proponer juntas"); pintar(); }
+    catch (e) { b.disabled = false; aviso(e.message, true); }
+  });
   const vimg = $("#v-img");
   if (vimg) {
     const poner = n => { S.zoom = Math.min(5, Math.max(0.3, n)); vimg.style.width = (S.zoom * 100) + "%"; $("#v-nivel").textContent = Math.round(S.zoom * 100) + " %"; };

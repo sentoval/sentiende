@@ -44,6 +44,8 @@ class Motor:
         self.nombrador = Nombrador(self.variante)
         self._cargar_finalidades()
         self.negociacion = Negociacion(self.almacen)
+        from .parecido import Parecido
+        self.parecido = Parecido(self)           # 3.1.2 · hojas sueltas que parecen el mismo documento (solo propone)
         from .gestion import Gestion
         self.gestion = Gestion(self)
         self.gestion.aplicar()
@@ -291,6 +293,58 @@ class Motor:
                  "revision" if sep.reordenado else "info")
         return True
 
+    def releer_pagina(self, doc_id, n):
+        """3.1.2 (Joan: «sí, genial») · Al girar una página a mano en la revisión se vuelve a leer con el giro nuevo:
+        texto, DNI, nombres y fechas. Si el tipo no se había corregido a mano y estaba dudoso, se vuelve a clasificar.
+        Devuelve (útiles antes, útiles después) o None si la página no es de OCR."""
+        from PIL import Image, ImageOps
+        from .lectura import ocr, idiomas_ocr, utiles, imagen_pdf
+        a = self.almacen
+        d = a.documento(doc_id)
+        r = next((x for x in d["rotaciones"] or [] if x.get("n") == n), {})
+        clave = f'{d["huella"]}:{n}'
+        antes = a.texto_cache(clave)
+        if antes and antes.get("origen") != "ocr":
+            return None                       # PDF digital: el texto no depende del giro
+        if r.get("imagen") and Path(r["imagen"]).exists():
+            img = Image.open(r["imagen"])
+        elif (d["extension"] or "").lower() == ".pdf" and Path(d["ruta_original"] or "").exists():
+            img = imagen_pdf(d["ruta_original"], n)
+            if r.get("rotacion"):
+                img = img.rotate(-r["rotacion"], expand=True, fillcolor="white")
+        elif Path(d["ruta_original"] or "").exists():
+            img = ImageOps.exif_transpose(Image.open(d["ruta_original"]))
+            if r.get("rotacion"):
+                img = img.rotate(-r["rotacion"], expand=True, fillcolor="white")
+        else:
+            return None
+        giro = int(r.get("giro") or 0)
+        if giro:
+            img = img.rotate(-giro, expand=True, fillcolor="white")
+        texto, conf = ocr(img.convert("RGB"), idiomas_ocr())
+        a.guardar_texto(clave, texto, "ocr", round(conf, 3), (int(r.get("rotacion") or 0) + giro) % 360)
+        sel = d["paginas_sel"] or list(range(1, (d["paginas"] or 1) + 1))
+        if a.textos_de(doc_id) and n in sel:
+            a.db.execute("UPDATE textos_documento SET texto = ?, confianza = ? WHERE documento_id = ? AND n = ?", (texto, round(conf, 3), doc_id, sel.index(n) + 1))
+            a.db.commit()
+        completo = self._texto(a.documento(doc_id))
+        datos = d["datos"] or {}
+        nuevos = extraer(completo)
+        for k in ("tarjeta", "serie", "ia_propuesta"):
+            if k in datos:
+                nuevos[k] = datos[k]
+        cambios = {"datos": nuevos}
+        a_mano = a.db.execute("SELECT 1 FROM eventos WHERE documento_id = ? AND mensaje LIKE 'Tipo corregido a mano%'", (doc_id,)).fetchone()
+        if not a_mano and d["estado"] == "espera_emparejar" and (not d["tipo"] or (d["confianza"] or 0) < 0.75):
+            c = self.clasificador.clasificar(completo)
+            cambios.update(tipo=c.tipo, confianza=c.confianza, alternativas=c.alternativas, indicios=c.indicios,
+                           entidad=c.entidad, entidad_por=c.entidad_por)
+        a.actualizar(doc_id, **cambios)
+        u0, u1 = utiles((antes or {}).get("texto") or ""), utiles(texto)
+        a.evento(f"Página {n} leída otra vez tras girarla: {u1} caracteres útiles (antes {u0}) · {round(conf * 100)} %"
+                 + (f" · ahora parece {cambios['tipo']}" if cambios.get("tipo") else ""), doc_id, d["lote_id"], 4)
+        return u0, u1
+
     def _texto(self, d):
         sel = d.get("paginas_sel") or range(1, (d["paginas"] or 1) + 1)
         claves = [self.almacen.texto_cache(f'{d["huella"]}:{n}') for n in sel]
@@ -446,10 +500,27 @@ class Motor:
         el mismo tipo de documento: se propone unirlos en un PDF. Siempre se pregunta."""
         docs = [d for d in self.almacen.documentos("estado = 'espera_emparejar' AND unido_en IS NULL AND padre_id IS NULL")
                 if d["extension"] in (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".webp", ".bmp") or (d["extension"] == ".pdf" and (d["paginas"] or 1) == 1 and any(r.get("origen") == "ocr" for r in d["rotaciones"] or []))]
+        try:
+            out = self.parecido.propuestas(docs)          # 3.1.2 · por parecido (captura, aspecto y texto)
+        except Exception as e:
+            out = []
+            self.almacen.evento(f"No se ha podido comparar el parecido de las hojas: {e}", nivel="info")
+        ya = {i for g in out for i in g["documentos"]}
+        descartes = {(r[0], r[1]) for r in self.almacen.db.execute("SELECT a, b FROM parecido_descartes")}
         grupos = {}
         for d in docs:
-            grupos.setdefault((d["lote_id"], d["tipo"]), []).append(d["id"])
-        return [{"lote": k[0], "tipo": k[1], "documentos": v} for k, v in grupos.items() if len(v) > 1 and k[1]]
+            if d["id"] not in ya:
+                grupos.setdefault((d["lote_id"], d["tipo"]), []).append(d["id"])
+        for k, v in grupos.items():
+            if len(v) > 1 and k[1] and not any((min(x, y), max(x, y)) in descartes for x in v for y in v if x != y):
+                out.append({"lote": k[0], "tipo": k[1], "documentos": v, "porcentaje": None, "motivos": ["mismo tipo de documento"]})
+        return out
+
+    def no_unir(self, ids):
+        """«No, son distintos»: no se vuelve a proponer y las señales que había pesan menos (3.1.2)."""
+        if len(ids) < 2:
+            raise MotorError("Hacen falta al menos dos documentos.")
+        return self.parecido.aprender(ids, acierto=False)
 
     def unir(self, ids):
         """Une varios documentos (en el orden dado) en un PDF nuevo que sigue el proceso desde la fase 2.
@@ -461,6 +532,10 @@ class Motor:
             raise MotorError("Elige al menos dos documentos para unir.")
         if any(d["estado"] not in ("espera_emparejar", "parado") for d in docs):
             raise MotorError("Solo se pueden unir documentos que esperan revisión.")
+        try:
+            self.parecido.aprender([d["id"] for d in docs], acierto=True)     # 3.1.2 · lo que Joan une enseña qué señales aciertan
+        except Exception:
+            pass
         paginas = []
         for d in docs:
             for r in (d["rotaciones"] or [{"n": 1}]):

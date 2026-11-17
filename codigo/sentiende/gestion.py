@@ -489,6 +489,11 @@ class Gestion:
         r["giro"] = (int(r.get("giro", 0)) + int(grados)) % 360
         a.actualizar(doc_id, rotaciones=rots)
         a.evento(f"Página {pos} girada a mano {grados}°", doc_id, d["lote_id"], 4)
+        if d["estado"] in ("espera_emparejar", "parado", "limbo"):        # 3.1.2 · se vuelve a leer con el giro nuevo
+            try:
+                self.m.releer_pagina(doc_id, n)
+            except Exception as e:
+                a.evento(f"No se ha podido volver a leer la página {pos} tras girarla: {e}", doc_id, d["lote_id"], 4, "revision")
         return r["giro"]
 
     # ------------------------------------------------------------ personas

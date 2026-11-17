@@ -544,6 +544,8 @@ def crear_manejador(app):
                     if p == "/api/notificacion_vista":
                         app.contexto.visto(datos.get("id") and int(datos["id"]))
                         return self._json({"ok": True})
+                    if p == "/api/no_unir":                        # 3.1.2 · «No, son distintos»
+                        return self._json({"senales": m.no_unir([int(x) for x in datos.get("documentos") or []])})
                     if p == "/api/aviso_cliente":                  # 3.1.2 · ignorar / posponer / volver a mostrar
                         m.almacen.marcar_aviso_cliente(int(datos["expediente"]), datos["mensaje"], datos["accion"], datos.get("dias"))
                         return self._json({"ok": True})
