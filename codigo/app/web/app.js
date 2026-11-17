@@ -1075,7 +1075,9 @@ function tarjetaCorreo() {
     <span class="sub">${esc(p.nota)}</span>
     <div class="campos-inline">${campo("usuario", "Usuario (tu dirección de correo)", f.usuario, "email", 'autocomplete="off"')}${campo("clave", "Contraseña", f.clave, "password", `autocomplete="new-password" placeholder="${CORREO.ajustes.hay_clave ? "•••••••• (guardada; escribe otra para cambiarla)" : ""}"`)}</div>
     <div class="campos-inline">${campo("carpeta", "Carpeta del buzón", f.carpeta)}${campo("dias", "Mirar correos de los últimos (días)", f.dias, "number", 'min="1" max="365"')}${campo("remitentes", "Solo de estos remitentes (opcional, separados por comas)", f.remitentes, "text", 'placeholder="@banco.es, gestor@ejemplo.com"')}</div>
-    <label class="check mini"><input type="checkbox" id="co-nuevos" ${f.revisar_nuevos !== false ? "checked" : ""}><span>Los remitentes nuevos van a «Correo por revisar» hasta que los aceptes (recomendado)</span></label>
+    <div class="sub reglas-correo"><b>Reglas al recoger</b> · espera 1 minuto desde que llega cada correo · remitente conocido (en «Correos» de una ficha) con adjuntos: entra; sin adjuntos: aviso ·
+      desconocido sin adjuntos o con fotos que no se reconocen: etiqueta «No_Apto_SeFina» · con Word/Excel y sin PDF: te pregunta en la campanita sin abrirlos ·
+      con algún PDF: entra (si solo trae PDF y nada se relaciona con lo registrado, vuelve a la bandeja de entrada) · lo que entra se mueve a la carpeta «procesadosMMAA» del buzón. Nunca se borra nada.</div>
     <div class="campos-inline"><div class="campo"><label for="co-cada">Revisar solo</label><select id="co-cada">${[[0, "Solo cuando pulse «Correo»"], [5, "Cada 5 minutos"], [15, "Cada 15 minutos"], [30, "Cada 30 minutos"], [60, "Cada hora"]].map(([v, n]) => `<option value="${v}" ${+f.cada_minutos === v ? "selected" : ""}>${n}</option>`).join("")}</select></div></div>
     <div class="acciones"><button class="btn pri" id="co-guardar">${ico("check")}Guardar</button><button class="btn" id="co-probar">Probar conexión</button>${CORREO.ajustes.servidor && CORREO.ajustes.hay_clave ? `<button class="btn" id="co-revisar">${ico("mail")}Revisar ahora</button>` : ""}</div>
     ${e.ultimo ? `<span class="sub">Última revisión: ${esc(e.ultimo.replace("T", " ").slice(0, 16))}${e.error ? " · error: " + esc(e.error) : e.resumen ? ` · ${e.resumen.adjuntos} adjunto(s) recogido(s)` : ""}</span>` : ""}
@@ -1084,7 +1086,7 @@ function tarjetaCorreo() {
 function leerCorreoForm() {
   const f = CORREO.form;
   ["servidor", "puerto", "usuario", "clave", "carpeta", "dias", "remitentes"].forEach(k => { const el = $("#co-" + k); if (el) f[k] = el.value; });
-  f.cada_minutos = +($("#co-cada")?.value || 0); f.activo = true; f.revisar_nuevos = !!$("#co-nuevos")?.checked;
+  f.cada_minutos = +($("#co-cada")?.value || 0); f.activo = true;
   return f;
 }
 function tarjetaRepetidas() {
@@ -1322,7 +1324,7 @@ function vistaExpedientes() {
 }
 function formNuevoExp() {
   const f = NUEVO_EXP, fin = S.info.finalidades_visibles || Object.keys(S.info.variante.finalidades);
-  const fila = (p, i) => `<div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]]
+  const fila = (p, i) => `<div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"], ["correo", "Correo (opcional)"]]
     .map(([k, l]) => `<div class="campo"><label>${l}</label><input data-ne="${i}" data-k="${k}" value="${esc(p[k] || "")}"></div>`).join("")}
     ${i ? `<div class="campo"><label>Papel</label><select data-ne="${i}" data-k="papel">${["Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior"].map(x => `<option ${p.papel === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>` : '<div class="campo"><label>Papel</label><input value="Titular" disabled></div>'}</div>`;
   return `<section class="tarjeta"><h2>Nuevo expediente (datos a mano)</h2><span class="sub">Lo que escribas aquí será la referencia segura: si después llegan documentos con un nombre o DNI muy parecido, se usarán estos datos y te avisará en la campanita para confirmarlo.</span>
@@ -1436,7 +1438,7 @@ function vistaPersonas() {
   return `<div class="cab"><div><h1>Personas</h1><div class="sub">Todas las personas fichadas, con sus expedientes y papeles. Una persona puede estar en varios expedientes.</div></div>
     <div class="acciones"><button class="btn" id="p-exp-manual">${ico("folder", 16)}Expediente manual</button><button class="btn pri" id="p-nueva">＋ Nueva persona</button></div></div>
   ${NUEVA_P ? `<section class="tarjeta"><h2>Nueva persona (datos a mano)</h2><span class="sub">Queda como referencia segura: si llegan documentos con un nombre o DNI muy parecido, se usarán estos datos y te avisará en la campanita. Para abrirle un expediente a la vez, usa «Expediente manual».</span>
-    <div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]].map(([k, l]) => `<div class="campo"><label>${l}</label><input data-np="${k}" value="${esc(NUEVA_P[k] || "")}"></div>`).join("")}</div>
+    <div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"], ["correo", "Correo (opcional)"]].map(([k, l]) => `<div class="campo"><label>${l}</label><input data-np="${k}" value="${esc(NUEVA_P[k] || "")}"></div>`).join("")}</div>
     <div class="acciones"><button class="btn pri" id="np-ok">${ico("check")}Guardar persona</button><button class="btn" id="np-no">Cancelar</button></div></section>` : ""}
   <div class="neg-nueva"><input id="p-filtro" placeholder="Buscar por nombre o DNI…" value="${esc(FILTRO_P)}"></div>
   <section class="tarjeta sinp"><table class="tabla"><thead><tr><th>Persona</th><th>DNI / NIE</th><th>Expedientes</th><th>Documentos</th></tr></thead><tbody>
@@ -1451,6 +1453,11 @@ function vistaPersona(id) {
   <section class="tarjeta"><h2>Datos</h2><div class="campos-inline">${[["nombre", "Nombre"], ["apellido1", "Primer apellido"], ["apellido2", "Segundo apellido"], ["dni", "DNI / NIE"]]
     .map(([k, l]) => `<div class="campo"><label for="pf-${k}">${l}</label><input id="pf-${k}" value="${esc(p[k] || "")}"></div>`).join("")}</div>
     <div class="acciones"><button class="btn pri" id="pf-ok">${ico("check")}Guardar ficha</button></div></section>
+  <section class="tarjeta"><h2>Correos</h2><span class="sub">Los correos de estas direcciones se dan por conocidos: si traen documentos, entran solos; si no traen, te avisa en la campanita.</span>
+    <div class="campos-inline"><div class="campo" style="flex:2"><label for="pf-correo">Correo informado (a mano)</label><input id="pf-correo" placeholder="cliente@correo.es" value="${esc(p.correo_informado || "")}"></div>
+    <div class="acciones" style="align-self:end"><button class="btn" id="pf-correo-ok">${ico("check")}Guardar correo</button></div></div>
+    <div class="campo"><label>Correos recibidos (se apuntan solos cuando se guarda documentación que llegó desde ellos)</label>
+    <div class="chips">${JSON.parse(p.correos_recibidos || "[]").map(c => `<span class="chip">${esc(c)} <button type="button" class="x" title="Quitar" data-quitar-correo="${esc(c)}">×</button></span>`).join("") || '<span class="sub">Ninguno todavía.</span>'}</div></div></section>
   <section class="tarjeta"><h2>Expedientes</h2>${p.expedientes.map(e => `<div class="dato"><a href="#expediente/${e.id}">${esc(e.nombre)}</a><span>${esc(e.papel)} · ${esc(e.estado)}</span></div>`).join("") || '<span class="sub">No está en ningún expediente.</span>'}</section>`;
 }
 let NUEVA_P = null;
@@ -1468,6 +1475,13 @@ function activarPersonas() {
   document.querySelectorAll("[data-persona-ir]").forEach(tr => tr.addEventListener("click", () => (location.hash = "persona/" + tr.dataset.personaIr)));
 }
 function activarPersona(id) {
+  $("#pf-correo-ok")?.addEventListener("click", async () => {
+    try { await api("persona", { id, correo_informado: $("#pf-correo").value }); PERS = await api("personas"); aviso("Correo guardado"); pintar(); } catch (e) { aviso(e.message, true); }
+  });
+  document.querySelectorAll("[data-quitar-correo]").forEach(b => b.addEventListener("click", async () => {
+    const p = PERS.find(x => x.id === id), lista = JSON.parse(p.correos_recibidos || "[]").filter(c => c !== b.dataset.quitarCorreo);
+    try { await api("persona", { id, correos_recibidos: lista }); PERS = await api("personas"); aviso("Quitado: sus próximos correos se tratarán como de un desconocido"); pintar(); } catch (e) { aviso(e.message, true); }
+  }));
   $("#pf-ok")?.addEventListener("click", async () => {
     const c = {}; ["nombre", "apellido1", "apellido2", "dni"].forEach(k => (c[k] = $("#pf-" + k).value));
     try { await api("persona", { id, ...c }); aviso("Ficha guardada"); PERS = await api("personas"); S.expedientes = await api("expedientes"); pintar(); } catch (e) { aviso(e.message, true); }
@@ -1912,12 +1926,20 @@ function notificacionesHTML() {
   const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico(n.tipo === "parecido" ? "user" : "folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
       ${n.expediente_id && n.expediente ? `<a class="btn peq" href="#expediente/${n.expediente_id}">Revisar expediente</a>` : ""}
       ${n.tipo === "parecido" && !n.visto && n.datos && /"(nombre|dni)"/.test(n.datos) ? `<button class="btn peq" data-noti-cambiar="${n.id}">Cambiar por los del documento</button>` : ""}
-      ${n.visto ? '<span class="muted">visto</span>' : `<button class="btn peq" data-noti-visto="${n.id}">${ico("check", 14)}${n.tipo === "parecido" ? "Visto (dejar los míos)" : "Visto"}</button>`}</span></div>`;
-  return `<section class="tarjeta"><div class="cab"><div><h2>Avisos del contexto</h2><span class="sub">Expedientes creados solos y datos parecidos a los que metiste a mano. Revísalos y dales «Visto» para que salgan de la campanita.</span></div>
+      ${n.tipo === "correo_office" && !n.visto ? `<button class="btn peq pri" data-correo-resp="si" data-id="${n.id}">${ico("check", 14)}Sí, es apto</button><button class="btn peq" data-correo-resp="no" data-id="${n.id}">No</button><button class="btn peq peligro" data-correo-resp="bloquear" data-id="${n.id}">No y bloquear remitente</button>` : ""}
+      ${n.visto ? '<span class="muted">visto</span>' : n.tipo === "correo_office" ? "" : `<button class="btn peq" data-noti-visto="${n.id}">${ico("check", 14)}${n.tipo === "parecido" ? "Visto (dejar los míos)" : "Visto"}</button>`}</span></div>`;
+  return `<section class="tarjeta"><div class="cab"><div><h2>Avisos del contexto y del correo</h2><span class="sub">Expedientes creados solos, datos parecidos a los que metiste a mano y correos que necesitan tu decisión. Dales «Visto» (o contesta) para que salgan de la campanita.</span></div>
     ${nuevas.length > 1 ? `<button class="btn" data-noti-visto="todas">Marcar todos como vistos</button>` : ""}</div>
     ${nuevas.map(fila).join("") || '<span class="sub">Nada nuevo.</span>'}${viejas.length ? `<details><summary class="sub">Vistos antes</summary>${viejas.map(fila).join("")}</details>` : ""}</section>`;
 }
 function activarNotificaciones() {
+  document.querySelectorAll("[data-correo-resp]").forEach(b => b.addEventListener("click", async () => {
+    const r = b.dataset.correoResp;
+    if (r === "bloquear" && !confirm("¿Bloquear a este remitente? Sus correos se ignorarán siempre.")) return;
+    try { await api("correo_respuesta", { id: +b.dataset.id, respuesta: r }); aviso(r === "si" ? "Aceptado: se recoge la documentación del correo" : "Ignorado: se le quita la etiqueta al correo"); }
+    catch (e) { aviso(e.message, true); }
+    await refrescar(false); await ir();
+  }));
   document.querySelectorAll("[data-noti-cambiar]").forEach(b => b.addEventListener("click", async () => {
     if (!confirm("¿Cambiar el nombre o el DNI de la ficha por los leídos en el documento? Se renombran sus archivos.")) return;
     try { await api("notificacion_cambiar", { id: +b.dataset.notiCambiar }); aviso("Ficha cambiada"); } catch (e) { aviso(e.message, true); }

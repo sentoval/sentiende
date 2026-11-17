@@ -495,7 +495,21 @@ class Gestion:
         p = a.persona(pid)
         if not p:
             raise ErrorGestion("No existe esa persona.")
+        # 3.2 · correos: «informado» (a mano) y «recibidos» (se apuntan solos); no renombran nada
+        if "correo_informado" in campos or "correos_recibidos" in campos:
+            sets = {}
+            if "correo_informado" in campos:
+                v = (campos.get("correo_informado") or "").strip().lower()
+                if v and not all(re.fullmatch(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", x) for x in re.split(r"[;,\s]+", v) if x):
+                    raise ErrorGestion("El correo informado no parece una dirección válida.")
+                sets["correo_informado"] = v or None
+            if "correos_recibidos" in campos:
+                sets["correos_recibidos"] = json.dumps(sorted({x.strip().lower() for x in campos.get("correos_recibidos") or [] if x.strip()}))
+            self.db.execute(f"UPDATE personas SET {', '.join(k + ' = ?' for k in sets)} WHERE id = ?", (*sets.values(), pid))
+            self.db.commit()
         nuevos = {k: (campos.get(k) or "").strip() for k in ("nombre", "apellido1", "apellido2", "dni") if k in campos}
+        if not nuevos or all((p.get(k) or "") == (v or "") for k, v in nuevos.items()):
+            return a.persona(pid)          # nada que renombrar
         if "dni" in nuevos:
             nuevos["dni"] = nuevos["dni"].upper().replace("-", "").replace(" ", "") or None
             otro = a.persona_por_dni(nuevos["dni"]) if nuevos["dni"] else None

@@ -670,3 +670,7 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 .dl-persona dl { display: grid; grid-template-columns: 82px 1fr; gap: 3px 10px; margin: 0; font-size: 13px; }
 .dl-persona dt { color: var(--muted); }
 .dl-persona dd { margin: 0; overflow-wrap: anywhere; }
+/* 3.2 · correos de la ficha */
+.chips .chip { flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; }
+.chip .x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+.chip .x:hover { color: var(--bad); }

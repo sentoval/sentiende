@@ -36,6 +36,9 @@ class App:
         self.ia = ControladorIA(self.motor)
         self.ia.cerrojo = CERROJO
         self.contexto = ContextoLote(self.motor, self.ia)
+        from sentiende.buzon import PoliticaCorreo
+        self.politica_correo = PoliticaCorreo(self.motor, self.contexto)
+        self.motor.al_guardar.append(self.politica_correo.apuntar_remitente)
         self._ia_hilo = None
         threading.Thread(target=self._correo_auto, daemon=True).start()
         threading.Thread(target=self._ia_auto, daemon=True).start()
@@ -96,13 +99,16 @@ class App:
                     with CERROJO:
                         self.motor.almacen.evento(f"Recibido por {descripcion}: {len(ids)} adjunto(s)", lote_id=l, fase=1)
                     return l
-                def decidir(email):
-                    with CERROJO:
-                        return self.motor.gestion.decidir_remitente(email)
-                def cuarentena(rutas, de, asunto):
-                    with CERROJO:
-                        self.motor.gestion.poner_en_cuarentena(rutas, de, asunto)
-                self.correo_estado["resumen"] = self.correo.recoger(self.motor.carpetas.entrada, lote, decidir, cuarentena)
+                class Pol:          # la política, siempre con el cerrojo de la base
+                    def __getattr__(_, nombre):
+                        f = getattr(self.politica_correo, nombre)
+                        def con_cerrojo(*a, **k):
+                            with CERROJO:
+                                return f(*a, **k)
+                        return con_cerrojo
+                with CERROJO:
+                    self.politica_correo.revisar_3c()
+                self.correo_estado["resumen"] = self.correo.recoger_aptos(self.motor.carpetas.entrada, lote, Pol())
                 for x in self.correo_estado["resumen"]["ignorados"]:
                     with CERROJO:
                         self.motor.almacen.evento(f"Correo: adjunto ignorado (tipo no admitido o con macros): {x}", fase=1, nivel="se")
@@ -164,6 +170,10 @@ class App:
     def pasar_contexto(self):
         """Contexto del lote (en local) para los lotes que ya no tienen nada en proceso (y los rezagados)."""
         with CERROJO:
+            try:
+                self.politica_correo.revisar_3c()      # correos de solo PDF sin relación: fuera del programa
+            except Exception:
+                pass
             if not self.contexto.ajustes()["activo"]:
                 return
             for lid in self.contexto.pendientes():
@@ -569,13 +579,24 @@ def crear_manejador(app):
                         # datos metidos a mano: referencia segura para lo que llegue después (3.0.3)
                         m.almacen.db.executemany("UPDATE personas SET manual = 1 WHERE id = ?", [(x,) for x in manuales])
                         m.almacen.db.commit()
+                        for x, o in zip(manuales, [pe] + [o for o in (datos.get("otras") or []) if o.get("nombre") and o.get("apellido1")]):
+                            if (o.get("correo") or "").strip():
+                                g.editar_persona(x, {"correo_informado": o["correo"]})
                         return self._json({"expediente": eid})
                     if p == "/api/persona_manual":
                         dni = (datos.get("dni") or "").strip().upper() or None
                         existia = bool(dni and m.almacen.persona_por_dni(dni))
                         pid = m.nueva_persona(datos["nombre"].strip(), (datos.get("apellido1") or "").strip(), (datos.get("apellido2") or "").strip(), dni)
                         m.almacen.db.execute("UPDATE personas SET manual = 1 WHERE id = ?", (pid,)); m.almacen.db.commit()
+                        if (datos.get("correo") or "").strip():
+                            g.editar_persona(pid, {"correo_informado": datos["correo"]})
                         return self._json({"id": pid, "existia": existia})
+                    if p == "/api/correo_respuesta":
+                        with CERROJO:
+                            r = app.politica_correo.contestar_office(int(datos["id"]), datos["respuesta"])
+                        if r["estado"] == "aceptado" or datos["respuesta"] in ("no", "bloquear"):
+                            app.revisar_correo()           # se procesa (o se le quita la etiqueta) ya
+                        return self._json(r)
                     if p == "/api/notificacion_cambiar":
                         return self._json(app.contexto.aplicar_cambio(int(datos["id"])) or {"ok": True})
                     if p == "/api/finalidad_expediente":

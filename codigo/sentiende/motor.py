@@ -39,6 +39,7 @@ class Motor:
         if not self.variante.compat.compatible:
             raise MotorError(self.variante.compat.mensaje)
         self.almacen = Almacen(self.carpetas.datos / "sentiende.db")
+        self.al_guardar = []          # funciones que se llaman con cada documento guardado en un expediente
         self.clasificador = Clasificador(self.variante)
         self.nombrador = Nombrador(self.variante)
         self._cargar_finalidades()
@@ -710,6 +711,11 @@ class Motor:
                 a.poner_avisos_cliente(d["expediente_id"], res["avisos_cliente"])
                 reg = textos.generar(a, c.documentos, d["expediente_id"], self.variante.nombres["sin_dni"])
                 a.evento(f"Registro de texto actualizado: {reg.name}", doc_id, lote, 10)
+                for avisar in self.al_guardar:          # p. ej. apuntar el remitente del correo en la ficha (3.2)
+                    try:
+                        avisar(a.documento(doc_id))
+                    except Exception:
+                        pass
             return a.documento(doc_id)
         except Exception as e:
             f = min(a.documento(doc_id)["fase"] + 1, 10)

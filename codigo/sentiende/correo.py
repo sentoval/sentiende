@@ -2,9 +2,15 @@
 """Recibir por correo (v1.1). Lee un buzón IMAP y recoge los adjuntos admitidos.
 
 Reglas de seguridad (decididas con Joan):
-- Solo lectura + marca: nunca se envía, se borra ni se mueve ningún correo. Los mensajes se
-  leen con BODY.PEEK (no se marcan como leídos) y, si el servidor lo permite, se les pone la
-  etiqueta «SeFinancia» para no recogerlos dos veces. Además se guarda un registro local.
+- Nunca se envía ni se borra ningún correo. Los mensajes se leen con BODY.PEEK (no se marcan como
+  leídos) y, si el servidor lo permite, se les pone la etiqueta «SeFinancia». Además se guarda un registro local.
+- 3.2 (Joan, 17/11/2026): los correos «aptos» ya procesados se MUEVEN a la carpeta «procesadosMMAA» del buzón,
+  solo con MOVE o con UIDPLUS (UID EXPUNGE de ese único correo). Si el servidor no tiene ninguna de las dos
+  cosas, no se mueve: solo se marca. Nunca un EXPUNGE general (borraría otros correos marcados para borrar).
+- Reglas de «apto» (con `politica`): espera de 1 minuto; remitente conocido con adjuntos → apto (sin adjuntos:
+  aviso); desconocido sin adjuntos → «No_Apto_SeFina»; solo fotos → apto si se reconocen (OCR ≥ 50 % o el
+  nombre del archivo dice qué es); con Word/Excel y sin PDF → se pregunta en la campanita (sin abrirlos);
+  con algún PDF → apto (si es solo PDF y luego nada se relaciona con lo registrado, vuelve a INBOX).
 - Solo entran los tipos admitidos (PDF, fotos, Word .docx, Excel .xlsx). Nada con macros
   (.docm, .xlsm…) ni ejecutables: se ignoran y se apuntan.
 - La contraseña se guarda cifrada con la cuenta de Windows (DPAPI): solo este usuario de este
@@ -16,6 +22,10 @@ from .recibir import PERMITIDOS
 from .carpetas import libre
 
 MARCA = "SeFinancia"
+NO_APTO = "No_Apto_SeFina"
+ESPERA_SEGUNDOS = 60
+IMAGENES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".bmp", ".webp"}
+OFFICE = {".docx", ".xlsx"}
 PREDEFINIDOS = {
     "gmail": {"nombre": "Gmail", "servidor": "imap.gmail.com", "puerto": 993,
               "nota": "Gmail pide una «contraseña de aplicación» (Cuenta de Google → Seguridad → Verificación en dos pasos → Contraseñas de aplicaciones)."},
@@ -127,7 +137,168 @@ class Correo:
         finally:
             _cerrar(im)
 
-    # ------------------------------------------------------------ recoger
+    # ------------------------------------------------------------ recoger (3.2: reglas de «apto»)
+    def recoger_aptos(self, destino, recibir_lote, politica, ahora=None):
+        """Revisa la carpeta de entrada con las reglas de Joan (ver arriba). `politica` decide con lo registrado:
+        estado(email) -> ("conocido", nombre) | ("bloqueado", None) | ("desconocido", None);
+        imagenes_aptas(rutas) -> bool; office(clave) -> "aceptado" | "rechazado" | None;
+        pedir_office(clave, datos); aviso_sin_docs(nombre, email, clave); registrar(lote, remitente, message_id, carpeta, regla);
+        devoluciones() -> [{"id", "message_id", "carpeta"}]; devuelto(id); quitar_marca() -> [{"clave", "uid"}]; marca_quitada(clave).
+        recibir_lote(rutas, descripcion) -> id del lote."""
+        a = self.ajustes(con_clave=True)
+        vistos = set(json.loads(self.ruta_vistos.read_text(encoding="utf-8"))) if self.ruta_vistos.exists() else set()
+        ahora = ahora or datetime.datetime.now(datetime.timezone.utc)
+        im = self._conectar(a)
+        res = {"correos": 0, "adjuntos": 0, "ignorados": [], "lotes": [], "no_aptos": 0, "esperando": 0,
+               "preguntas": 0, "sin_docs": 0, "movidos": 0, "sin_mover": 0, "devueltos": 0, "bloqueados": 0}
+        caps = {c.upper() if isinstance(c, str) else c.decode().upper() for c in (getattr(im, "capabilities", ()) or ())}
+        puede_mover = "MOVE" in caps or "UIDPLUS" in caps
+        entrada = a["carpeta"] or "INBOX"
+        try:
+            # 0. correos de la regla 3c que no se relacionaron con nada: vuelven a la entrada sin la etiqueta
+            for d in politica.devoluciones():
+                if self._devolver(im, d["message_id"], d["carpeta"], entrada, puede_mover, caps):
+                    res["devueltos"] += 1
+                if d["message_id"]:
+                    vistos.add(f"mid|{d['message_id']}")          # devuelto: no se vuelve a recoger
+                politica.devuelto(d["id"])
+            tipo, datos = im.select(_carpeta(entrada), readonly=False)
+            if tipo != "OK":
+                raise ErrorCorreo(f"No existe la carpeta «{entrada}» en el buzón.")
+            permanentes = " ".join(x.decode(errors="ignore") for x in (im.untagged_responses.get("PERMANENTFLAGS") or []))
+            con_marca = "\\*" in permanentes or MARCA in permanentes
+            uidval = (im.untagged_responses.get("UIDVALIDITY") or [b"0"])[0].decode()
+            # 0b. Word/Excel que dijiste que no: se les quita la etiqueta y se olvidan
+            for q in politica.quitar_marca():
+                if con_marca:
+                    try:
+                        im.uid("STORE", str(q["uid"]), "-FLAGS", f"({MARCA})")
+                    except imaplib.IMAP4.error:
+                        pass
+                politica.marca_quitada(q["clave"])
+            desde = _fecha_imap((ahora - datetime.timedelta(days=int(a["dias"]))).date())
+            tipo, ids = im.uid("SEARCH", None, "SINCE", desde)
+            carpeta_ok = f"procesados{ahora.astimezone():%m%y}"
+            creada = False
+            for uid in (ids[0].split() if ids and ids[0] else []):
+                u = uid.decode()
+                clave = f"{a['usuario']}|{entrada}|{uidval}|{u}"
+                if clave in vistos:
+                    continue
+                tipo, partes = im.uid("FETCH", uid, "(INTERNALDATE BODY.PEEK[])")       # PEEK: no lo marca como leído
+                cab = next((p[0] for p in partes if isinstance(p, tuple)), b"")
+                crudo = next((p[1] for p in partes if isinstance(p, tuple)), None)
+                if not crudo:
+                    continue
+                llegada = _internaldate(cab)
+                if llegada and (ahora - llegada).total_seconds() < ESPERA_SEGUNDOS:
+                    res["esperando"] += 1           # aún no ha pasado 1 minuto: se mira en la siguiente vuelta
+                    continue
+                msg = email.message_from_bytes(crudo)
+                de = _texto(msg.get("From", ""))
+                asunto = _texto(msg.get("Subject", "")) or "(sin asunto)"
+                email_de = (re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", de) or [de])[0].lower()
+                message_id = (msg.get("Message-ID") or "").strip()
+                if message_id and f"mid|{message_id}" in vistos:
+                    vistos.add(clave); continue
+                adjuntos, ignorados = _adjuntos(msg)
+                res["ignorados"] += [f"{n} (de «{asunto}»)" for n in ignorados]
+                exts = {Path(n).suffix.lower() for n, _ in adjuntos}
+                estado, nombre = politica.estado(email_de)
+                marcar = lambda flag, signo="+": con_marca and _store(im, u, signo, flag)
+                if estado == "bloqueado":
+                    res["bloqueados"] += 1; vistos.add(clave); continue
+                regla = None
+                if estado == "conocido":
+                    if not adjuntos:
+                        politica.aviso_sin_docs(nombre, email_de, clave)          # se queda en la entrada
+                        res["sin_docs"] += 1; vistos.add(clave); continue
+                    regla = "1"
+                elif not adjuntos:                                               # 2
+                    marcar(NO_APTO); res["no_aptos"] += 1; vistos.add(clave); continue
+                elif ".pdf" in exts:
+                    regla = "3c" if exts == {".pdf"} else "3d"
+                elif exts & OFFICE:                                              # 3b: se pregunta sin abrir nada
+                    decision = politica.office(clave)
+                    if decision == "aceptado":
+                        regla = "3b"
+                    elif decision == "rechazado":
+                        vistos.add(clave); continue
+                    else:
+                        if decision is None:
+                            marcar(MARCA)
+                            politica.pedir_office(clave, {"uid": u, "remitente": de, "email": email_de, "asunto": asunto,
+                                                          "archivos": [n for n, _ in adjuntos]})
+                            res["preguntas"] += 1
+                        continue                     # sigue en la entrada hasta que contestes
+                else:                                                            # 3a: solo fotos
+                    tmp = Path(destino) / f".comprobar_{u}"
+                    tmp.mkdir(parents=True, exist_ok=True)
+                    rutas_tmp = []
+                    for n, cuerpo in adjuntos:
+                        f = tmp / n; f.write_bytes(cuerpo); rutas_tmp.append(f)
+                    try:
+                        apto = politica.imagenes_aptas(rutas_tmp)
+                    finally:
+                        for f in rutas_tmp:
+                            f.unlink(missing_ok=True)
+                        try:
+                            tmp.rmdir()
+                        except OSError:
+                            pass
+                    if not apto:
+                        marcar(NO_APTO); res["no_aptos"] += 1; vistos.add(clave); continue
+                    regla = "3a"
+                # apto: se recogen los adjuntos, se marca y se mueve a «procesadosMMAA»
+                rutas = []
+                for n, cuerpo in adjuntos:
+                    f = libre(Path(destino) / n)
+                    f.write_bytes(cuerpo)
+                    rutas.append(f)
+                lote = recibir_lote(rutas, f"correo «{asunto}» de {de}")
+                res["lotes"].append(lote); res["adjuntos"] += len(rutas); res["correos"] += 1
+                marcar(MARCA)
+                carpeta_final = entrada
+                if puede_mover:
+                    if not creada:
+                        try:
+                            im.create(_carpeta(carpeta_ok))
+                        except imaplib.IMAP4.error:
+                            pass                     # ya existía
+                        creada = True
+                    if _mover(im, u, carpeta_ok, caps):
+                        carpeta_final = carpeta_ok; res["movidos"] += 1
+                    else:
+                        res["sin_mover"] += 1
+                else:
+                    res["sin_mover"] += 1
+                politica.registrar(lote, email_de, message_id, carpeta_final, regla)
+                vistos.add(clave)
+        finally:
+            _cerrar(im)
+            self.ruta_vistos.write_text(json.dumps(sorted(vistos)), encoding="utf-8")
+        res["puede_mover"] = puede_mover
+        return res
+
+    def _devolver(self, im, message_id, carpeta, entrada, puede_mover, caps):
+        """Regla 3c: el correo vuelve de «procesadosMMAA» a la entrada y se le quita la etiqueta."""
+        if not message_id:
+            return False
+        tipo, _ = im.select(_carpeta(carpeta), readonly=False)
+        if tipo != "OK":
+            return False
+        tipo, ids = im.uid("SEARCH", None, "HEADER", "Message-ID", message_id)
+        hecho = False
+        for uid in (ids[0].split() if ids and ids[0] else []):
+            u = uid.decode()
+            _store(im, u, "-", MARCA)
+            if carpeta != entrada and puede_mover:
+                hecho = _mover(im, u, entrada, caps) or hecho
+            else:
+                hecho = True
+        return hecho
+
+    # ------------------------------------------------------------ recoger (hasta la 3.1: todo lo admitido)
     def recoger(self, destino, recibir_lote, decidir=None, cuarentena=None):
         """Descarga los adjuntos admitidos de los correos nuevos.
         recibir_lote(rutas, descripcion) recibe los adjuntos de cada correo (un lote por correo).
@@ -200,6 +371,62 @@ class Correo:
             _cerrar(im)
             self.ruta_vistos.write_text(json.dumps(sorted(vistos)), encoding="utf-8")
         return res
+
+
+def _adjuntos(msg):
+    """[(nombre, bytes)] admitidos y [nombres] ignorados (macros, ejecutables, comprimidos…). Sin los logotipos de la firma."""
+    buenos, malos = [], []
+    for parte in msg.walk():
+        nombre = parte.get_filename()
+        if not nombre or parte.get_content_maintype() == "multipart":
+            continue
+        nombre = Path(_texto(nombre).replace("/", "_").replace("\\", "_")).name
+        cuerpo = parte.get_payload(decode=True) or b""
+        ext = Path(nombre).suffix.lower()
+        if PELIGROSOS.search(nombre) or ext not in PERMITIDOS:
+            malos.append(nombre)
+            continue
+        if parte.get("Content-ID") and ext in (".png", ".jpg", ".jpeg") and len(cuerpo) < 40_000:
+            continue
+        buenos.append((nombre, cuerpo))
+    return buenos, malos
+
+
+def _store(im, uid, signo, flag):
+    try:
+        im.uid("STORE", uid, f"{signo}FLAGS", f"({flag})")
+        return True
+    except imaplib.IMAP4.error:
+        return False
+
+
+def _mover(im, uid, carpeta, caps):
+    """Mueve UN correo sin tocar los demás: MOVE si existe; si no, COPY + \\Deleted + UID EXPUNGE de ese uid (UIDPLUS)."""
+    try:
+        if "MOVE" in caps:
+            tipo, _ = im.uid("MOVE", uid, _carpeta(carpeta))
+            return tipo == "OK"
+        if "UIDPLUS" in caps:
+            tipo, _ = im.uid("COPY", uid, _carpeta(carpeta))
+            if tipo != "OK":
+                return False
+            im.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
+            tipo, _ = im.uid("EXPUNGE", uid)          # solo este uid
+            return tipo == "OK"
+    except imaplib.IMAP4.error:
+        return False
+    return False
+
+
+def _internaldate(cab):
+    try:
+        t = imaplib.Internaldate2tuple(cab if isinstance(cab, bytes) else str(cab).encode())
+        if t:
+            import time
+            return datetime.datetime.fromtimestamp(time.mktime(t), datetime.timezone.utc)
+    except Exception:
+        pass
+    return None
 
 
 def _carpeta(c):
