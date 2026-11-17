@@ -1,5 +1,5 @@
 {
- "version": "2026.11.17-1",
+ "version": "2026.11.17-2",
  "motor": "Sentiende",
  "variante": "SeFinancia",
  "idiomas": [
@@ -2914,6 +2914,62 @@
     "PREVISIÓ",
     "INGRESSOS",
     "DESPESES"
+   ],
+   "emisores": [
+    "gestoria",
+    "particular"
+   ],
+   "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "id": "cuadrocontable",
+   "nombrecorto": "cuadrocontable",
+   "familia": "Cuentas y hojas de cálculo",
+   "zzzz": "Emisión MMAA",
+   "finalidades": [],
+   "nombres": {
+    "es": [
+     "Cuadro contable",
+     "Hoja de cálculo",
+     "Cuentas"
+    ],
+    "ca": [
+     "Quadre comptable"
+    ],
+    "eu": [
+     "Kontabilitate-taula"
+    ],
+    "gl": [
+     "Cadro contable"
+    ]
+   },
+   "sinonimos": [
+    "hoja de recaudación",
+    "control de caja",
+    "cuadro de cuentas",
+    "hoja de cálculo"
+   ],
+   "palabras_clave": [
+    "CUADRO CONTABLE",
+    "CONTABLE",
+    "RECAUDACION",
+    "RECAUDACIÓN",
+    "FORMAS DE PAGO",
+    "KILOMETRO",
+    "EFECTIVO",
+    "ENTREGAR CHOFER",
+    "EMISORA",
+    "#DIV/0!",
+    "#REF!",
+    "#VALOR!",
+    "#N/A",
+    "HOJA DE CALCULO",
+    "CONTROL DE CAJA",
+    "ARQUEO",
+    "TOTAL MES"
    ],
    "emisores": [
     "gestoria",

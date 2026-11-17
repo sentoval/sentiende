@@ -23,6 +23,15 @@ from .nombres import Nombrador, carpeta_expediente
 from . import checklist, textos
 from .negociacion import Negociacion, parece_tarjeta
 
+def parece_cuentas(texto):
+    """Muchas líneas con dos o más importes (tabla de cuentas) → hoja de cálculo pasada a PDF."""
+    lineas = [l for l in (texto or "").split("\n") if l.strip()]
+    if len(lineas) < 8:
+        return False
+    con = sum(1 for l in lineas if len(re.findall(r"-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\s*€?", l)) >= 2)
+    return con / len(lineas) >= 0.4
+
+
 class MotorError(Exception):
     pass
 
@@ -221,6 +230,14 @@ class Motor:
                 a.actualizar(did, fase=5, datos=datos)
                 a.evento(f"Datos: {len(datos['dni'])} DNI/NIE, {len(datos['iban'])} IBAN, {len(datos['fechas'])} fechas", did, lote, 5)
             c = self.clasificador.clasificar(texto)
+            # 3.1.3 (Joan) · las cuentas y hojas de cálculo que no se sabe dónde clasificar van a «Cuadro contable»
+            if "cuadrocontable" in self.variante.docs and c.tipo != "cuadrocontable":
+                ext = (a.documento(did)["extension"] or "").lower()
+                hoja = ext in (".xlsx", ".xls", ".xlsm", ".ods", ".csv")
+                if (hoja and (not c.tipo or c.confianza < 0.75)) or (not c.tipo or c.confianza < 0.5) and parece_cuentas(texto):
+                    c.tipo = "cuadrocontable"
+                    c.confianza = max(c.confianza or 0, 0.8 if hoja else 0.76)
+                    c.indicios = list(c.indicios or []) + ["hoja de cálculo" if hoja else "tabla de importes sin otro tipo claro"]
             # 3.1.2 · un formulario de solicitud cuyo archivo dice «firmado» se guarda como «Formulario firmado»
             if c.tipo == "formsolicitud" and "FIRMAD" in norm(a.documento(did)["nombre_recibido"] or ""):
                 c.tipo = "formfirmado"
