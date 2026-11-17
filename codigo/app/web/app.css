@@ -730,3 +730,12 @@ td.centro { text-align: center; }
 .lat-estado-zona .campana-se { margin: 0; }
 .cab-motor > .engranajes { gap: 44px; }
 .cab-motor > .engranajes .eng small { font-size: 17px; }
+
+/* 3.1.2 · Joan 18:44: engranajes bajados hasta las pestañas (nombres alineados con «Proceso · Limbo…» y apoyados en la línea), centrados */
+.cab-motor { display: flex; }
+.pestanas[aria-label="Motor de proceso"] { position: relative; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; margin: 0; gap: 44px;
+  align-items: flex-end; pointer-events: auto; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes .eng { gap: 2px; font-size: 15px; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes .eng small { font-size: 15px; font-weight: 600; line-height: 1; padding: 10px 0 14px; }
+.cab-motor { min-height: 96px; align-items: center; }   /* deja sitio a los engranajes, que suben desde la fila de pestañas */
