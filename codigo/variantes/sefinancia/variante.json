@@ -1,10 +1,10 @@
 {
  "id": "sefinancia",
  "nombre": "SeFinancia",
- "version": "3.1.0",
+ "version": "3.1.1",
  "requiere_motor": {
   "contrato": 3,
-  "minimo": "3.1.0"
+  "minimo": "3.1.1"
  },
  "descripcion": "Documentación de préstamos: hipotecario, pyme y licencia de taxi.",
  "colores": {

@@ -182,3 +182,30 @@ class TestDatosLeidos(unittest.TestCase):
             self.assertEqual(tit["dni"], "23456789D")
             self.assertIn("bancos", d)
             m.almacen.db.close()
+
+
+class TestPoliticaCorreo(unittest.TestCase):
+    def test_remitente_aprendido_y_preguntas(self):
+        from sentiende.buzon import PoliticaCorreo
+        with tempfile.TemporaryDirectory() as t:
+            m, lote = lote_familia(t)
+            c = ContextoLote(m, ControladorIA(m))
+            pol = PoliticaCorreo(m, c)
+            m.al_guardar.append(pol.apuntar_remitente)
+            self.assertEqual(pol.estado("pilar@correo.es"), ("desconocido", None))
+            pol.registrar(lote, "pilar@correo.es", "<a@b>", "procesados1126", "3c")
+            c.aplicar(lote)                                  # el contexto guarda los documentos claros
+            est, nombre = pol.estado("pilar@correo.es")
+            self.assertEqual(est, "conocido")
+            self.assertIn("Pilar", nombre)
+            self.assertEqual(pol.revisar_3c(), [])           # tiene relación: no se devuelve
+            # Word/Excel de un desconocido: pregunta en la campanita y respuesta «No y bloquear»
+            pol.pedir_office("k1", {"uid": "5", "remitente": "x@y.es", "email": "x@y.es", "asunto": "cuentas", "archivos": ["c.xlsx"]})
+            n = [x for x in c.notificaciones() if x["tipo"] == "correo_office"]
+            self.assertEqual(len(n), 1)
+            self.assertEqual(pol.office("k1"), "pendiente")
+            pol.contestar_office(n[0]["id"], "bloquear")
+            self.assertEqual(pol.office("k1"), "rechazado")
+            self.assertEqual(pol.estado("x@y.es")[0], "bloqueado")
+            self.assertEqual(pol.quitar_marca(), [{"clave": "k1", "uid": "5"}])
+            m.almacen.db.close()
