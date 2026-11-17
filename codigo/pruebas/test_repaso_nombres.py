@@ -30,6 +30,9 @@ class RepasoNombres(unittest.TestCase):
             nombres = sorted(a.documento(i)["nombre_final"] for i in ids)
             self.assertEqual(nombres, ["APV678_prestamo_CAJAM_0426.pdf", "APV678_prestamo_CAJAM_0526.pdf"])
             self.assertTrue(all(Path(a.documento(i)["ruta_final"]).exists() for i in ids))
+            self.assertEqual(a.expediente(eid)["carpeta"], "AnaPons_45678_1126")           # la carpeta también coge el DNI
+            self.assertFalse(carpeta.exists())
+            self.assertTrue(all("AnaPons_45678_1126" in a.documento(i)["ruta_final"] for i in ids))
             m.almacen.db.close()
 
 

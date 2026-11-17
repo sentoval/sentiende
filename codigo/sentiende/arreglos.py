@@ -318,6 +318,8 @@ def repasar_nombres(m, doc):
         p = a.persona(d["persona_id"]) if d["persona_id"] else (personas[0] if personas else None)
         if p and p.get("dni") and sin and sin in (d["nombre_final"] or ""):
             tocar.add(d["id"])
+    _poner_dni_en_carpeta(m, exp, personas, sin)
+    exp = a.expediente(eid)
     hechos = []
     for did in sorted(tocar):
         d = a.documento(did)
@@ -337,3 +339,51 @@ def repasar_nombres(m, doc):
     if hechos:
         _refrescar(m, eid)
     return hechos
+
+
+def _poner_dni_en_carpeta(m, exp, personas, sin):
+    """3.1.2 (Joan, 17/11: «1 sí») · Cuando ya se sabe el DNI del titular, la carpeta del expediente creada como
+    «Nombre_NOINFORMADO_MMAA» pasa a «Nombre_DNI5_MMAA», en SeDocumentos y en Doc_original. Si algo de dentro
+    está abierto en otro programa, no se cambia nada y se intenta otra vez al guardar el siguiente documento."""
+    from .nombres import numero_doc
+    a, c = m.almacen, m.carpetas
+    vieja = exp["carpeta"] or ""
+    tit = next((p for p in personas if p.get("papel") == "Titular"), personas[0] if personas else None)
+    num = numero_doc(tit.get("dni")) if tit else None
+    if not sin or f"_{sin}_" not in vieja or not num:
+        return False
+    nueva = vieja.replace(f"_{sin}_", f"_{num[-5:]}_", 1)
+    pares = [(c.documentos / vieja, c.documentos / nueva), (c.originales / vieja, c.originales / nueva)]
+    if any(d.exists() for _, d in pares) or a.db.execute("SELECT 1 FROM expedientes WHERE carpeta = ? AND id != ?", (nueva, exp["id"])).fetchone():
+        a.evento(f"No se cambia la carpeta «{vieja}» a «{nueva}»: ya existe una carpeta con ese nombre", nivel="revision")
+        return False
+    hechas = []
+    try:
+        for o, d in pares:
+            if o.exists():
+                o.rename(d)
+                hechas.append((o, d))
+    except OSError as e:
+        for o, d in reversed(hechas):          # o todo o nada
+            try:
+                d.rename(o)
+            except OSError:
+                pass
+        a.evento(f"La carpeta «{vieja}» no se ha podido cambiar a «{nueva}» (¿algún archivo abierto en otro programa?): {e}. "
+                 "Se intentará otra vez al guardar el siguiente documento.", nivel="revision")
+        return False
+    for o, d in hechas:
+        viejo_txt = str(o)
+        for r in a.db.execute("SELECT id, ruta_final, ruta_original_final FROM documentos WHERE ruta_final LIKE ? OR ruta_original_final LIKE ?",
+                              (viejo_txt + "%", viejo_txt + "%")).fetchall():
+            cambios = {}
+            for k in ("ruta_final", "ruta_original_final"):
+                v = r[k] or ""
+                if v == viejo_txt or v.startswith(viejo_txt + "\\") or v.startswith(viejo_txt + "/"):
+                    cambios[k] = str(d) + v[len(viejo_txt):]
+            if cambios:
+                a.actualizar(r["id"], **cambios)
+    a.db.execute("UPDATE expedientes SET carpeta = ? WHERE id = ?", (nueva, exp["id"]))
+    a.db.commit()
+    a.evento(f"Carpeta del expediente puesta al día con el DNI: {vieja} → {nueva}")
+    return True
