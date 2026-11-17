@@ -30,3 +30,17 @@ class Noche(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Noche2(unittest.TestCase):
+    def test_nif_del_empresario_en_la_nomina(self):
+        t = ("CALABUIG JAQUOTOT, VICENTE\nAV GASPAR 12\n46020 VALENCIA\nNIF. 12345678Z 413\nBALLESTER GARCIA, JOAN 16/1538095- 67\n"
+             "N MATRIC | ANTIGUEDAD\nCALABUIG JAQUOTOT VICENTE | CONDUCTOR | 21 FEB 25 | 87654321X\n")
+        p = {x["completo"]: x["dni"] for x in personas(t)}
+        self.assertNotEqual(p.get("Vicente Calabuig Jaquotot"), "12345678Z")
+
+    def test_renta_individual_y_menor(self):
+        from sentiende.extraer import tributacion
+        self.assertEqual(tributacion("Opción de tributación\nTributación individual ¦ X 0068"), "individual")
+        t = "Descendientes\nApellidos y nombre ¦ RAMOS SERISOLA ARIADNA 0076\nFecha de nacimiento ¦ 04/12/2019 0077\n"
+        self.assertTrue(any(x.get("nacimiento") == "2019-12-04" for x in personas(t)))

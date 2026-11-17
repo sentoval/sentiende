@@ -660,6 +660,8 @@ class Motor:
         a = self.almacen
         if not a.documento(doc_id):
             raise MotorError(f"No existe el documento {doc_id}.")
+        if a.documento(doc_id)["estado"] == "limbo":          # 3.1.2b · ya está en el Limbo: no se vuelve a guardar
+            return a.documento(doc_id)
         p = persona or {"nombre": "", "apellido1": "", "dni": None}
         return self._renombrar_y_guardar(doc_id, limbo=True, persona=p)
 
@@ -712,9 +714,34 @@ class Motor:
             _refrescar(self, eid)
         return a.documento(doc_id)
 
+    def _reparar_origen(self, d):
+        """3.1.2b · El original ya no está donde dice (p. ej. el DNI de Joan: se guardó en el Limbo, se intentó guardar
+        otra vez y quedó «parado» buscando el archivo en Entrada). Se recupera de donde esté de verdad:
+        - si hay un PDF suyo en _Limbo, pasa a ser la copia de trabajo, como al «Sacar del Limbo»;
+        - si no, se usa el original que ya está en Doc_original."""
+        a, c = self.almacen, self.carpetas
+        if not d["ruta_original"] or Path(d["ruta_original"]).exists():
+            return d
+        lf = Path(d["ruta_final"] or "")
+        if lf.is_file() and (lf.parent == c.limbo or c.limbo in lf.parents):
+            w = libre(c.trabajo(d["lote_id"]) / f"limbo_{d['id']}{lf.suffix.lower()}")
+            w.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(lf), w)
+            paginas = 1
+            if w.suffix.lower() == ".pdf":
+                from pypdf import PdfReader
+                paginas = len(PdfReader(str(w)).pages)
+            a.actualizar(d["id"], ruta_original=str(w), extension=w.suffix.lower(), paginas=paginas, paginas_sel=None,
+                         rotaciones=[{"n": i} for i in range(1, paginas + 1)], ruta_trabajo=str(w.parent), ruta_final=None)
+            a.evento("El original ya no estaba en Entrada: se recupera la copia del Limbo y se sigue", d["id"], d["lote_id"], 10)
+        elif Path(d["ruta_original_final"] or "").is_file():
+            a.actualizar(d["id"], ruta_original=d["ruta_original_final"])
+            a.evento("El original ya no estaba en Entrada: se usa el que ya está en Doc_original", d["id"], d["lote_id"], 10)
+        return a.documento(d["id"])
+
     def _renombrar_y_guardar(self, doc_id, limbo=False, persona=None):
         a, c = self.almacen, self.carpetas
-        d = a.documento(doc_id)
+        d = self._reparar_origen(a.documento(doc_id))
         lote = d["lote_id"]
         try:
             # fase 8 · renombrar
@@ -776,8 +803,11 @@ class Motor:
                     orig_destino = orig_dir
                 else:
                     nombre_orig = a.documento(d["padre_id"])["nombre_recibido"] if d["padre_id"] else d["nombre_recibido"]
-                    orig_destino = libre(orig_dir / nombre_orig)
-                    shutil.move(d["ruta_original"], orig_destino)
+                    if Path(d["ruta_original"]).parent == orig_dir:          # ya estaba en su sitio
+                        orig_destino = Path(d["ruta_original"])
+                    else:
+                        orig_destino = libre(orig_dir / nombre_orig)
+                        shutil.move(d["ruta_original"], orig_destino)
                 if d["padre_id"]:
                     for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
                         a.actualizar(h["id"], ruta_original_final=str(orig_destino))
