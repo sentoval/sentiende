@@ -276,3 +276,114 @@ def personas_repetidas(m):
                 out.append({"a": p, "b": q, "por": "mismo DNI" if mismo_dni else "mismo nombre",
                             "dni_distinto": bool(p["dni"] and q["dni"] and p["dni"].upper() != q["dni"].upper())})
     return out
+
+
+def repasar_nombres(m, doc):
+    """3.1.2 · Después de guardar un documento se repasan los nombres de su expediente:
+    a) serie: si ya hay otro recibo/extracto de la misma cuenta o préstamo con otro mes, todos llevan su _MMAA
+       (antes el primero de la serie se quedaba sin mes, p. ej. «…_prestamo_CAJAM.pdf»);
+    b) DNI aprendido: si la persona ya tiene DNI, lo guardado antes como «…NOINFORMADO…» pasa a llevarlo.
+    Solo cambia el nombre del archivo final (el original no se toca). Si un archivo está abierto en otro
+    programa, se deja como está y se avisa en el Centro de revisión."""
+    from .contexto import EN_SERIE, _mes
+    a = m.almacen
+    eid = doc.get("expediente_id")
+    exp = a.expediente(eid) if eid else None
+    if not exp:
+        return []
+    sin = m.variante.nombres["sin_dni"]
+    docs = a.documentos("expediente_id = ? AND estado = 'guardado'", (eid,))
+    tocar = set()
+    grupos = {}
+    for d in docs:
+        if d["tipo"] not in EN_SERIE:
+            continue
+        datos = d["datos"] or {}
+        claves = [f"cuenta|{x}" for x in datos.get("cuentas") or []] + [f"préstamo|{x}" for x in datos.get("prestamos") or []]
+        if not claves and d.get("entidad"):
+            claves = [f"entidad|{d['entidad']}"]
+        for k in claves:
+            grupos.setdefault(f"{d['tipo']}|{k}", {})[d["id"]] = d
+    for k, g in grupos.items():
+        if len(g) < 2 or len({_mes(d) for d in g.values() if _mes(d)}) < 2:
+            continue
+        for d in g.values():
+            datos = d["datos"] or {}
+            if not datos.get("serie"):
+                datos["serie"] = k
+                a.actualizar(d["id"], datos=datos)
+                tocar.add(d["id"])
+    personas = a.personas_de(eid)
+    for d in docs:
+        p = a.persona(d["persona_id"]) if d["persona_id"] else (personas[0] if personas else None)
+        if p and p.get("dni") and sin and sin in (d["nombre_final"] or ""):
+            tocar.add(d["id"])
+    _poner_dni_en_carpeta(m, exp, personas, sin)
+    exp = a.expediente(eid)
+    hechos = []
+    for did in sorted(tocar):
+        d = a.documento(did)
+        p = a.persona(d["persona_id"]) if d["persona_id"] else (personas[0] if personas else None)
+        if not p:
+            continue
+        antes = d["nombre_final"]
+        try:
+            cambios = _colocar(m, d, exp, p, mover_original=False)
+        except Exception as e:
+            a.evento(f"No se ha podido poner al día el nombre de «{antes}»: {e}", did, d["lote_id"], 10, "revision")
+            continue
+        if cambios.get("nombre_final") != antes:
+            a.actualizar(did, **cambios)
+            a.evento(f"Nombre puesto al día: {antes} → {cambios['nombre_final']}", did, d["lote_id"], 10)
+            hechos.append(did)
+    if hechos:
+        _refrescar(m, eid)
+    return hechos
+
+
+def _poner_dni_en_carpeta(m, exp, personas, sin):
+    """3.1.2 (Joan, 17/11: «1 sí») · Cuando ya se sabe el DNI del titular, la carpeta del expediente creada como
+    «Nombre_NOINFORMADO_MMAA» pasa a «Nombre_DNI5_MMAA», en SeDocumentos y en Doc_original. Si algo de dentro
+    está abierto en otro programa, no se cambia nada y se intenta otra vez al guardar el siguiente documento."""
+    from .nombres import numero_doc
+    a, c = m.almacen, m.carpetas
+    vieja = exp["carpeta"] or ""
+    tit = next((p for p in personas if p.get("papel") == "Titular"), personas[0] if personas else None)
+    num = numero_doc(tit.get("dni")) if tit else None
+    if not sin or f"_{sin}_" not in vieja or not num:
+        return False
+    nueva = vieja.replace(f"_{sin}_", f"_{num[-5:]}_", 1)
+    pares = [(c.documentos / vieja, c.documentos / nueva), (c.originales / vieja, c.originales / nueva)]
+    if any(d.exists() for _, d in pares) or a.db.execute("SELECT 1 FROM expedientes WHERE carpeta = ? AND id != ?", (nueva, exp["id"])).fetchone():
+        a.evento(f"No se cambia la carpeta «{vieja}» a «{nueva}»: ya existe una carpeta con ese nombre", nivel="revision")
+        return False
+    hechas = []
+    try:
+        for o, d in pares:
+            if o.exists():
+                o.rename(d)
+                hechas.append((o, d))
+    except OSError as e:
+        for o, d in reversed(hechas):          # o todo o nada
+            try:
+                d.rename(o)
+            except OSError:
+                pass
+        a.evento(f"La carpeta «{vieja}» no se ha podido cambiar a «{nueva}» (¿algún archivo abierto en otro programa?): {e}. "
+                 "Se intentará otra vez al guardar el siguiente documento.", nivel="revision")
+        return False
+    for o, d in hechas:
+        viejo_txt = str(o)
+        for r in a.db.execute("SELECT id, ruta_final, ruta_original_final FROM documentos WHERE ruta_final LIKE ? OR ruta_original_final LIKE ?",
+                              (viejo_txt + "%", viejo_txt + "%")).fetchall():
+            cambios = {}
+            for k in ("ruta_final", "ruta_original_final"):
+                v = r[k] or ""
+                if v == viejo_txt or v.startswith(viejo_txt + "\\") or v.startswith(viejo_txt + "/"):
+                    cambios[k] = str(d) + v[len(viejo_txt):]
+            if cambios:
+                a.actualizar(r["id"], **cambios)
+    a.db.execute("UPDATE expedientes SET carpeta = ? WHERE id = ?", (nueva, exp["id"]))
+    a.db.commit()
+    a.evento(f"Carpeta del expediente puesta al día con el DNI: {vieja} → {nueva}")
+    return True

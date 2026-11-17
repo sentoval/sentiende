@@ -76,8 +76,9 @@ function lateral() {
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
-    ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
+    <div class="lat-estado-zona">${engranajes(true)}
+    ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}</div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("personas", "user", "Personas")}
@@ -100,7 +101,6 @@ function lateral() {
         <button class="btn" id="b-correo" title="Recibir por correo" aria-label="Recibir por correo">${ico("mail", 22)}</button>
         <button class="btn" id="b-bt" title="Recibir por Bluetooth" aria-label="Recibir por Bluetooth">${ico("bt", 22)}</button>
         <button class="btn" id="b-scan" title="Escanear" aria-label="Escanear">${ico("scan", 22)}</button></span>
-      <button class="btn lat-manual" id="b-exp-manual" title="Abrir un expediente metiendo los datos a mano: será la referencia segura para lo que llegue después">${ico("users", 16)}Expediente manual</button>
       ${CORREO_TXT ? `<span class="lat-estado">${esc(CORREO_TXT)}</span>` : ""}${BT?.activo ? `<span class="lat-estado">${ico("bt", 13)} ${esc(BT.mensaje)}</span>` : ""}
       ${S.estado?.trabajando ? '<span class="trabajando">El motor está trabajando…</span>' : ""}
     </div>
@@ -113,7 +113,6 @@ function activarZona() {
   ["dragleave", "drop"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("encima"); }));
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
-  $("#b-exp-manual")?.addEventListener("click", e => { e.stopPropagation(); NUEVO_EXP = { finalidad: (S.info.finalidades_visibles || [])[0], personas: [{}], manual: true }; location.hash = "expedientes"; pintar(); });
   $("#b-correo").addEventListener("click", revisarCorreo);
   $("#b-ia")?.addEventListener("click", pulsarIA);
   $("#b-scan").addEventListener("click", abrirEscaner);
@@ -171,7 +170,8 @@ function pestanasMotor(activa) {
   const n = S.estado.cuentas.limbo || 0, q = S.estado.cuentas.cuarentena || 0;
   return `<nav class="pestanas" aria-label="Motor de proceso"><a href="#motor" ${activa === "motor" ? 'aria-current="page"' : ""}>${ico("motor", 16)}Proceso</a>
     <a href="#limbo" ${activa === "limbo" ? 'aria-current="page"' : ""}>${ico("limbo", 16)}Limbo${n ? `<span class="num">${n}</span>` : ""}</a>
-    <a href="#cuarentena" ${activa === "cuarentena" ? 'aria-current="page"' : ""}>${ico("mail", 16)}Correo por revisar${q ? `<span class="num">${q}</span>` : ""}</a></nav>`;
+    <a href="#cuarentena" ${activa === "cuarentena" ? 'aria-current="page"' : ""}>${ico("mail", 16)}Correo por revisar${q ? `<span class="num">${q}</span>` : ""}</a>
+    ${engranajes()}</nav>`;   // 3.1.2 · engranajes centrados, con sus nombres a la altura de las pestañas y sobre la línea inferior
 }
 // 3.0.3 · Centro de revisión vacío: tres bailaoras (A, B y C, con la cabeza de la A) que se alternan con un fundido suave
 const BAILAORAS = [`<g transform="translate(0,0)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M72 57l-2 10"/><path d="M70 67c-8 10-9 26-6 40"/><path d="M76 67c4 12 4 26 2 40"/><path d="M70 70c-14-10-20-30-12-50c4-8 10-12 16-10"/><path d="M76 70c10 4 16 12 14 22c-1 6-8 8-12 4"/><path d="M64 107c-12 18-24 40-30 70c16 8 32 10 50 8"/><path d="M78 107c10 18 30 38 56 50c-10 18-30 28-50 28"/><path d="M40 150c14 6 30 6 44 2"/><path d="M36 168c18 8 38 8 56 2c14-4 30-10 40-18"/><path d="M60 185l-4 50"/><path d="M76 185l6 50"/><path d="M52 236h8"/><path d="M80 236h8"/>`, `<g transform="translate(3,2)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M75 59v8"/><path d="M70 67c-4 14-4 26-2 38"/><path d="M80 67c4 14 4 26 2 38"/><path d="M70 70c-16-8-26-24-26-44"/><path d="M80 70c16-8 26-24 26-44"/><path d="M44 26c-2-4 2-8 6-6"/><path d="M106 26c2-4-2-8-6-6"/><path d="M68 105c-30 6-52 26-56 56c22 14 48 22 78 20c30-2 52-16 62-34c-14-22-40-38-72-42"/><path d="M20 150c20 14 50 20 80 16c20-2 36-10 46-20"/><path d="M30 168c24 10 52 12 78 6"/><path d="M66 181l-2 52"/><path d="M84 181l2 52"/><path d="M58 234h8"/><path d="M84 234h8"/>`, `<g transform="translate(-2,0)"><circle cx="72" cy="46" r="11"/><path d="M80 38c6-2 9 2 8 7"/><circle cx="86" cy="36" r="4"/></g><path d="M70 57c2 10-2 21-4 31c10 6 22 2 30-6c8-10 12-28 4-46"/><path d="M66 88c-10 2-22-6-26-18c-4-12 2-28 14-36"/><path d="M66 88c-4 22-14 44-34 66c18 20 46 28 76 22c22-4 38-16 46-32c-24-10-48-28-64-56"/><path d="M34 160c26 10 54 12 82 6c14-4 26-10 36-20"/><path d="M60 176l-6 58"/><path d="M84 176l10 58"/><path d="M48 234h10"/><path d="M90 234h10"/>`];
@@ -180,18 +180,35 @@ function bailaoras() {
 }
 // Engranajes del Motor de proceso: el del motor gira cuando el equipo trabaja; el de la IA, con los colores del botón IA
 const ENGRANAJE = '<path d="M12 2.5l1.6.3.4 2.1a7 7 0 0 1 1.9.8l1.8-1.2 1.2 1.1-1.2 1.8a7 7 0 0 1 .8 1.9l2.1.4.3 1.6-.3 1.6-2.1.4a7 7 0 0 1-.8 1.9l1.2 1.8-1.2 1.2-1.8-1.2a7 7 0 0 1-1.9.8l-.4 2.1-1.6.3-1.6-.3-.4-2.1a7 7 0 0 1-1.9-.8l-1.8 1.2-1.2-1.2 1.2-1.8a7 7 0 0 1-.8-1.9l-2.1-.4L2.5 12l.3-1.6 2.1-.4a7 7 0 0 1 .8-1.9L4.5 6.3l1.2-1.1 1.8 1.2a7 7 0 0 1 1.9-.8l.4-2.1z"/><circle cx="12" cy="12" r="3.2"/>';
-function engranajes() {
+// 3.1.2 (Joan 18:51) · ruta en una sola línea, abreviada por el medio (C:\…\SeFinancia\SeDocumentos\Carpeta\fichero.pdf);
+// al pasar el ratón (o con el teclado) sale un cuadro con la dirección completa
+function abreviarRuta(r) {
+  const sep = r.includes("\\") ? "\\" : "/";
+  const p = r.split(/[\\/]/).filter((x, i) => x || i === 0);
+  return p.length <= 5 ? r : p[0] + sep + "…" + sep + p.slice(-4).join(sep);
+}
+function rutaCorta(etq, ruta) {
+  // si no cabe, se recorta la parte de las carpetas, nunca el nombre del archivo
+  const corta = abreviarRuta(ruta), sep = corta.includes("\\") ? "\\" : "/", i = corta.lastIndexOf(sep);
+  return `<div class="ruta-corta" tabindex="0"><span class="muted etq">${esc(etq)}:</span><span class="mono dir">${esc(corta.slice(0, i))}</span><span class="mono fich">${esc(corta.slice(i))}</span>
+    <span class="ruta-tip" role="tooltip"><b>${esc(etq)}</b><span class="mono">${esc(ruta)}</span></span></div>`;
+}
+function engranajes(lateral = false) {
   const ia = S.estado?.ia || {}, motor = !!S.estado?.trabajando;
   const iaCls = !ia.activo ? "apagado" : ia.estado === "pausa" ? "pausa" : ia.estado === "trabajando" ? "on gira" : "on";
   const iaTxt = !ia.activo ? "IA apagada" : ia.estado === "pausa" ? "IA en pausa" : ia.estado === "trabajando" ? "La IA está trabajando" : "IA encendida, en espera";
-  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>Motor</small></span>
-    <span class="eng ia ${iaCls}" title="${iaTxt}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>IA</small></span></div>`;
+  const svg = t => `<svg viewBox="0 0 24 24" width="${t}" height="${t}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg>`;
+  if (lateral)        // 3.1.2 · boceto de Joan: «Motor ⚙ ⚙ IA» debajo de la marca, siempre a la vista
+    return `<a href="#motor" class="lat-engranajes" title="Motor de proceso"><small>Motor</small><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(24)}</span>
+      <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(24)}</span><small>IA</small></a>`;
+  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(88)}<small>Motor</small></span>
+    <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(88)}<small>IA</small></span></div>`;
 }
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);
   const pendiente = x => x.documentos.some(d => !["guardado", "limbo", "duplicado", "contacto"].includes(d.estado));
   const l = lotes.find(x => x.id === LOTE) || lotes.find(pendiente) || lotes[0];
-  if (!l) return `<div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div><div class="acciones">${engranajes()}</div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
+  if (!l) return `<div class="cab cab-motor"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div><div class="acciones"></div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
   const docs = l.documentos;
   const enFase = i => docs.filter(d => (["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.fase) === i + 1 || (i === 6 && d.estado === "espera_emparejar")).length;
   const minF = Math.min(...docs.map(d => ["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.estado === "espera_emparejar" ? 7 : d.fase));
@@ -212,8 +229,8 @@ function vistaMotor() {
   }).join("");
   const titulo = parado ? `Parado · fase ${parado.fase + 1} de 10` : hechos === docs.length ? "Terminado" : espera ? `Espera tu respuesta · ${espera} documento(s) para emparejar` : S.estado.trabajando ? `En marcha · fase ${minF} de 10` : "En pausa";
   return `
-  <div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
-    <div class="acciones">${engranajes()}${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
+  <div class="cab cab-motor"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
+    <div class="acciones">${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
   ${pestanasMotor("motor")}
   ${avisoPausaIA()}
   ${parado ? `<div class="tarjeta" style="border-color:var(--bad);background:var(--badSoft)"><b>El motor se ha parado: ${esc(parado.motivo || "")}</b><span class="sub">Nada se ha perdido: el original sigue en Entrada\\. Corrige la causa y pulsa «Reanudar lo pendiente».</span></div>` : ""}
@@ -226,7 +243,7 @@ function vistaMotor() {
   <section class="tarjeta sinp"><div class="tcab"><h2>Documentos del lote</h2><span class="sub">Pulsa uno para revisarlo</span></div>
     <table class="tabla"><thead><tr><th>Documento</th><th>Fase</th><th>Tipo</th><th>Dónde está ahora</th><th>Estado</th></tr></thead><tbody>
     ${docs.map(d => `<tr ${["espera_emparejar", "parado"].includes(d.estado) ? `class="clic" data-doc="${d.id}"` : ""}><td>${esc(d.archivo)}${d.nombre_final ? `<div class="mono muted">${esc(d.nombre_final)}</div>` : ""}</td><td>${fbar(d.fase, d.estado)}</td><td>${esc(d.tipo ? nombreTipo(d.tipo, d.modelo) : "—")}</td>
-      <td>${Object.entries(d.donde).filter(([, v]) => v).map(([k, v]) => `<div class="mono"><span class="muted">${esc(k)}:</span> ${esc(v)}</div>`).join("")}</td><td>${est(d.estado)}</td></tr>`).join("")}
+      <td class="donde">${Object.entries(d.donde).filter(([, v]) => v).map(([k, v]) => rutaCorta(k, v)).join("")}</td><td>${est(d.estado)}</td></tr>`).join("")}
     </tbody></table></section>`;
 }
 function activarMotor() {
@@ -410,7 +427,8 @@ function vistaRevision() {
         ${x.yaEsta ? '<span class="ok-txt">Ya está en este expediente</span>' : `<span class="seg">${[["cotitular", "Cotitular"], ["separado", "Expediente aparte"], ["tercero", "Tercero, no fichar"]]
           .map(([k, n]) => `<button type="button" class="${(R.otros || {})[x.i] === k ? "sel" : ""}" data-otro="${x.i}" data-acc="${k}">${n}</button>`).join("")}${expSel ? `<select class="misma ${String((R.otros || {})[x.i] || "").startsWith("misma:") ? "sel" : ""}" data-misma="${x.i}" aria-label="Es la misma que…"><option value="">Es la misma que…</option>${expSel.personas.map(q => `<option value="${q.id}" ${(R.otros || {})[x.i] === "misma:" + q.id ? "selected" : ""}>${esc(`${q.nombre} ${q.apellido1} ${q.apellido2 || ""}`)}</option>`).join("")}</select>` : ""}</span>`}</div>`).join("")}</div></div>` : "";
   const pendientesOtras = otras.filter(x => !x.yaEsta).length;
-  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} fotos parecen el mismo documento.</b> <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a></div>` : ""; })();
+  const union = (() => { const pr = (S.prop || []).find(x => x.documentos.includes(d.id)); return pr ? `<div class="union-mini"><b>${pr.documentos.length} hojas parecen el mismo documento${pr.porcentaje ? ` (${pr.porcentaje} %)` : ""}.</b> <span class="muted">${esc((pr.motivos || []).join(" · "))}</span>
+    <a class="btn pri peq" href="#unir/${pr.documentos.join(",")}">${ico("check", 14)}Unir páginas</a> <button type="button" class="btn peq" id="no-unir" data-docs="${pr.documentos.join(",")}" title="No se volverá a proponer y el programa aprende de ello">No, son distintos</button></div>` : ""; })();
   // ¿tarjeta de visita? Se pregunta siempre, arriba y en grande: no se puede confirmar sin responder
   const tj = datos.tarjeta && !datos.tarjeta_descartada ? datos.tarjeta : null;
   if (tj && !R.tj) { const lm2 = loteMayoritario(d); R.tj = { ...tj, expediente: lm2 ? lm2.exp.id : (abiertos[0] || {}).id || "" }; }
@@ -480,6 +498,11 @@ async function cargarDoc(id) {
   pintar();
 }
 function activarRevision() {
+  $("#no-unir")?.addEventListener("click", async ev => {
+    const b = ev.currentTarget; b.disabled = true;
+    try { await api("no_unir", { documentos: b.dataset.docs.split(",").map(Number) }); S.prop = await api("propuestas_union"); aviso("Anotado: no se volverán a proponer juntas"); pintar(); }
+    catch (e) { b.disabled = false; aviso(e.message, true); }
+  });
   const vimg = $("#v-img");
   if (vimg) {
     const poner = n => { S.zoom = Math.min(5, Math.max(0.3, n)); vimg.style.width = (S.zoom * 100) + "%"; $("#v-nivel").textContent = Math.round(S.zoom * 100) + " %"; };
@@ -710,14 +733,26 @@ function vistaExpediente() {
   if (!EXP) return '<div class="tarjeta vacio">Cargando…</div>';
   const { e } = EXP, v = S.info.variante;
   const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
-  return `<a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 22)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
-  <div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
-    <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · <label class="fin-cambiar" title="Tipo de financiación (pulsa para cambiarlo)">${ico("edit", 14)}<select id="exp-finalidad">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label> · carpeta <code>${esc(e.carpeta)}</code>
-      <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
-      <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
-      <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 16)}</button></div></div>
-    <div class="acciones"><button class="btn" id="exp-carpeta">${ico("folder")}Abrir carpeta</button><button class="btn" id="exp-exportar">Exportar (zip)</button><button class="btn" id="rehacer">${ico("play")}Rehacer texto</button>
-      ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro expediente…</button>` : ""}<button class="btn peligro" id="exp-eliminar">${ico("trash")}Eliminar</button></div></div>
+  // 3.1.2 · cabecera según el boceto de Joan: sección en verde, nombre con ★ y campanita, datos en una línea,
+  // botones de trabajo debajo y, a la derecha, «Documentación» grande con «zip» y «carpeta» en columna
+  return `<div class="exp-cab">
+    <div class="exp-cab-izq">
+      <a class="seccion" href="#expedientes">Expedientes</a>
+      <div class="exp-titulo"><h1>${esc(e.nombre)}</h1>
+        <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
+        <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 18)}</button></div>
+      <div class="cab-exp"><span title="${titulares} titular(es)">${ico("user", 15)} ${titulares}</span><span>creado el ${fmtF(e.creado)}</span>
+        <span title="Carpeta del expediente">${ico("edit", 14)} <code>${esc(e.carpeta)}</code></span>
+        <select id="exp-finalidad" title="Tipo de financiación (pulsa para cambiarlo)">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+        <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button></div>
+      <div class="exp-botones"><button class="btn peligro icono" id="exp-eliminar" title="Eliminar el expediente (va a la Papelera)" aria-label="Eliminar">${ico("trash", 18)}</button>
+        ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro exp.</button>` : ""}<button class="btn" id="rehacer">${ico("play")}Rehacer texto</button></div>
+    </div>
+    <div class="exp-cab-der">
+      <a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 30)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
+      <div class="exp-mini"><button class="btn" id="exp-exportar" title="Exportar el expediente en un zip">zip</button>
+        <button class="btn icono" id="exp-carpeta" title="Abrir la carpeta del expediente" aria-label="Abrir carpeta">${ico("folder", 20)}</button></div>
+    </div></div>
   ${OPV && EXP.op ? panelOperacion(e) : ""}
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
@@ -995,7 +1030,22 @@ function vistaAvisosCliente() {
   const por = {}; AV.cliente.forEach(a => (por[a.expediente_id] = por[a.expediente_id] || []).push(a));
   return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>Avisos cliente</h1><div class="sub">Lo que falta o ha caducado en cada expediente. Desaparecen solos cuando llega el documento.</div></div></div>
   ${Object.keys(por).length ? Object.entries(por).map(([eid, l]) => `<section class="tarjeta"><div class="neg-cab"><h2><a href="#expediente/${eid}">${esc(exps[eid]?.nombre || "Expediente " + eid)}</a></h2><span class="sub">${l.length} aviso(s)</span></div>
-    ${l.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">desde ${fmtF(a.creado)}</span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}`;
+    ${l.map(a => `<div class="dato aviso-cli-fila"><span>${esc(a.mensaje)}</span><span class="aviso-cli-acc"><span class="muted">desde ${fmtF(a.creado)}</span>
+      <button type="button" class="btn peq" data-av-exp="${eid}" data-av-msg="${esc(a.mensaje)}" data-av-acc="ignorar" title="No vuelve a salir mientras siga igual">Ignorar</button>
+      <select class="peq" data-av-exp="${eid}" data-av-msg="${esc(a.mensaje)}" data-av-acc="posponer" title="Lo esconde y vuelve a salir pasado este tiempo"><option value="">Posponer…</option><option value="1">1 día</option><option value="7">1 semana</option><option value="30">1 mes</option></select></span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}
+  ${(AV.apartados || []).length ? `<details class="tarjeta"><summary>Ignorados y pospuestos (${AV.apartados.length})</summary>
+    ${AV.apartados.map(a => `<div class="dato aviso-cli-fila"><span><a href="#expediente/${a.expediente_id}">${esc(exps[a.expediente_id]?.nombre || "Expediente " + a.expediente_id)}</a> · ${esc(a.mensaje)}</span><span class="aviso-cli-acc"><span class="muted">${a.ignorado ? "ignorado" : "pospuesto hasta el " + fmtF(a.pospuesto)}</span>
+      <button type="button" class="btn peq" data-av-exp="${a.expediente_id}" data-av-msg="${esc(a.mensaje)}" data-av-acc="mostrar">Volver a mostrar</button></span></div>`).join("")}</details>` : ""}`;
+}
+function activarAvisosCliente() {
+  const enviar = async (el, dias) => {
+    try {
+      await api("aviso_cliente", { expediente: +el.dataset.avExp, mensaje: el.dataset.avMsg, accion: el.dataset.avAcc, dias });
+      [AV, S.estado, S.expedientes] = await Promise.all([api("avisos"), api("estado"), api("expedientes")]); pintar();
+    } catch (e) { aviso(e.message, true); }
+  };
+  document.querySelectorAll("button[data-av-acc]").forEach(b => b.addEventListener("click", () => { b.disabled = true; enviar(b); }));
+  document.querySelectorAll("select[data-av-acc]").forEach(s => s.addEventListener("change", () => { if (s.value) enviar(s, +s.value); }));
 }
 function vistaAvisosSe() {
   if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
@@ -1003,7 +1053,16 @@ function vistaAvisosSe() {
   return `<div class="cab"><div><h1>Avisos del programa</h1><div class="sub">Problemas del motor, de la versión o de los archivos (Avisos Se). La campanita del menú solo aparece cuando hay alguno nuevo.</div></div>
     <div class="acciones">${nuevos ? `<button class="btn pri" id="se-vistos">${ico("check")}Marcar como vistos</button>` : ""}</div></div>
   ${notificacionesHTML()}
-  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
+  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="aviso-se-der">${botonLecturaPobre(a.mensaje)}<span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
+}
+// 3.1.2 · «Aceptar con este umbral»: el aviso de lectura pobre deja de salir para las páginas que se leen a este % o más
+function botonLecturaPobre(msg) {
+  const m = /lectura pobre \((\d+) %\)/.exec(msg || "");
+  if (!m) return "";
+  const pct = +m[1], umbral = Math.round((S.ajustes?.ocr?.lectura_pobre ?? .6) * 100);
+  if (pct < 5) return '<span class="muted" title="Una página leída casi al 0 % suele estar en blanco o muy mal escaneada">vuelve a escanearla</span>';
+  if (pct >= umbral) return `<span class="pill p-ok" title="Desde ahora no se avisa de lecturas de ${umbral} % o más">aceptado</span>`;
+  return `<button type="button" class="btn peq" data-acepta-lectura="${pct}" title="Las páginas que se lean al ${pct} % o más dejarán de dar este aviso (ahora se avisa por debajo del ${umbral} %). Se puede cambiar en Ajustes › OCR.">${ico("check", 14)} Aceptar con este umbral (${pct} %)</button>`;
 }
 function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
@@ -1037,7 +1096,8 @@ function vistaAjustes() {
     <span class="sub">Lo que ya está guardado no se mueve: las carpetas nuevas se usan desde ahora. Si cambias SeDocumentos o Doc_original, mueve antes las carpetas de los expedientes con el Explorador de Windows.</span></section>
   <section class="tarjeta"><h2>Reconocimiento (OCR)</h2>
     <div class="campos-inline"><div class="campo"><label for="oc-rev">Pedir revisión por debajo de (%)</label><input id="oc-rev" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.revisar || .75) * 100)}"></div>
-      <div class="campo"><label for="oc-no">«No reconocido» por debajo de (%)</label><input id="oc-no" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.no_reconocido || .4) * 100)}"></div></div>
+      <div class="campo"><label for="oc-no">«No reconocido» por debajo de (%)</label><input id="oc-no" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.no_reconocido || .4) * 100)}"></div>
+      <div class="campo"><label for="oc-lp">Avisar de «lectura pobre» por debajo de (%)</label><input id="oc-lp" type="number" min="5" max="95" value="${Math.round((S.ajustes?.ocr?.lectura_pobre ?? .6) * 100)}"></div></div>
     <div class="chips">${[["spa", "Castellano"], ["cat", "Valenciano / catalán"], ["eus", "Euskera"], ["glg", "Gallego"], ["eng", "Inglés"]]
       .map(([k, n]) => `<label class="check mini"><input type="checkbox" data-idioma="${k}" ${(S.ajustes?.ocr?.idiomas || []).includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
     <span class="sub">Idiomas que usa el OCR en las fotos y escaneos. Menos idiomas = un poco más rápido.</span>
@@ -1168,7 +1228,7 @@ function activarAjustes() {
   });
   $("#oc-ok")?.addEventListener("click", async () => {
     const idiomas = [...document.querySelectorAll("[data-idioma]:checked")].map(i => i.dataset.idioma);
-    try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
+    try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas, lectura_pobre: +$("#oc-lp").value / 100 } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
   });
   $("#ap-t")?.addEventListener("input", e => { $("#ap-v").textContent = e.target.value + " %"; });
   $("#ctx-guardar")?.addEventListener("click", async () => {
@@ -1210,8 +1270,8 @@ function pintar() {
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
     documentacion: [vistaDocumentacion, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
-    avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); activarLecturaPobre(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
+    avisos_cliente: [vistaAvisosCliente, activarAvisosCliente], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
     bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)],
@@ -1314,12 +1374,13 @@ function vistaExpedientes() {
     <div class="acciones"><a class="btn avisos-cli" href="#avisos_cliente">${ico("bell", 16)}Avisos cliente${S.estado.cuentas.avisos_cliente ? `<span class="num">${S.estado.cuentas.avisos_cliente}</span>` : ""}</a><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
   ${NUEVO_EXP ? formNuevoExp() : ""}
   <nav class="pestanas">${Object.entries(nombres).map(([k, n]) => `<a href="javascript:void 0" data-exp-tab="${k}" ${k === EXP_TAB ? 'aria-current="page"' : ""}>${n}<span class="num">${S.expedientes.filter(grupos[k]).length}</span></a>`).join("")}</nav>
-  ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th></tr></thead><tbody>
+  ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th><th title="Avisos de cliente">Avisos</th></tr></thead><tbody>
   ${lista.map(e => `<tr class="clic prio-${e.marcas.prioridad || "no"} ${e.estado === "unido" ? "apagada" : ""}" data-exp="${e.id}">
     <td class="marcas-exp"><button type="button" class="marca-b ${e.marcas.favorito ? "on" : ""}" data-fav="${e.id}" title="Favorito">${e.marcas.favorito ? "★" : "☆"}</button><button type="button" class="marca-b ${e.marcas.prioridad ? "on" : ""}" data-prio="${e.id}" title="${PRIO[e.marcas.prioridad]} (pulsa para cambiar)">${ico("bell", 16)}</button></td>
     <td><b>${esc(e.nombre)}</b><div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)}</div></td><td>${pill(e.etiqueta, e.estado === "firmado" ? "ok" : e.estado === "cerrado" ? "bad" : "todo")}</td>
     <td>${e.personas.map(p => esc(`${p.nombre} ${p.apellido1}`) + ` <span class="muted">(${esc(p.papel)})</span>`).join("<br>")}</td>
-    <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td></tr>`).join("")}</tbody></table></section>`
+    <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td>
+    <td class="centro">${e.avisos ? `<a class="circ-avisos" href="#avisos_cliente" title="${e.avisos} aviso(s) de cliente">${e.avisos}</a>` : ""}</td></tr>`).join("")}</tbody></table></section>`
     : `<div class="tarjeta vacio">No hay expedientes ${EXP_TAB === "todos" ? "todavía" : "en «" + nombres[EXP_TAB] + "»"}.</div>`}`;
 }
 function formNuevoExp() {
@@ -1333,7 +1394,7 @@ function formNuevoExp() {
     <div class="acciones"><button class="btn" id="ne-mas">＋ Otra persona</button><button class="btn pri" id="ne-ok">${ico("check")}Crear expediente</button><button class="btn" id="ne-no">Cancelar</button></div></section>`;
 }
 function activarExpedientes() {
-  document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", ev => { if (!ev.target.closest("button")) location.hash = "expediente/" + tr.dataset.exp; }));
+  document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", ev => { if (!ev.target.closest("button, a")) location.hash = "expediente/" + tr.dataset.exp; }));
   document.querySelectorAll("[data-exp-tab]").forEach(a => a.addEventListener("click", () => { EXP_TAB = a.dataset.expTab; pintar(); }));
   document.querySelectorAll("[data-fav]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.fav); await api("marcar_expediente", { expediente: e.id, favorito: !e.marcas.favorito }); refrescar(true); }));
   document.querySelectorAll("[data-prio]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.prio); const p = SIG_PRIO[e.marcas.prioridad || ""]; await api("marcar_expediente", { expediente: e.id, prioridad: p }); aviso(PRIO[p]); refrescar(true); }));
@@ -1660,7 +1721,7 @@ function botonIA() {
     : e === "sin_conexion" ? "Sin conexión: sigue en local" : e === "trabajando" ? "Trabajando…" : `Activo · ${eurIA(ia.hoy)} de ${eurIA(ia.limites.dia)} hoy`;
   return `<div class="ia-lat"><button type="button" id="b-ia" class="ia-btn ${cls}" aria-pressed="${on}" title="${on ? "Pulsa para apagar el Controlador IA" : "Pulsa para encender el Controlador IA"}">
       <span class="ia-cab"><span class="ia-ico">${ico(on && e === "pausa" ? "pause" : "ia", 18)}</span>Controlador IA</span>${sub ? `<span class="ia-sub">${esc(sub)}</span>` : ""}</button>
-    <a class="ia-enlace" href="#ia">Ajustes de la IA</a>${ia.por_revisar ? `<a class="ia-enlace" href="#ia_mirar"><b>${ia.por_revisar} para mirar</b></a>` : ""}</div>`;
+    <a class="ia-enlace" href="#ia">Ajustes IA</a>${ia.por_revisar ? `<a class="ia-enlace" href="#ia_mirar"><b>${ia.por_revisar} para mirar</b></a>` : ""}</div>`;
 }
 async function pulsarIA() {
   const ia = S.estado?.ia;
@@ -1918,6 +1979,15 @@ function tarjetaContexto() {
       <div class="campo"><label for="ctx-c">Cotitular: % de documentos compartidos</label><input id="ctx-c" type="number" min="10" max="100" value="${v("cotitular", 50)}"></div>
       <div class="campo"><label for="ctx-m">Mínimo de documentos para crear expediente</label><input id="ctx-m" type="number" min="1" max="20" value="${v("minimo_docs", 2)}"></div></div>
     <span class="sub">Un DNI solo se da por bueno si aparece en al menos 2 documentos del lote. El cotitular se busca solo en documentos compartidos (renta, padrón, cuentas, préstamos, escrituras…), nunca en nóminas.</span></section>`;
+}
+function activarLecturaPobre() {
+  document.querySelectorAll("[data-acepta-lectura]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      S.ajustes = await api("aceptar_lectura", { porcentaje: +b.dataset.aceptaLectura });
+      aviso(`Aceptado: ya no se avisará de lecturas del ${b.dataset.aceptaLectura} % o más`); pintar();
+    } catch (e) { b.disabled = false; aviso(e.message, true); }
+  }));
 }
 function notificacionesHTML() {
   const ns = (AV && AV.notificaciones) || [];

@@ -674,3 +674,83 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 .chips .chip { flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; }
 .chip .x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
 .chip .x:hover { color: var(--bad); }
+
+/* 3.1.2 · avisos: aceptar umbral, ignorar/posponer y circulito en la lista */
+.aviso-se-der, .aviso-cli-acc { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.aviso-cli-fila { align-items: center; }
+select.peq { padding: 3px 6px; font-size: 13px; border-radius: 8px; }
+.circ-avisos { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--warn); color: #1A1406; font-size: 12px; font-weight: 600; text-decoration: none; }
+td.centro { text-align: center; }
+
+/* 3.1.2 · bocetos de Joan (17/11 18:33) */
+.lat-engranajes { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 4px 12px; border-bottom: 1px solid var(--lateralBorde);
+  text-decoration: none; color: var(--lateralTenue); }
+.lat-engranajes small { font-size: 12px; color: var(--lateralTenue); }
+.lat-engranajes .eng { color: #8A94A3; }
+.lat-engranajes .eng.motor.gira { color: var(--accent); }
+.lat-engranajes .eng.ia.on { color: var(--ia); }
+.lat-engranajes .eng.ia.pausa { color: var(--warn); }
+.lat-engranajes .eng.ia.apagado { color: #5B6573; }
+.lat-engranajes:hover small { color: #F1F4F9; }
+
+.cab-motor { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.cab-motor > .engranajes { justify-self: center; gap: 28px; margin: 0; }
+.cab-motor > .engranajes .eng { font-size: 15px; gap: 4px; }
+.cab-motor > .engranajes .eng small { font-size: 15px; }
+.cab-motor > .acciones { justify-self: end; }
+
+.exp-cab { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: start; margin-bottom: 18px; }
+.exp-cab .seccion { display: inline-block; font-size: 30px; font-weight: 700; color: var(--accent); text-decoration: none; line-height: 1.1; margin-bottom: 6px; }
+.exp-cab .seccion:hover { text-decoration: underline; }
+.exp-titulo { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.exp-titulo h1 { margin: 0 8px 0 0; font-size: 30px; line-height: 1.2; }
+.exp-titulo .marca-b { width: 34px; height: 34px; font-size: 20px; }
+.exp-cab .cab-exp { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 10px; font-size: 14px; }
+.exp-cab .cab-exp > span { display: inline-flex; align-items: center; gap: 5px; }
+.exp-cab .cab-exp select { height: 34px; padding: 0 10px; border-radius: 8px; }
+.exp-cab .cab-exp .estado-b { height: 32px; }
+.exp-botones { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.exp-botones .btn { height: 44px; }
+.btn.icono { width: 44px; height: 44px; padding: 0; justify-content: center; }
+.exp-cab-der { display: flex; gap: 12px; align-items: stretch; }
+.exp-cab-der .btn-doc-grande { float: none; margin: 0; width: 400px; height: 128px; justify-content: center; font-size: 30px; gap: 16px; border-radius: 16px; }
+.exp-cab-der .btn-doc-grande .num { margin-left: 8px; background: transparent; color: inherit; font-size: 30px; padding: 0; }
+.exp-mini { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
+.exp-mini .btn { width: 58px; height: 58px; padding: 0; justify-content: center; font-weight: 600; border-radius: 10px; }
+@media (max-width: 1200px) { .exp-cab { grid-template-columns: 1fr; } .exp-cab-der .btn-doc-grande { width: auto; flex: 1; height: 96px; } }
+.exp-cab { align-items: stretch; }
+.exp-cab-der { padding-top: 46px; }                 /* empieza a la altura del nombre y acaba con la fila de botones */
+.exp-cab-der .btn-doc-grande { height: auto; min-height: 112px; }
+.lat-engranajes svg { width: 26px; height: 26px; }
+
+/* 3.1.2 · Joan 18:39: «Avisos del programa» en la zona de los engranajes; engranajes del Motor al doble */
+.lat-estado-zona { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--lateralBorde); }
+.lat-estado-zona .lat-engranajes { border-bottom: 0; padding-bottom: 2px; }
+.lat-estado-zona .campana-se { margin: 0; }
+.cab-motor > .engranajes { gap: 44px; }
+.cab-motor > .engranajes .eng small { font-size: 17px; }
+
+/* 3.1.2 · Joan 18:44: engranajes bajados hasta las pestañas (nombres alineados con «Proceso · Limbo…» y apoyados en la línea), centrados */
+.cab-motor { display: flex; }
+.pestanas[aria-label="Motor de proceso"] { position: relative; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; margin: 0; gap: 44px;
+  align-items: flex-end; pointer-events: auto; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes .eng { gap: 2px; font-size: 15px; }
+.pestanas[aria-label="Motor de proceso"] > .engranajes .eng small { font-size: 15px; font-weight: 600; line-height: 1; padding: 10px 0 14px; }
+.cab-motor { min-height: 96px; align-items: center; }   /* deja sitio a los engranajes, que suben desde la fila de pestañas */
+
+/* 3.1.2 · «Dónde está ahora»: una línea por ruta y la completa al pasar el ratón */
+td.donde { max-width: 560px; }
+.ruta-corta { position: relative; white-space: nowrap; overflow: visible; cursor: default; line-height: 1.6; }
+.ruta-corta > .mono { display: inline-block; max-width: calc(100% - 70px); overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.ruta-tip { display: none; position: absolute; z-index: 40; left: 0; top: calc(100% + 4px); min-width: 320px; max-width: min(760px, 70vw); white-space: normal; word-break: break-all;
+  background: var(--surface2, #1F2633); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); font-size: 13px; }
+.ruta-tip b { display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+.ruta-corta:hover .ruta-tip, .ruta-corta:focus .ruta-tip { display: block; }
+
+.ruta-corta { display: flex; align-items: baseline; min-width: 0; }
+.ruta-corta .etq { flex: none; margin-right: 6px; }
+.ruta-corta .dir { flex: 0 1 auto; min-width: 2em; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ruta-corta .fich { flex: none; white-space: nowrap; }
+td.donde { max-width: 640px; min-width: 420px; }

@@ -62,7 +62,10 @@ def _fmt(fecha_iso, formato):
     if not fecha_iso:
         return None
     f = datetime.date.fromisoformat(fecha_iso)
-    return {"MMAA": f"{f:%m%y}", "AA": f"{f:%y}", "AAAA": f"{f:%Y}"}[formato]
+    if f.year < 1900:            # fecha leída de un sello antiguo: se trata como ilegible
+        return None
+    # 3.1.2 · sin strftime: en Windows «%y» falla con años anteriores a 1900 («format %y requires year >= 1900»)
+    return {"MMAA": f"{f.month:02d}{f.year % 100:02d}", "AA": f"{f.year % 100:02d}", "AAAA": f"{f.year:04d}"}[formato]
 
 def dato_distintivo(regla, datos, entidad_abrev=None):
     """Devuelve (texto, ok). Si no se puede leer el dato, ok=False y se usa la fecha de entrada."""

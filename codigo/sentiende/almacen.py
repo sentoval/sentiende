@@ -2,6 +2,7 @@
 """Almacén local (M-17): una base SQLite en Datos\\sentiende.db.
 Guarda lotes, documentos y su fase, texto leído por página (caché, M-61), personas,
 expedientes, eventos (historial y motor de proceso) y correcciones."""
+import re
 import json, sqlite3, datetime
 from pathlib import Path
 
@@ -48,6 +49,19 @@ JSON_CAMPOS = {"alternativas", "indicios", "datos", "rotaciones", "paginas_sel"}
 def ahora():
     return datetime.datetime.now().isoformat(timespec="seconds")
 
+EXT_RE = r"\.(?:pdf|jpe?g|png|tiff?|heic|webp|bmp|docx?|xlsx?)"
+
+def nombre_limpio(nombre):
+    """3.1.2 · «X (+3 unidas).pdf (págs (+1 unidas).pdf (págs. 3, 4)» → «X»: quita los añadidos de unir y separar
+    (y la extensión) para que al unir y separar varias veces el nombre no se vaya alargando."""
+    n = nombre or ""
+    corte = re.search(r"\s*\((?:\+\d+ unidas|p[áa]gs?\b)", n, re.I)        # desde el primer añadido, fuera
+    if corte and corte.start() > 0:
+        n = n[:corte.start()]
+    n = re.sub(EXT_RE + r"\s*$", "", n.strip(), flags=re.I).strip()
+    return n or (nombre or "").strip()
+
+
 class Almacen:
     def __init__(self, ruta):
         Path(ruta).parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +72,10 @@ class Almacen:
         for c in ("padre_id INTEGER", "paginas_sel TEXT", "unido_en INTEGER"):      # bases de datos de versiones anteriores
             if c.split()[0] not in cols:
                 self.db.execute(f"ALTER TABLE documentos ADD COLUMN {c}")
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(avisos_cliente)")}
+        for c in ("ignorado INTEGER DEFAULT 0", "pospuesto TEXT"):                 # 3.1.2 · ignorar / posponer avisos
+            if c.split()[0] not in cols:
+                self.db.execute(f"ALTER TABLE avisos_cliente ADD COLUMN {c}")
         self.db.execute("PRAGMA foreign_keys = ON")
 
     # ---------------- lotes y documentos
@@ -166,9 +184,35 @@ class Almacen:
             self.db.execute("INSERT OR REPLACE INTO avisos_cliente(expediente_id, mensaje, activo, creado) VALUES(?, ?, 1, ?)", (eid, m, ahora()))
         self.db.commit()
 
-    def avisos_cliente(self, eid=None):
-        q = "SELECT * FROM avisos_cliente WHERE activo = 1" + (" AND expediente_id = ?" if eid else "")
-        return [dict(r) for r in self.db.execute(q + " ORDER BY creado", (eid,) if eid else ())]
+    def avisos_cliente(self, eid=None, apartados=False):
+        """Los avisos que se ven. Los ignorados y los pospuestos (hasta su fecha) quedan apartados:
+        apartados=True devuelve solo esos, para poder volver a mostrarlos."""
+        hoy = ahora()
+        filtro = "(ignorado = 1 OR (pospuesto IS NOT NULL AND pospuesto > ?))" if apartados else \
+                 "COALESCE(ignorado, 0) = 0 AND (pospuesto IS NULL OR pospuesto <= ?)"
+        q = f"SELECT * FROM avisos_cliente WHERE activo = 1 AND {filtro}" + (" AND expediente_id = ?" if eid else "")
+        return [dict(r) for r in self.db.execute(q + " ORDER BY creado", (hoy, eid) if eid else (hoy,))]
+
+    def marcar_aviso_cliente(self, eid, mensaje, accion, dias=None):
+        """accion: 'ignorar' (no vuelve a salir mientras siga igual), 'posponer' (dias: 1, 7 o 30) o 'mostrar'."""
+        from datetime import datetime, timedelta
+        if accion == "ignorar":
+            valores = (1, None)
+        elif accion == "posponer":
+            dias = int(dias or 1)
+            if dias not in (1, 7, 30):
+                raise RuntimeError("Solo se puede posponer 1 día, 1 semana o 1 mes")
+            valores = (0, (datetime.now() + timedelta(days=dias)).isoformat(timespec="seconds"))
+        elif accion == "mostrar":
+            valores = (0, None)
+        else:
+            raise RuntimeError(f"Acción desconocida: {accion}")
+        c = self.db.execute("UPDATE avisos_cliente SET ignorado = ?, pospuesto = ? WHERE expediente_id = ? AND mensaje = ? AND activo = 1",
+                            (*valores, eid, mensaje))
+        self.db.commit()
+        if not c.rowcount:
+            raise RuntimeError("Ese aviso ya no está activo")
+        return valores
 
     # ---------------- eventos
     def evento(self, mensaje, documento_id=None, lote_id=None, fase=None, nivel="info"):

@@ -551,11 +551,22 @@ class ContextoLote:
         return res
 
     def _apuntar_alias(self, persona, ident):
+        """3.1.2 · Solo se apunta como alias lo que comparte algún apellido con la persona y no es el nombre de otra
+        persona fichada (en la prueba del 17/11 a Vicente se le apuntó «JOAN BALLESTER GARCIA» como alias, y con eso
+        lo siguiente de Joan habría ido a Vicente). De paso se quitan los alias que ya eran de otra persona."""
         al = json.loads(persona.get("alias") or "[]")
         propio = norm(f'{persona["nombre"]} {persona["apellido1"]} {persona["apellido2"] or ""}').strip()
-        nuevos = [v for v in ident["variantes"] if v and v != propio and v not in al]
-        if nuevos:
-            al += nuevos
+        apellidos = {norm(x).strip() for x in (persona["apellido1"], persona["apellido2"]) if x and len(norm(x).strip()) > 2}
+        ajenos = set()
+        for r in self.db.execute("SELECT id, nombre, apellido1, apellido2 FROM personas WHERE id != ?", (persona["id"],)):
+            ajenos.add(norm(f'{r["nombre"]} {r["apellido1"]} {r["apellido2"] or ""}').strip())
+            ajenos.add(norm(f'{r["apellido1"]} {r["apellido2"] or ""}').strip())
+        ajenos.discard("")
+        limpio = [v for v in al if v not in ajenos]
+        nuevos = [v for v in ident["variantes"] if v and v != propio and v not in limpio and v not in ajenos
+                  and (not apellidos or apellidos & set(v.split()))]
+        if nuevos or limpio != al:
+            al = limpio + nuevos
             self.db.execute("UPDATE personas SET alias = ? WHERE id = ?", (json.dumps(al, ensure_ascii=False), persona["id"]))
             self.db.commit()
         if ident.get("dni") and not persona.get("dni"):

@@ -169,9 +169,27 @@ def imagen_pdf(ruta, n, dpi=None):
 
 _imagen_pdf = imagen_pdf
 
+def _puntos_lectura(texto, conf):
+    return utiles(texto) * max(conf, 0.05)
+
 def _leer_imagen(img, n, trabajo, idiomas, prefijo):
+    original = img
     img, rot, inc = corregir(img)
     texto, conf = ocr(img, idiomas)
+    # 3.1.2 · si casi no se lee nada, el giro automático pudo equivocarse (el DNI de Joan del 17/11 se giró 270° y
+    # salieron 3 letras; girado a mano se leía): se prueban los otros giros, y ampliada si es pequeña, y se queda la mejor.
+    if utiles(texto) < 40 or conf < UMBRAL_LECTURA_POBRE:
+        base = original
+        if max(base.size) < 1800:
+            f = 1800 / max(base.size)
+            base = base.resize((int(base.width * f), int(base.height * f)), Image.LANCZOS)
+        mejor = (_puntos_lectura(texto, conf), img, rot, inc, texto, conf)
+        for r in (0, 90, 180, 270):
+            prueba = base.rotate(-r, expand=True, fillcolor="white") if r else base
+            t2, c2 = ocr(prueba, idiomas)
+            if _puntos_lectura(t2, c2) > mejor[0] * 1.3:
+                mejor = (_puntos_lectura(t2, c2), prueba, r, 0.0, t2, c2)
+        _, img, rot, inc, texto, conf = mejor
     ruta_img = None
     if trabajo:
         ruta_img = str(Path(trabajo) / f"{prefijo}_p{n}.jpg")
@@ -179,6 +197,9 @@ def _leer_imagen(img, n, trabajo, idiomas, prefijo):
     return Pagina(n, texto, "ocr", round(conf, 3), rot, inc, ruta_img)
 
 # ------------------------------------------------------------------ entrada principal
+UMBRAL_LECTURA_POBRE = 0.6     # 3.1.2 · se cambia en Ajustes › OCR o con «Aceptar con este umbral» en Avisos del programa
+
+
 def leer(ruta, clase, huella=None, almacen=None, trabajo=None):
     """Lee un archivo completo. clase: 'pdf', 'imagen', 'word' o 'excel'."""
     ruta = Path(ruta)
@@ -239,7 +260,7 @@ def leer(ruta, clase, huella=None, almacen=None, trabajo=None):
         raise ValueError(f"Tipo de archivo no admitido: {clase}")
 
     for p in res.paginas:
-        if p.origen == "ocr" and p.confianza < 0.6:
+        if p.origen == "ocr" and p.confianza < UMBRAL_LECTURA_POBRE:
             res.avisos.append(f"Página {p.n}: lectura pobre ({round(p.confianza * 100)} %). Conviene volver a escanear.")
         if p.origen == "ocr" and utiles(p.texto) < 15:
             res.avisos.append(f"Página {p.n}: casi sin texto. Puede estar en blanco.")

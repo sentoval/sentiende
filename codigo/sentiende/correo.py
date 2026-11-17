@@ -116,10 +116,29 @@ class Correo:
             im = imaplib.IMAP4_SSL(a["servidor"], int(a["puerto"]), ssl_context=ssl.create_default_context(), timeout=30)
         except Exception as e:
             raise ErrorCorreo(f"No se puede conectar con {a['servidor']}: {e}")
+        clave = desproteger(a["clave"])
+        google = any(x in (a["servidor"] or "").lower() for x in ("gmail", "googlemail", "google"))
+        if google:
+            clave = clave.replace(" ", "")      # la contraseña de aplicación se muestra como «abcd efgh ijkl mnop»
         try:
-            im.login(a["usuario"], desproteger(a["clave"]))
+            im.login(a["usuario"], clave)
         except imaplib.IMAP4.error as e:
-            raise ErrorCorreo(f"El servidor no acepta el usuario o la contraseña ({e.args[0].decode(errors='ignore') if isinstance(e.args[0], bytes) else e}).")
+            detalle = e.args[0].decode(errors="ignore") if isinstance(e.args[0], bytes) else str(e)
+            pista = ""
+            if google:
+                pista = (" · Gmail no deja entrar con la contraseña normal de la cuenta: hay que activar la verificación en dos pasos y crear "
+                         "una «contraseña de aplicación» (myaccount.google.com/apppasswords). Pega aquí esos 16 caracteres y como usuario la dirección completa.")
+            elif "AUTHENTICATIONFAILED" in detalle.upper():
+                pista = " · Revisa el usuario (normalmente la dirección completa) y si tu proveedor pide una contraseña de aplicación."
+            raise ErrorCorreo(f"El servidor no acepta el usuario o la contraseña ({detalle}).{pista}")
+        # 3.1.2 · las capacidades se vuelven a pedir DESPUÉS de entrar: antes de entrar Gmail no anuncia MOVE ni UIDPLUS,
+        # y por eso el programa creía que «el servidor no permite mover» (prueba del 17/11, 21:46)
+        try:
+            tipo, dat = im.capability()
+            if tipo == "OK" and dat and dat[0]:
+                im.capabilities = tuple(dat[0].decode(errors="ignore").upper().split())
+        except Exception:
+            pass
         return im
 
     def probar(self, a_prueba=None):
@@ -170,11 +189,7 @@ class Correo:
             uidval = (im.untagged_responses.get("UIDVALIDITY") or [b"0"])[0].decode()
             # 0b. Word/Excel que dijiste que no: se les quita la etiqueta y se olvidan
             for q in politica.quitar_marca():
-                if con_marca:
-                    try:
-                        im.uid("STORE", str(q["uid"]), "-FLAGS", f"({MARCA})")
-                    except imaplib.IMAP4.error:
-                        pass
+                _etiquetar(im, str(q["uid"]), "-", MARCA, caps, con_marca)
                 politica.marca_quitada(q["clave"])
             desde = _fecha_imap((ahora - datetime.timedelta(days=int(a["dias"]))).date())
             tipo, ids = im.uid("SEARCH", None, "SINCE", desde)
@@ -205,7 +220,7 @@ class Correo:
                 res["ignorados"] += [f"{n} (de «{asunto}»)" for n in ignorados]
                 exts = {Path(n).suffix.lower() for n, _ in adjuntos}
                 estado, nombre = politica.estado(email_de)
-                marcar = lambda flag, signo="+": con_marca and _store(im, u, signo, flag)
+                marcar = lambda flag, signo="+": _etiquetar(im, u, signo, flag, caps, con_marca)
                 if estado == "bloqueado":
                     res["bloqueados"] += 1; vistos.add(clave); continue
                 regla = None
@@ -293,7 +308,7 @@ class Correo:
         hecho = False
         for uid in (ids[0].split() if ids and ids[0] else []):
             u = uid.decode()
-            _store(im, u, "-", MARCA)
+            _etiquetar(im, u, "-", MARCA, caps, True)
             if carpeta != entrada and puede_mover:
                 hecho = _mover(im, u, entrada, caps) or hecho
             else:
@@ -425,6 +440,21 @@ def _store(im, uid, signo, flag):
         return True
     except imaplib.IMAP4.error:
         return False
+
+
+def _etiquetar(im, uid, signo, etiqueta, caps, con_marca=True):
+    """Pone (+) o quita (-) la etiqueta. En Gmail las «palabras clave» IMAP no se ven en la web: allí se usa una
+    etiqueta de Gmail de verdad (X-GM-LABELS), que se crea sola. En el resto, la palabra clave si el servidor la admite."""
+    hecho = False
+    if "X-GM-EXT-1" in caps:
+        try:
+            tipo, _ = im.uid("STORE", uid, f"{signo}X-GM-LABELS", f'("{etiqueta}")')
+            hecho = tipo == "OK"
+        except imaplib.IMAP4.error:
+            pass
+    if con_marca:
+        hecho = _store(im, uid, signo, etiqueta) or hecho
+    return hecho
 
 
 def _mover(im, uid, carpeta, caps):

@@ -159,6 +159,27 @@ class TestAptos(unittest.TestCase):
             self.assertEqual(len(b.carpetas["INBOX"]), 1)                # sigue en la entrada, solo marcado
             self.assertFalse(any(o[0] in ("MOVE", "COPY", "EXPUNGE", "CREATE") for o in b.ordenes))
 
+    def test_gmail_anuncia_move_despues_de_entrar(self):
+        """3.1.2 · Gmail no anuncia MOVE hasta entrar; la etiqueta va como etiqueta de Gmail (X-GM-LABELS)."""
+        b = BuzonGmail([(mensaje("solo pdf", [("p.pdf", b"%PDF")]), AHORA - datetime.timedelta(minutes=5))])
+        imaplib.IMAP4_SSL = b
+        with tempfile.TemporaryDirectory() as t:
+            res = preparar(t).recoger_aptos(t, lambda r, d: 1, Pol(), ahora=AHORA)
+            self.assertEqual((res["movidos"], res["sin_mover"]), (1, 0))
+            self.assertEqual(len(b.carpetas["INBOX"]), 0)
+            self.assertIn(("STORE", "1", "+X-GM-LABELS", f'("{correo.MARCA}")'), b.ordenes)
+
+
+class BuzonGmail(Buzon):
+    def __init__(self, mensajes):
+        super().__init__(mensajes, caps=("IMAP4REV1", "X-GM-EXT-1", "AUTH=PLAIN"))     # antes de entrar
+    def capability(self):
+        return "OK", [b"IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE"]
+    def uid(self, orden, *args):
+        if orden == "STORE" and "X-GM-LABELS" in args[1]:
+            self.ordenes.append((orden,) + tuple(args)); return "OK", [b""]
+        return super().uid(orden, *args)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,27 +46,27 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.1.1_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.1.2_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v3.1.1_windows
-          path: SeFinancia_v3.1.1_windows.zip
+          name: SeFinancia_v3.1.2_windows
+          path: SeFinancia_v3.1.2_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.1.1
-          name: SeFinancia v3.1.1
+          tag_name: v3.1.2
+          name: SeFinancia v3.1.2
           prerelease: false
           make_latest: true
-          files: SeFinancia_v3.1.1_windows.zip
+          files: SeFinancia_v3.1.2_windows.zip
           body: |
-            SeFinancia 3.1.1 · motor Sentiende 3.1.1 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v3.1.1_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 3.1.2 · motor Sentiende 3.1.2 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v3.1.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
 
-            Novedades de la 3.1.1:
+            Novedades de la 3.1.2:
             - Correo con reglas de «apto»: espera 1 minuto en la revisión automática (a mano no espera); remitente conocido (en los correos de una ficha) con adjuntos entra y sin adjuntos te avisa; desconocido sin adjuntos o con fotos que no se reconocen queda con la etiqueta «No_Apto_SeFina»; con Word/Excel y sin PDF te pregunta en la campanita sin abrirlos (Sí / No / No y bloquear); con algún PDF entra (si solo trae PDF y nada se relaciona con lo registrado, vuelve a la bandeja de entrada).
             - Los correos aptos se mueven a la carpeta «procesadosMMAA» del buzón (solo si el servidor permite moverlos sin borrar nada) y avisan en la campanita: «Correo recibido y procesado Apto de…», con el asunto y el texto del correo.
             - Ficha de persona con «Correo informado» (a mano) y «Correos recibidos» (se apuntan solos). «Nueva persona» y «Expediente manual» piden el correo.
