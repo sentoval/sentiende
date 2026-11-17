@@ -179,6 +179,9 @@ def _leer_imagen(img, n, trabajo, idiomas, prefijo):
     return Pagina(n, texto, "ocr", round(conf, 3), rot, inc, ruta_img)
 
 # ------------------------------------------------------------------ entrada principal
+UMBRAL_LECTURA_POBRE = 0.6     # 3.1.2 · se cambia en Ajustes › OCR o con «Aceptar con este umbral» en Avisos del programa
+
+
 def leer(ruta, clase, huella=None, almacen=None, trabajo=None):
     """Lee un archivo completo. clase: 'pdf', 'imagen', 'word' o 'excel'."""
     ruta = Path(ruta)
@@ -239,7 +242,7 @@ def leer(ruta, clase, huella=None, almacen=None, trabajo=None):
         raise ValueError(f"Tipo de archivo no admitido: {clase}")
 
     for p in res.paginas:
-        if p.origen == "ocr" and p.confianza < 0.6:
+        if p.origen == "ocr" and p.confianza < UMBRAL_LECTURA_POBRE:
             res.avisos.append(f"Página {p.n}: lectura pobre ({round(p.confianza * 100)} %). Conviene volver a escanear.")
         if p.origen == "ocr" and utiles(p.texto) < 15:
             res.avisos.append(f"Página {p.n}: casi sin texto. Puede estar en blanco.")

@@ -255,6 +255,7 @@ class App:
             e["operacion"] = json.loads(op["datos"]) if op else {}
             e["etiqueta"] = self.motor.gestion.etiqueta(e["estado"], e["operacion"])
             e["marcas"] = marcas.get(e["id"], {"favorito": False, "prioridad": ""})
+            e["avisos"] = len(a.avisos_cliente(e["id"]))           # 3.1.2 · circulito en la lista
             try:
                 c = checklist.evaluar(self.motor.variante, a, e["id"])
                 e["checklist"] = {"recibidos": c["recibidos"], "total": c["total"]}
@@ -381,7 +382,7 @@ def crear_manejador(app):
                     if p == "/api/propuestas_union": return self._json(app.motor.propuestas_union())
                     if p == "/api/avisos":
                         a = app.motor.almacen
-                        return self._json({"cliente": a.avisos_cliente(), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:],
+                        return self._json({"cliente": a.avisos_cliente(), "apartados": a.avisos_cliente(apartados=True), "se": a.eventos(nivel="se")[-50:], "revision": a.eventos(nivel="revision")[-50:],
                                            "notificaciones": app.contexto.notificaciones(todas=True)})
                     if m := re.fullmatch(r"/api/documento/(\d+)", p): return self._json(app.documento(int(m.group(1))))
                     if p == "/api/correo":
@@ -543,6 +544,14 @@ def crear_manejador(app):
                     if p == "/api/notificacion_vista":
                         app.contexto.visto(datos.get("id") and int(datos["id"]))
                         return self._json({"ok": True})
+                    if p == "/api/aviso_cliente":                  # 3.1.2 · ignorar / posponer / volver a mostrar
+                        m.almacen.marcar_aviso_cliente(int(datos["expediente"]), datos["mensaje"], datos["accion"], datos.get("dias"))
+                        return self._json({"ok": True})
+                    if p == "/api/aceptar_lectura":                # 3.1.2 · «Aceptar con este umbral»
+                        pct = int(datos["porcentaje"])
+                        if pct < 5:
+                            raise ErrorGestion("Una lectura tan pobre no se puede aceptar como normal: vuelve a escanear la página.")
+                        return self._json(g.guardar_ajustes({"ocr": {"lectura_pobre": pct / 100}}))
                     if p == "/api/avisos_se_vistos":
                         ultimo = m.almacen.db.execute("SELECT COALESCE(MAX(id), 0) FROM eventos WHERE nivel = 'se'").fetchone()[0]
                         return self._json(g.guardar_ajustes({"avisos_se_visto": ultimo}))

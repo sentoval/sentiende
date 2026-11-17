@@ -276,3 +276,64 @@ def personas_repetidas(m):
                 out.append({"a": p, "b": q, "por": "mismo DNI" if mismo_dni else "mismo nombre",
                             "dni_distinto": bool(p["dni"] and q["dni"] and p["dni"].upper() != q["dni"].upper())})
     return out
+
+
+def repasar_nombres(m, doc):
+    """3.1.2 · Después de guardar un documento se repasan los nombres de su expediente:
+    a) serie: si ya hay otro recibo/extracto de la misma cuenta o préstamo con otro mes, todos llevan su _MMAA
+       (antes el primero de la serie se quedaba sin mes, p. ej. «…_prestamo_CAJAM.pdf»);
+    b) DNI aprendido: si la persona ya tiene DNI, lo guardado antes como «…NOINFORMADO…» pasa a llevarlo.
+    Solo cambia el nombre del archivo final (el original no se toca). Si un archivo está abierto en otro
+    programa, se deja como está y se avisa en el Centro de revisión."""
+    from .contexto import EN_SERIE, _mes
+    a = m.almacen
+    eid = doc.get("expediente_id")
+    exp = a.expediente(eid) if eid else None
+    if not exp:
+        return []
+    sin = m.variante.nombres["sin_dni"]
+    docs = a.documentos("expediente_id = ? AND estado = 'guardado'", (eid,))
+    tocar = set()
+    grupos = {}
+    for d in docs:
+        if d["tipo"] not in EN_SERIE:
+            continue
+        datos = d["datos"] or {}
+        claves = [f"cuenta|{x}" for x in datos.get("cuentas") or []] + [f"préstamo|{x}" for x in datos.get("prestamos") or []]
+        if not claves and d.get("entidad"):
+            claves = [f"entidad|{d['entidad']}"]
+        for k in claves:
+            grupos.setdefault(f"{d['tipo']}|{k}", {})[d["id"]] = d
+    for k, g in grupos.items():
+        if len(g) < 2 or len({_mes(d) for d in g.values() if _mes(d)}) < 2:
+            continue
+        for d in g.values():
+            datos = d["datos"] or {}
+            if not datos.get("serie"):
+                datos["serie"] = k
+                a.actualizar(d["id"], datos=datos)
+                tocar.add(d["id"])
+    personas = a.personas_de(eid)
+    for d in docs:
+        p = a.persona(d["persona_id"]) if d["persona_id"] else (personas[0] if personas else None)
+        if p and p.get("dni") and sin and sin in (d["nombre_final"] or ""):
+            tocar.add(d["id"])
+    hechos = []
+    for did in sorted(tocar):
+        d = a.documento(did)
+        p = a.persona(d["persona_id"]) if d["persona_id"] else (personas[0] if personas else None)
+        if not p:
+            continue
+        antes = d["nombre_final"]
+        try:
+            cambios = _colocar(m, d, exp, p, mover_original=False)
+        except Exception as e:
+            a.evento(f"No se ha podido poner al día el nombre de «{antes}»: {e}", did, d["lote_id"], 10, "revision")
+            continue
+        if cambios.get("nombre_final") != antes:
+            a.actualizar(did, **cambios)
+            a.evento(f"Nombre puesto al día: {antes} → {cambios['nombre_final']}", did, d["lote_id"], 10)
+            hechos.append(did)
+    if hechos:
+        _refrescar(m, eid)
+    return hechos

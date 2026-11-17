@@ -100,7 +100,6 @@ function lateral() {
         <button class="btn" id="b-correo" title="Recibir por correo" aria-label="Recibir por correo">${ico("mail", 22)}</button>
         <button class="btn" id="b-bt" title="Recibir por Bluetooth" aria-label="Recibir por Bluetooth">${ico("bt", 22)}</button>
         <button class="btn" id="b-scan" title="Escanear" aria-label="Escanear">${ico("scan", 22)}</button></span>
-      <button class="btn lat-manual" id="b-exp-manual" title="Abrir un expediente metiendo los datos a mano: será la referencia segura para lo que llegue después">${ico("users", 16)}Expediente manual</button>
       ${CORREO_TXT ? `<span class="lat-estado">${esc(CORREO_TXT)}</span>` : ""}${BT?.activo ? `<span class="lat-estado">${ico("bt", 13)} ${esc(BT.mensaje)}</span>` : ""}
       ${S.estado?.trabajando ? '<span class="trabajando">El motor está trabajando…</span>' : ""}
     </div>
@@ -113,7 +112,6 @@ function activarZona() {
   ["dragleave", "drop"].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove("encima"); }));
   zona.addEventListener("drop", e => { e.stopPropagation(); subir([...e.dataTransfer.files], "arrastrados"); });
   $("#elegir").addEventListener("change", e => subir([...e.target.files], "elegidos"));
-  $("#b-exp-manual")?.addEventListener("click", e => { e.stopPropagation(); NUEVO_EXP = { finalidad: (S.info.finalidades_visibles || [])[0], personas: [{}], manual: true }; location.hash = "expedientes"; pintar(); });
   $("#b-correo").addEventListener("click", revisarCorreo);
   $("#b-ia")?.addEventListener("click", pulsarIA);
   $("#b-scan").addEventListener("click", abrirEscaner);
@@ -995,7 +993,22 @@ function vistaAvisosCliente() {
   const por = {}; AV.cliente.forEach(a => (por[a.expediente_id] = por[a.expediente_id] || []).push(a));
   return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>Avisos cliente</h1><div class="sub">Lo que falta o ha caducado en cada expediente. Desaparecen solos cuando llega el documento.</div></div></div>
   ${Object.keys(por).length ? Object.entries(por).map(([eid, l]) => `<section class="tarjeta"><div class="neg-cab"><h2><a href="#expediente/${eid}">${esc(exps[eid]?.nombre || "Expediente " + eid)}</a></h2><span class="sub">${l.length} aviso(s)</span></div>
-    ${l.map(a => `<div class="dato"><span>${esc(a.mensaje)}</span><span class="muted">desde ${fmtF(a.creado)}</span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}`;
+    ${l.map(a => `<div class="dato aviso-cli-fila"><span>${esc(a.mensaje)}</span><span class="aviso-cli-acc"><span class="muted">desde ${fmtF(a.creado)}</span>
+      <button type="button" class="btn peq" data-av-exp="${eid}" data-av-msg="${esc(a.mensaje)}" data-av-acc="ignorar" title="No vuelve a salir mientras siga igual">Ignorar</button>
+      <select class="peq" data-av-exp="${eid}" data-av-msg="${esc(a.mensaje)}" data-av-acc="posponer" title="Lo esconde y vuelve a salir pasado este tiempo"><option value="">Posponer…</option><option value="1">1 día</option><option value="7">1 semana</option><option value="30">1 mes</option></select></span></div>`).join("")}</section>`).join("") : '<div class="tarjeta vacio">No hay avisos: no falta ni ha caducado nada.</div>'}
+  ${(AV.apartados || []).length ? `<details class="tarjeta"><summary>Ignorados y pospuestos (${AV.apartados.length})</summary>
+    ${AV.apartados.map(a => `<div class="dato aviso-cli-fila"><span><a href="#expediente/${a.expediente_id}">${esc(exps[a.expediente_id]?.nombre || "Expediente " + a.expediente_id)}</a> · ${esc(a.mensaje)}</span><span class="aviso-cli-acc"><span class="muted">${a.ignorado ? "ignorado" : "pospuesto hasta el " + fmtF(a.pospuesto)}</span>
+      <button type="button" class="btn peq" data-av-exp="${a.expediente_id}" data-av-msg="${esc(a.mensaje)}" data-av-acc="mostrar">Volver a mostrar</button></span></div>`).join("")}</details>` : ""}`;
+}
+function activarAvisosCliente() {
+  const enviar = async (el, dias) => {
+    try {
+      await api("aviso_cliente", { expediente: +el.dataset.avExp, mensaje: el.dataset.avMsg, accion: el.dataset.avAcc, dias });
+      [AV, S.estado, S.expedientes] = await Promise.all([api("avisos"), api("estado"), api("expedientes")]); pintar();
+    } catch (e) { aviso(e.message, true); }
+  };
+  document.querySelectorAll("button[data-av-acc]").forEach(b => b.addEventListener("click", () => { b.disabled = true; enviar(b); }));
+  document.querySelectorAll("select[data-av-acc]").forEach(s => s.addEventListener("change", () => { if (s.value) enviar(s, +s.value); }));
 }
 function vistaAvisosSe() {
   if (!AV) return '<div class="tarjeta vacio">Cargando…</div>';
@@ -1003,7 +1016,16 @@ function vistaAvisosSe() {
   return `<div class="cab"><div><h1>Avisos del programa</h1><div class="sub">Problemas del motor, de la versión o de los archivos (Avisos Se). La campanita del menú solo aparece cuando hay alguno nuevo.</div></div>
     <div class="acciones">${nuevos ? `<button class="btn pri" id="se-vistos">${ico("check")}Marcar como vistos</button>` : ""}</div></div>
   ${notificacionesHTML()}
-  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
+  <section class="tarjeta">${AV.se.slice().reverse().map((a, i) => `<div class="dato ${i < nuevos ? "nuevo" : ""}"><span>${esc(a.mensaje)}</span><span class="aviso-se-der">${botonLecturaPobre(a.mensaje)}<span class="muted">${esc(a.fecha.replace("T", " ").slice(0, 16))}</span></span></div>`).join("") || '<span class="sub">Ningún problema.</span>'}</section>`;
+}
+// 3.1.2 · «Aceptar con este umbral»: el aviso de lectura pobre deja de salir para las páginas que se leen a este % o más
+function botonLecturaPobre(msg) {
+  const m = /lectura pobre \((\d+) %\)/.exec(msg || "");
+  if (!m) return "";
+  const pct = +m[1], umbral = Math.round((S.ajustes?.ocr?.lectura_pobre ?? .6) * 100);
+  if (pct < 5) return '<span class="muted" title="Una página leída casi al 0 % suele estar en blanco o muy mal escaneada">vuelve a escanearla</span>';
+  if (pct >= umbral) return `<span class="pill p-ok" title="Desde ahora no se avisa de lecturas de ${umbral} % o más">aceptado</span>`;
+  return `<button type="button" class="btn peq" data-acepta-lectura="${pct}" title="Las páginas que se lean al ${pct} % o más dejarán de dar este aviso (ahora se avisa por debajo del ${umbral} %). Se puede cambiar en Ajustes › OCR.">${ico("check", 14)} Aceptar con este umbral (${pct} %)</button>`;
 }
 function vistaLimbo() {
   const docs = S.estado.lotes.flatMap(l => l.documentos).filter(d => d.estado === "limbo");
@@ -1037,7 +1059,8 @@ function vistaAjustes() {
     <span class="sub">Lo que ya está guardado no se mueve: las carpetas nuevas se usan desde ahora. Si cambias SeDocumentos o Doc_original, mueve antes las carpetas de los expedientes con el Explorador de Windows.</span></section>
   <section class="tarjeta"><h2>Reconocimiento (OCR)</h2>
     <div class="campos-inline"><div class="campo"><label for="oc-rev">Pedir revisión por debajo de (%)</label><input id="oc-rev" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.revisar || .75) * 100)}"></div>
-      <div class="campo"><label for="oc-no">«No reconocido» por debajo de (%)</label><input id="oc-no" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.no_reconocido || .4) * 100)}"></div></div>
+      <div class="campo"><label for="oc-no">«No reconocido» por debajo de (%)</label><input id="oc-no" type="number" min="5" max="99" value="${Math.round((S.ajustes?.umbrales?.no_reconocido || .4) * 100)}"></div>
+      <div class="campo"><label for="oc-lp">Avisar de «lectura pobre» por debajo de (%)</label><input id="oc-lp" type="number" min="5" max="95" value="${Math.round((S.ajustes?.ocr?.lectura_pobre ?? .6) * 100)}"></div></div>
     <div class="chips">${[["spa", "Castellano"], ["cat", "Valenciano / catalán"], ["eus", "Euskera"], ["glg", "Gallego"], ["eng", "Inglés"]]
       .map(([k, n]) => `<label class="check mini"><input type="checkbox" data-idioma="${k}" ${(S.ajustes?.ocr?.idiomas || []).includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
     <span class="sub">Idiomas que usa el OCR en las fotos y escaneos. Menos idiomas = un poco más rápido.</span>
@@ -1168,7 +1191,7 @@ function activarAjustes() {
   });
   $("#oc-ok")?.addEventListener("click", async () => {
     const idiomas = [...document.querySelectorAll("[data-idioma]:checked")].map(i => i.dataset.idioma);
-    try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
+    try { S.ajustes = await api("ajustes", { umbrales: { revisar: +$("#oc-rev").value / 100, no_reconocido: +$("#oc-no").value / 100 }, ocr: { idiomas, lectura_pobre: +$("#oc-lp").value / 100 } }); aviso("Ajustes del OCR guardados"); } catch (e) { aviso(e.message, true); }
   });
   $("#ap-t")?.addEventListener("input", e => { $("#ap-v").textContent = e.target.value + " %"; });
   $("#ctx-guardar")?.addEventListener("click", async () => {
@@ -1210,8 +1233,8 @@ function pintar() {
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
     documentacion: [vistaDocumentacion, () => activarExpediente(+id)],
-    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
-    avisos_cliente: [vistaAvisosCliente, () => {}], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
+    unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); activarLecturaPobre(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
+    avisos_cliente: [vistaAvisosCliente, activarAvisosCliente], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
     papelera: [vistaPapelera, activarPapelera], estadisticas: [vistaEstadisticas, () => {}], buscar: [vistaBuscar, activarBuscar], reglas: [vistaReglas, activarReglas],
     bienvenida: [vistaBienvenida, activarBienvenida], separar: [() => vistaSeparar(+id), () => activarSeparar(+id)],
@@ -1314,12 +1337,13 @@ function vistaExpedientes() {
     <div class="acciones"><a class="btn avisos-cli" href="#avisos_cliente">${ico("bell", 16)}Avisos cliente${S.estado.cuentas.avisos_cliente ? `<span class="num">${S.estado.cuentas.avisos_cliente}</span>` : ""}</a><button class="btn pri" id="exp-nuevo">＋ Nuevo expediente</button></div></div>
   ${NUEVO_EXP ? formNuevoExp() : ""}
   <nav class="pestanas">${Object.entries(nombres).map(([k, n]) => `<a href="javascript:void 0" data-exp-tab="${k}" ${k === EXP_TAB ? 'aria-current="page"' : ""}>${n}<span class="num">${S.expedientes.filter(grupos[k]).length}</span></a>`).join("")}</nav>
-  ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th></tr></thead><tbody>
+  ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th><th title="Avisos de cliente">Avisos</th></tr></thead><tbody>
   ${lista.map(e => `<tr class="clic prio-${e.marcas.prioridad || "no"} ${e.estado === "unido" ? "apagada" : ""}" data-exp="${e.id}">
     <td class="marcas-exp"><button type="button" class="marca-b ${e.marcas.favorito ? "on" : ""}" data-fav="${e.id}" title="Favorito">${e.marcas.favorito ? "★" : "☆"}</button><button type="button" class="marca-b ${e.marcas.prioridad ? "on" : ""}" data-prio="${e.id}" title="${PRIO[e.marcas.prioridad]} (pulsa para cambiar)">${ico("bell", 16)}</button></td>
     <td><b>${esc(e.nombre)}</b><div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)}</div></td><td>${pill(e.etiqueta, e.estado === "firmado" ? "ok" : e.estado === "cerrado" ? "bad" : "todo")}</td>
     <td>${e.personas.map(p => esc(`${p.nombre} ${p.apellido1}`) + ` <span class="muted">(${esc(p.papel)})</span>`).join("<br>")}</td>
-    <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td></tr>`).join("")}</tbody></table></section>`
+    <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td>
+    <td class="centro">${e.avisos ? `<a class="circ-avisos" href="#avisos_cliente" title="${e.avisos} aviso(s) de cliente">${e.avisos}</a>` : ""}</td></tr>`).join("")}</tbody></table></section>`
     : `<div class="tarjeta vacio">No hay expedientes ${EXP_TAB === "todos" ? "todavía" : "en «" + nombres[EXP_TAB] + "»"}.</div>`}`;
 }
 function formNuevoExp() {
@@ -1333,7 +1357,7 @@ function formNuevoExp() {
     <div class="acciones"><button class="btn" id="ne-mas">＋ Otra persona</button><button class="btn pri" id="ne-ok">${ico("check")}Crear expediente</button><button class="btn" id="ne-no">Cancelar</button></div></section>`;
 }
 function activarExpedientes() {
-  document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", ev => { if (!ev.target.closest("button")) location.hash = "expediente/" + tr.dataset.exp; }));
+  document.querySelectorAll("[data-exp]").forEach(tr => tr.addEventListener("click", ev => { if (!ev.target.closest("button, a")) location.hash = "expediente/" + tr.dataset.exp; }));
   document.querySelectorAll("[data-exp-tab]").forEach(a => a.addEventListener("click", () => { EXP_TAB = a.dataset.expTab; pintar(); }));
   document.querySelectorAll("[data-fav]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.fav); await api("marcar_expediente", { expediente: e.id, favorito: !e.marcas.favorito }); refrescar(true); }));
   document.querySelectorAll("[data-prio]").forEach(b => b.addEventListener("click", async () => { const e = S.expedientes.find(x => x.id === +b.dataset.prio); const p = SIG_PRIO[e.marcas.prioridad || ""]; await api("marcar_expediente", { expediente: e.id, prioridad: p }); aviso(PRIO[p]); refrescar(true); }));
@@ -1918,6 +1942,15 @@ function tarjetaContexto() {
       <div class="campo"><label for="ctx-c">Cotitular: % de documentos compartidos</label><input id="ctx-c" type="number" min="10" max="100" value="${v("cotitular", 50)}"></div>
       <div class="campo"><label for="ctx-m">Mínimo de documentos para crear expediente</label><input id="ctx-m" type="number" min="1" max="20" value="${v("minimo_docs", 2)}"></div></div>
     <span class="sub">Un DNI solo se da por bueno si aparece en al menos 2 documentos del lote. El cotitular se busca solo en documentos compartidos (renta, padrón, cuentas, préstamos, escrituras…), nunca en nóminas.</span></section>`;
+}
+function activarLecturaPobre() {
+  document.querySelectorAll("[data-acepta-lectura]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      S.ajustes = await api("aceptar_lectura", { porcentaje: +b.dataset.aceptaLectura });
+      aviso(`Aceptado: ya no se avisará de lecturas del ${b.dataset.aceptaLectura} % o más`); pintar();
+    } catch (e) { b.disabled = false; aviso(e.message, true); }
+  }));
 }
 function notificacionesHTML() {
   const ns = (AV && AV.notificaciones) || [];

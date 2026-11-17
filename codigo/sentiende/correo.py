@@ -116,10 +116,21 @@ class Correo:
             im = imaplib.IMAP4_SSL(a["servidor"], int(a["puerto"]), ssl_context=ssl.create_default_context(), timeout=30)
         except Exception as e:
             raise ErrorCorreo(f"No se puede conectar con {a['servidor']}: {e}")
+        clave = desproteger(a["clave"])
+        google = any(x in (a["servidor"] or "").lower() for x in ("gmail", "googlemail", "google"))
+        if google:
+            clave = clave.replace(" ", "")      # la contraseña de aplicación se muestra como «abcd efgh ijkl mnop»
         try:
-            im.login(a["usuario"], desproteger(a["clave"]))
+            im.login(a["usuario"], clave)
         except imaplib.IMAP4.error as e:
-            raise ErrorCorreo(f"El servidor no acepta el usuario o la contraseña ({e.args[0].decode(errors='ignore') if isinstance(e.args[0], bytes) else e}).")
+            detalle = e.args[0].decode(errors="ignore") if isinstance(e.args[0], bytes) else str(e)
+            pista = ""
+            if google:
+                pista = (" · Gmail no deja entrar con la contraseña normal de la cuenta: hay que activar la verificación en dos pasos y crear "
+                         "una «contraseña de aplicación» (myaccount.google.com/apppasswords). Pega aquí esos 16 caracteres y como usuario la dirección completa.")
+            elif "AUTHENTICATIONFAILED" in detalle.upper():
+                pista = " · Revisa el usuario (normalmente la dirección completa) y si tu proveedor pide una contraseña de aplicación."
+            raise ErrorCorreo(f"El servidor no acepta el usuario o la contraseña ({detalle}).{pista}")
         return im
 
     def probar(self, a_prueba=None):

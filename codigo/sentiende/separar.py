@@ -10,6 +10,9 @@ Cómo se decide:
 4. Dentro de cada documento las páginas se ordenan por su numeración.
 5. Las páginas que comparten código de verificación (CSV, referencia electrónica…) o el mismo pie
    de página son del mismo documento: nunca se separan (renta, vida laboral, certificados).
+6. (3.1.2) Formularios con apartados numerados: si una página empieza por el apartado siguiente
+   al último del documento en curso («3. Actividad» → «4. Declaración de bienes»), es su continuación
+   aunque por sí sola parezca otro tipo (la solicitud de aval se partía en tres).
 El resultado es una propuesta: se puede corregir en la pantalla Separar."""
 import re
 from dataclasses import dataclass, field
@@ -25,6 +28,7 @@ class Parte:
     puntos: int = 0
     total_declarado: int | None = None             # N de «página X de N»
     firmas: list = field(default_factory=list)     # códigos y pies de sus páginas
+    seccion: int = 0                               # último apartado numerado visto («7. Otros datos» -> 7)
 
 @dataclass
 class Separacion:
@@ -55,6 +59,21 @@ def firma(texto):
     pie = re.sub(r"[\d¦ ]+", " ", " ".join(lineas[-2:])).strip() if lineas else ""
     return codigos, pie if len(pie) > 30 else ""
 
+SECCION_RE = re.compile(r"(?m)^\s*(\d{1,2})\s*[.)]\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}")
+
+def secciones(texto):
+    """Apartados numerados de un formulario («1. Solicitante», «4. Declaración de bienes»), en orden de aparición
+    y solo si van subiendo (así no se confunden con listas o fechas)."""
+    out = []
+    for m in SECCION_RE.finditer(texto or ""):
+        n = int(m.group(1))
+        if 1 <= n <= 30 and (not out or out[-1] < n <= out[-1] + 3):
+            out.append(n)
+    return out
+
+def continua_apartados(parte, secs):
+    return bool(parte and parte.seccion and secs and parte.seccion < secs[0] <= parte.seccion + 2)
+
 def mismo_documento(f1, f2):
     return bool(f1[0] & f2[0]) or (f1[1] and f1[1] == f2[1])
 
@@ -69,7 +88,7 @@ def separar(textos, clasificador):
             info.append({"n": i, "blanco": True}); continue
         res = clasificador.puntuar(norm(tx))
         tipo, pts = (res[0][1], res[0][0]) if res else (None, 0)
-        info.append({"n": i, "blanco": False, "tipo": tipo, "puntos": pts, "num": numeracion(tx), "firma": firma(tx)})
+        info.append({"n": i, "blanco": False, "tipo": tipo, "puntos": pts, "num": numeracion(tx), "firma": firma(tx), "secs": secciones(tx)})
     partes, en_blanco, pendientes = [], [p["n"] for p in info if p["blanco"]], []
     actual = None
     for p in (x for x in info if not x["blanco"]):
@@ -89,13 +108,15 @@ def separar(textos, clasificador):
                 destino.paginas.append(p["n"]); destino.firmas.append(p["firma"]); continue
             if actual and not actual.total_declarado:
                 actual.paginas.append(p["n"]); actual.firmas.append(p["firma"]); continue
+        sigue = continua_apartados(actual, p["secs"])
         nuevo = (actual is None or (num and num[0] == 1)
-                 or (p["tipo"] and p["puntos"] >= UMBRAL_TIPO_CLARO and p["tipo"] != actual.tipo))
+                 or (not sigue and p["tipo"] and p["puntos"] >= UMBRAL_TIPO_CLARO and p["tipo"] != actual.tipo))
         if nuevo:
-            actual = Parte([p["n"]], p["tipo"], p["puntos"], num[1] if num else None, [p["firma"]])
+            actual = Parte([p["n"]], p["tipo"], p["puntos"], num[1] if num else None, [p["firma"]], max(p["secs"] or [0]))
             partes.append(actual)
         else:
             actual.paginas.append(p["n"]); actual.firmas.append(p["firma"])
+            actual.seccion = max([actual.seccion] + p["secs"])
             if p["puntos"] > actual.puntos and not actual.tipo:
                 actual.tipo, actual.puntos = p["tipo"], p["puntos"]
     reordenado = False

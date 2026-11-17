@@ -674,3 +674,11 @@ select.misma.sel { background: var(--selFondo); color: var(--selLetra); border-c
 .chips .chip { flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; }
 .chip .x { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
 .chip .x:hover { color: var(--bad); }
+
+/* 3.1.2 · avisos: aceptar umbral, ignorar/posponer y circulito en la lista */
+.aviso-se-der, .aviso-cli-acc { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.aviso-cli-fila { align-items: center; }
+select.peq { padding: 3px 6px; font-size: 13px; border-radius: 8px; }
+.circ-avisos { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--warn); color: #1A1406; font-size: 12px; font-weight: 600; text-decoration: none; }
+td.centro { text-align: center; }

@@ -1,5 +1,5 @@
 {
- "version": "2026.11.14-2",
+ "version": "2026.11.17-1",
  "motor": "Sentiende",
  "variante": "SeFinancia",
  "idiomas": [
@@ -2964,6 +2964,91 @@
     "sgr"
    ],
    "privado_por_defecto": false
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "zzzz": "Entidad",
+   "finalidades": [],
+   "emisores": [
+    "banco",
+    "sgr"
+   ],
+   "privado_por_defecto": false,
+   "id": "formsolicitud",
+   "nombrecorto": "formsolicitud",
+   "familia": "Solicitudes y formularios",
+   "nombres": {
+    "es": [
+     "Formulario de solicitud",
+     "Impreso de solicitud"
+    ],
+    "ca": [
+     "Formulari de sol·licitud"
+    ],
+    "eu": [
+     "Eskaera-inprimakia"
+    ],
+    "gl": [
+     "Formulario de solicitude"
+    ]
+   },
+   "sinonimos": [
+    "solicitud de financiación",
+    "solicitud de préstamo",
+    "impreso"
+   ],
+   "palabras_clave": [
+    "FORMULARIO DE SOLICITUD",
+    "IMPRESO DE SOLICITUD",
+    "DATOS DEL SOLICITANTE",
+    "FINANCIACIÓN QUE SOLICITA",
+    "IMPORTE SOLICITADO",
+    "SOLICITUD DE FINANCIACIÓN",
+    "SOLICITUD DE PRÉSTAMO",
+    "PLAZO SOLICITADO"
+   ]
+  },
+  {
+   "validez_meses": null,
+   "subtipo_de": null,
+   "requiere": [],
+   "zzzz": "Entidad",
+   "finalidades": [],
+   "emisores": [
+    "banco",
+    "sgr"
+   ],
+   "privado_por_defecto": false,
+   "id": "formfirmado",
+   "nombrecorto": "formfirmado",
+   "familia": "Solicitudes y formularios",
+   "nombres": {
+    "es": [
+     "Formulario firmado"
+    ],
+    "ca": [
+     "Formulari signat"
+    ],
+    "eu": [
+     "Sinatutako inprimakia"
+    ],
+    "gl": [
+     "Formulario asinado"
+    ]
+   },
+   "sinonimos": [
+    "impreso firmado",
+    "solicitud firmada"
+   ],
+   "palabras_clave": [
+    "FORMULARIO FIRMADO",
+    "SOLICITUD FIRMADA",
+    "FIRMA DEL SOLICITANTE",
+    "EL ABAJO FIRMANTE",
+    "LOS ABAJO FIRMANTES"
+   ]
   },
   {
    "validez_meses": null,

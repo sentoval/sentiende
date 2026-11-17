@@ -59,6 +59,8 @@ class Gestion:
         aj = json.loads(self._ruta_ajustes.read_text(encoding="utf-8")) if self._ruta_ajustes.exists() else {}
         aj.setdefault("umbrales", dict(self.m.variante.meta.get("umbrales", {"revisar": 0.75, "no_reconocido": 0.4})))
         aj.setdefault("ocr", {"idiomas": ["spa", "cat", "eus", "glg"]})
+        aj["ocr"].setdefault("idiomas", ["spa", "cat", "eus", "glg"])
+        aj["ocr"].setdefault("lectura_pobre", 0.6)
         aj.setdefault("apariencia", {"tamano": 100})
         aj.setdefault("bienvenida_vista", False)
         aj["carpetas"] = {k: str(p) for k, p in self.m.carpetas.rutas.items()}
@@ -82,8 +84,17 @@ class Gestion:
                 raise ErrorGestion("El umbral de «revisar» tiene que ser mayor que el de «no reconocido» (entre 5 y 99 %).")
             aj["umbrales"] = {"revisar": round(r, 2), "no_reconocido": round(n, 2)}
         if "ocr" in nuevos:
-            idi = [i for i in nuevos["ocr"].get("idiomas", []) if i in ("spa", "cat", "eus", "glg", "eng")]
-            aj["ocr"] = {"idiomas": idi or ["spa"]}
+            o = nuevos["ocr"] or {}
+            previo = aj.get("ocr") or {}
+            if "idiomas" in o:
+                idi = [i for i in o.get("idiomas", []) if i in ("spa", "cat", "eus", "glg", "eng")]
+                previo["idiomas"] = idi or ["spa"]
+            if "lectura_pobre" in o:                       # 3.1.2 · aviso de «lectura pobre» por debajo de este %
+                lp = float(o["lectura_pobre"])
+                if not 0.05 <= lp <= 0.95:
+                    raise ErrorGestion("El aviso de lectura pobre tiene que estar entre 5 y 95 %.")
+                previo["lectura_pobre"] = round(lp, 2)
+            aj["ocr"] = previo
         if "apariencia" in nuevos:
             aj["apariencia"] = {"tamano": max(80, min(140, int(nuevos["apariencia"].get("tamano", 100))))}
         if "bienvenida_vista" in nuevos:
@@ -110,6 +121,7 @@ class Gestion:
         self.m.variante.meta["umbrales"] = aj["umbrales"]
         from . import lectura
         lectura.IDIOMAS_PREFERIDOS = list(aj["ocr"]["idiomas"])
+        lectura.UMBRAL_LECTURA_POBRE = float(aj["ocr"].get("lectura_pobre", 0.6))
 
     # ------------------------------------------------------------ estado y datos de la operación
     def operacion(self, eid):

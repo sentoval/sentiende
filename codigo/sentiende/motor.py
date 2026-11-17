@@ -17,7 +17,7 @@ from .variante import Variante, VarianteError
 from .recibir import huella, tipo_archivo, mover_a_entrada
 from .lectura import leer
 from .separar import separar
-from .extraer import extraer, aprender_personas
+from .extraer import extraer, aprender_personas, norm
 from .clasificar import Clasificador
 from .nombres import Nombrador, carpeta_expediente
 from . import checklist, textos
@@ -39,7 +39,7 @@ class Motor:
         if not self.variante.compat.compatible:
             raise MotorError(self.variante.compat.mensaje)
         self.almacen = Almacen(self.carpetas.datos / "sentiende.db")
-        self.al_guardar = []          # funciones que se llaman con cada documento guardado en un expediente
+        self.al_guardar = [self._repasar_nombres]   # funciones que se llaman con cada documento guardado en un expediente
         self.clasificador = Clasificador(self.variante)
         self.nombrador = Nombrador(self.variante)
         self._cargar_finalidades()
@@ -219,6 +219,10 @@ class Motor:
                 a.actualizar(did, fase=5, datos=datos)
                 a.evento(f"Datos: {len(datos['dni'])} DNI/NIE, {len(datos['iban'])} IBAN, {len(datos['fechas'])} fechas", did, lote, 5)
             c = self.clasificador.clasificar(texto)
+            # 3.1.2 · un formulario de solicitud cuyo archivo dice «firmado» se guarda como «Formulario firmado»
+            if c.tipo == "formsolicitud" and "FIRMAD" in norm(a.documento(did)["nombre_recibido"] or ""):
+                c.tipo = "formfirmado"
+                c.indicios = list(c.indicios or []) + ["«firmado» en el nombre del archivo"]
             datos = a.documento(did)["datos"] or {}
             tarjeta = parece_tarjeta(texto, c.entidad, len(datos.get("dni") or []), self.clasificador.bancos)
             if tarjeta and not datos.get("tarjeta"):
@@ -722,6 +726,10 @@ class Motor:
             a.actualizar(doc_id, estado="parado", motivo=f"Fase {f} · {NOMBRE_FASE.get(f, '')}: {e}")
             a.evento(f"Parado en la fase {f}: {e}. Nada se ha perdido: el original sigue en Entrada.", doc_id, lote, f, "se")
             raise MotorError(f"Parado en la fase {f}: {e}")
+
+    def _repasar_nombres(self, doc):
+        from .arreglos import repasar_nombres          # aquí para no importar en círculo
+        repasar_nombres(self, doc)
 
     def _documento_editado(self, d, destino):
         """PDF final: páginas digitales tal cual y las leídas por OCR ya giradas y enderezadas."""
