@@ -55,6 +55,8 @@ def iban_valido(s):
 def _fecha(d, m, a):
     try:
         a = int(a); a = a + 2000 if a < 100 else a
+        if a < 1900:          # 3.1.2 · p. ej. «1856» del sello de una escritura antigua: no es una fecha útil
+            return None
         return datetime.date(a, int(m), int(d))
     except ValueError:
         return None
@@ -342,10 +344,16 @@ def personas(texto):
         despues = t[pos: pos + 220]
         corte = re.search(otra, despues[12:])
         despues = despues[: 12 + corte.start()] if corte else despues
-        # hacia atrás solo vale una línea propia del DNI justo encima («NIF: 12345678Z»), nunca el de otra persona
+        # 3.1.2 · en la renta (AEAT) cada persona va como «NIF ¦ X 0075» y debajo «Apellidos y nombre ¦ … 0076»:
+        # un NIF seguido de «Apellidos» es ya de la persona siguiente (a Miguel no se le leía el suyo y a una hija se le
+        # asignaba el de su hermana)
+        sig = re.search(r"\n\s*N\.?I\.?F\.?[^\n]*\n\s*APELLIDOS", despues)
+        despues = despues[: sig.start()] if sig else despues
+        # hacia atrás solo vale una línea propia del DNI justo encima («NIF: 12345678Z», también con la casilla «0001»
+        # detrás), nunca el de otra persona; si existe, manda sobre lo de después
         lineas_antes = t[max(0, pos - 120): pos].split("\n")[-3:-1]
-        antes = " ".join(l for l in lineas_antes if re.fullmatch(r"\s*(?:N\.?I\.?F\.?|D\.?N\.?I\.?|NIE|DOCUMENTO)[^A-Z]{0,6}(?:" + dni_re + r")\s*", l))
-        dn = [dni_valido(m.group(0)) for m in re.finditer(dni_re, despues)] or [dni_valido(m.group(0)) for m in re.finditer(dni_re, antes)]
+        antes = " ".join(l for l in lineas_antes if re.fullmatch(r"\s*(?:N\.?I\.?F\.?|D\.?N\.?I\.?|NIE|DOCUMENTO)[^A-Z]{0,6}(?:" + dni_re + r")(?:\s+\d{4})?\s*", l))
+        dn = [dni_valido(m.group(0)) for m in re.finditer(dni_re, antes)] or [dni_valido(m.group(0)) for m in re.finditer(dni_re, despues)]
         p["dni"] = next((x for x in dn if x), None)
         clave = frozenset(norm(p["completo"]).split())
         for q in encontradas:

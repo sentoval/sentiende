@@ -550,7 +550,8 @@ class Motor:
         trabajo = self.carpetas.trabajo(lote)
         ruta = libre(trabajo / f"unido_{docs[0]['id']}.pdf")
         paginas[0].save(ruta, "PDF", resolution=200, save_all=True, append_images=paginas[1:])
-        nuevo = a.nuevo_documento(lote, f"{Path(docs[0]['nombre_recibido']).stem} (+{len(docs) - 1} unidas).pdf", ruta, huella(ruta), ".pdf")
+        from .almacen import nombre_limpio
+        nuevo = a.nuevo_documento(lote, f"{nombre_limpio(docs[0]['nombre_recibido'])} (+{len(docs) - 1} unidas).pdf", ruta, huella(ruta), ".pdf")
         a.actualizar(nuevo, fase=1)
         for d in docs:
             a.actualizar(d["id"], estado="unido", unido_en=nuevo, motivo=f"Unido en el documento {nuevo}")

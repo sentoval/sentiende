@@ -2,6 +2,7 @@
 """Almacén local (M-17): una base SQLite en Datos\\sentiende.db.
 Guarda lotes, documentos y su fase, texto leído por página (caché, M-61), personas,
 expedientes, eventos (historial y motor de proceso) y correcciones."""
+import re
 import json, sqlite3, datetime
 from pathlib import Path
 
@@ -47,6 +48,19 @@ JSON_CAMPOS = {"alternativas", "indicios", "datos", "rotaciones", "paginas_sel"}
 
 def ahora():
     return datetime.datetime.now().isoformat(timespec="seconds")
+
+EXT_RE = r"\.(?:pdf|jpe?g|png|tiff?|heic|webp|bmp|docx?|xlsx?)"
+
+def nombre_limpio(nombre):
+    """3.1.2 · «X (+3 unidas).pdf (págs (+1 unidas).pdf (págs. 3, 4)» → «X»: quita los añadidos de unir y separar
+    (y la extensión) para que al unir y separar varias veces el nombre no se vaya alargando."""
+    n = nombre or ""
+    corte = re.search(r"\s*\((?:\+\d+ unidas|p[áa]gs?\b)", n, re.I)        # desde el primer añadido, fuera
+    if corte and corte.start() > 0:
+        n = n[:corte.start()]
+    n = re.sub(EXT_RE + r"\s*$", "", n.strip(), flags=re.I).strip()
+    return n or (nombre or "").strip()
+
 
 class Almacen:
     def __init__(self, ruta):
