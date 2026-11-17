@@ -1923,7 +1923,8 @@ function notificacionesHTML() {
   const ns = (AV && AV.notificaciones) || [];
   if (!ns.length) return "";
   const nuevas = ns.filter(n => !n.visto), viejas = ns.filter(n => n.visto).slice(0, 5);
-  const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico(n.tipo === "parecido" ? "user" : "folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
+  const fila = n => `<div class="dato ${n.visto ? "" : "nuevo"}"><span>${ico(n.tipo === "parecido" ? "user" : n.tipo.startsWith("correo") ? "mail" : "folder", 15)} ${esc(n.mensaje)}</span><span class="acciones">
+      ${n.tipo === "correo_apto" && n.lote_id ? `<a class="btn peq" href="#motor/${n.lote_id}">Ver lote</a>` : ""}
       ${n.expediente_id && n.expediente ? `<a class="btn peq" href="#expediente/${n.expediente_id}">Revisar expediente</a>` : ""}
       ${n.tipo === "parecido" && !n.visto && n.datos && /"(nombre|dni)"/.test(n.datos) ? `<button class="btn peq" data-noti-cambiar="${n.id}">Cambiar por los del documento</button>` : ""}
       ${n.tipo === "correo_office" && !n.visto ? `<button class="btn peq pri" data-correo-resp="si" data-id="${n.id}">${ico("check", 14)}Sí, es apto</button><button class="btn peq" data-correo-resp="no" data-id="${n.id}">No</button><button class="btn peq peligro" data-correo-resp="bloquear" data-id="${n.id}">No y bloquear remitente</button>` : ""}

@@ -138,7 +138,7 @@ class Correo:
             _cerrar(im)
 
     # ------------------------------------------------------------ recoger (3.2: reglas de «apto»)
-    def recoger_aptos(self, destino, recibir_lote, politica, ahora=None):
+    def recoger_aptos(self, destino, recibir_lote, politica, ahora=None, esperar=True):
         """Revisa la carpeta de entrada con las reglas de Joan (ver arriba). `politica` decide con lo registrado:
         estado(email) -> ("conocido", nombre) | ("bloqueado", None) | ("desconocido", None);
         imagenes_aptas(rutas) -> bool; office(clave) -> "aceptado" | "rechazado" | None;
@@ -191,7 +191,7 @@ class Correo:
                 if not crudo:
                     continue
                 llegada = _internaldate(cab)
-                if llegada and (ahora - llegada).total_seconds() < ESPERA_SEGUNDOS:
+                if esperar and llegada and (ahora - llegada).total_seconds() < ESPERA_SEGUNDOS:   # solo en la revisión automática
                     res["esperando"] += 1           # aún no ha pasado 1 minuto: se mira en la siguiente vuelta
                     continue
                 msg = email.message_from_bytes(crudo)
@@ -273,6 +273,8 @@ class Correo:
                 else:
                     res["sin_mover"] += 1
                 politica.registrar(lote, email_de, message_id, carpeta_final, regla)
+                if hasattr(politica, "aviso_procesado"):
+                    politica.aviso_procesado(nombre or _nombre_de(de) or email_de, email_de, asunto, _cuerpo(msg), lote, carpeta_final)
                 vistos.add(clave)
         finally:
             _cerrar(im)
@@ -390,6 +392,31 @@ def _adjuntos(msg):
             continue
         buenos.append((nombre, cuerpo))
     return buenos, malos
+
+
+def _cuerpo(msg, maximo=600):
+    """Texto del cuerpo del correo (texto plano; si solo hay HTML, sin etiquetas), recortado para el aviso."""
+    texto = ""
+    for parte in msg.walk():
+        if parte.get_filename() or parte.get_content_maintype() != "text":
+            continue
+        try:
+            t = parte.get_payload(decode=True).decode(parte.get_content_charset() or "utf-8", errors="replace")
+        except Exception:
+            continue
+        if parte.get_content_subtype() == "plain":
+            texto = t
+            break
+        if not texto:
+            texto = re.sub(r"(?is)<(script|style).*?</\1>|<[^>]+>", " ", t)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto[:maximo] + ("…" if len(texto) > maximo else "")
+
+
+def _nombre_de(de):
+    """«Pilar Sanz <pilar@x.es>» → «Pilar Sanz»."""
+    n = re.sub(r"<[^>]*>", "", de or "").strip().strip('"')
+    return n if n and "@" not in n else ""
 
 
 def _store(im, uid, signo, flag):

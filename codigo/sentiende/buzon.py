@@ -156,6 +156,12 @@ class PoliticaCorreo:
         self.ctx.notificar("correo", f"Recibido correo de {nombre} ({email}) sin documentos. Se ha quedado en la bandeja de entrada.",
                            None, None, {"clave": clave})
 
+    # ------------------------------------------------------------ correo apto ya procesado (Joan, 17/11 01:40)
+    def aviso_procesado(self, nombre, email, asunto, cuerpo, lote, carpeta):
+        donde = f"movido a «{carpeta}»" if carpeta and carpeta.lower().startswith("procesados") else "se queda en la bandeja de entrada (el servidor no permite mover)"
+        self.ctx.notificar("correo_apto", f"Correo recibido y procesado Apto de {nombre} ({email}) · «{asunto}» · {cuerpo or '(sin texto)'} · {donde}, lote {lote}.",
+                           None, lote, {"email": email})
+
     # ------------------------------------------------------------ lotes que vienen de un correo
     def registrar(self, lote, remitente, message_id, carpeta, regla):
         self.db.execute("INSERT OR REPLACE INTO correo_lotes(lote_id, remitente, message_id, carpeta, regla, estado, fecha) "

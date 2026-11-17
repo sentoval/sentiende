@@ -73,6 +73,7 @@ class Pol:
     def pedir_office(self, clave, datos): self.preguntas.append(datos)
     def aviso_sin_docs(self, nombre, e, clave): self.sin_docs.append(nombre)
     def registrar(self, lote, rem, mid, carpeta, regla): self.registrados.append((lote, rem, mid, carpeta, regla))
+    def aviso_procesado(self, nombre, e, asunto, cuerpo, lote, carpeta): self.avisos = getattr(self, "avisos", []) + [(nombre, e, asunto, cuerpo, carpeta)]
     def devoluciones(self): return self.a_devolver
     def devuelto(self, i): self.a_devolver = []
     def quitar_marca(self): return self.a_quitar
@@ -109,12 +110,15 @@ class TestAptos(unittest.TestCase):
         imaplib.IMAP4_SSL = b
         with tempfile.TemporaryDirectory() as t:
             c, pol, lotes = preparar(t), Pol(conocidos={"pilar@correo.es"}), []
-            res = c.recoger_aptos(t, lambda rutas, d: lotes.append(sorted(Path(r).name for r in rutas)) or len(lotes), pol, ahora=AHORA)
+            res = c.recoger_aptos(t, lambda rutas, d: lotes.append(sorted(Path(r).name for r in rutas)) or len(lotes), pol, ahora=AHORA, esperar=True)
             self.assertEqual(lotes, [["nomina.pdf"], ["dni.jpg"], ["papeles.pdf"], ["a.xlsx", "b.pdf"]])
             self.assertEqual([r[4] for r in pol.registrados], ["1", "3a", "3c", "3d"])
             self.assertEqual(pol.sin_docs, ["Pilar Sanz"])
             self.assertEqual(len(pol.preguntas), 1)
             self.assertEqual(res["esperando"], 1)
+            self.assertEqual(len(pol.avisos), 4)
+            self.assertEqual(pol.avisos[0][:4], ("Pilar Sanz", "pilar@correo.es", "conocido con pdf", "Te adjunto la documentación."))
+            self.assertEqual(pol.avisos[0][4], "procesados1126")
             proc = b.carpetas["procesados1126"]
             self.assertEqual(len(proc), 4)
             self.assertTrue(all(correo.MARCA in m["flags"] for m in proc.values()))
@@ -138,6 +142,13 @@ class TestAptos(unittest.TestCase):
             vuelto = [m for m in b.carpetas["INBOX"].values() if b"solopdf" in m["raw"]]
             self.assertEqual(len(vuelto), 1)
             self.assertNotIn(correo.MARCA, vuelto[0]["flags"])
+
+    def test_a_mano_no_espera(self):
+        b = Buzon([(mensaje("recien", [("p.pdf", b"%PDF")]), AHORA - datetime.timedelta(seconds=5))])
+        imaplib.IMAP4_SSL = b
+        with tempfile.TemporaryDirectory() as t:
+            res = preparar(t).recoger_aptos(t, lambda r, d: 1, Pol(), ahora=AHORA, esperar=False)
+            self.assertEqual((res["esperando"], len(res["lotes"])), (0, 1))
 
     def test_sin_move_no_se_mueve_nada(self):
         b = Buzon([(mensaje("solo pdf", [("p.pdf", b"%PDF")]), AHORA - datetime.timedelta(minutes=5))], caps=("IMAP4REV1",))

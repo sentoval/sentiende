@@ -86,8 +86,9 @@ class App:
                 pass
 
     # ---------------- correo (v1.1)
-    def revisar_correo(self):
-        """Recoge el correo en segundo plano; el estado se consulta en /api/correo."""
+    def revisar_correo(self, automatica=False):
+        """Recoge el correo en segundo plano; el estado se consulta en /api/correo.
+        automatica: la revisión periódica espera a que cada correo lleve 1 minuto en el buzón; a mano, no."""
         if self.correo_estado["trabajando"]:
             return self.correo_estado
         self.correo_estado.update(trabajando=True, error=None)
@@ -108,7 +109,7 @@ class App:
                         return con_cerrojo
                 with CERROJO:
                     self.politica_correo.revisar_3c()
-                self.correo_estado["resumen"] = self.correo.recoger_aptos(self.motor.carpetas.entrada, lote, Pol())
+                self.correo_estado["resumen"] = self.correo.recoger_aptos(self.motor.carpetas.entrada, lote, Pol(), esperar=automatica)
                 for x in self.correo_estado["resumen"]["ignorados"]:
                     with CERROJO:
                         self.motor.almacen.evento(f"Correo: adjunto ignorado (tipo no admitido o con macros): {x}", fase=1, nivel="se")
@@ -131,7 +132,7 @@ class App:
                 espera += 30
                 if espera >= int(a["cada_minutos"]) * 60:
                     espera = 0
-                    self.revisar_correo()
+                    self.revisar_correo(automatica=True)
             except Exception:
                 pass
 
