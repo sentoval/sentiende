@@ -76,9 +76,9 @@ function lateral() {
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
-    ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
-    ${engranajes(true)}
+    <div class="lat-estado-zona">${engranajes(true)}
+    ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}</div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("personas", "user", "Personas")}
@@ -187,8 +187,8 @@ function engranajes(lateral = false) {
   if (lateral)        // 3.1.2 · boceto de Joan: «Motor ⚙ ⚙ IA» debajo de la marca, siempre a la vista
     return `<a href="#motor" class="lat-engranajes" title="Motor de proceso"><small>Motor</small><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(24)}</span>
       <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(24)}</span><small>IA</small></a>`;
-  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(44)}<small>Motor</small></span>
-    <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(44)}<small>IA</small></span></div>`;
+  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(88)}<small>Motor</small></span>
+    <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(88)}<small>IA</small></span></div>`;
 }
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);

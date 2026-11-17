@@ -723,3 +723,10 @@ td.centro { text-align: center; }
 .exp-cab-der { padding-top: 46px; }                 /* empieza a la altura del nombre y acaba con la fila de botones */
 .exp-cab-der .btn-doc-grande { height: auto; min-height: 112px; }
 .lat-engranajes svg { width: 26px; height: 26px; }
+
+/* 3.1.2 · Joan 18:39: «Avisos del programa» en la zona de los engranajes; engranajes del Motor al doble */
+.lat-estado-zona { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--lateralBorde); }
+.lat-estado-zona .lat-engranajes { border-bottom: 0; padding-bottom: 2px; }
+.lat-estado-zona .campana-se { margin: 0; }
+.cab-motor > .engranajes { gap: 44px; }
+.cab-motor > .engranajes .eng small { font-size: 17px; }
