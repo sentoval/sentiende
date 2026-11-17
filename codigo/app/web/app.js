@@ -78,6 +78,7 @@ function lateral() {
   $("#lateral").innerHTML = `
     ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
+    ${engranajes(true)}
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
       ${item("personas", "user", "Personas")}
@@ -178,18 +179,22 @@ function bailaoras() {
 }
 // Engranajes del Motor de proceso: el del motor gira cuando el equipo trabaja; el de la IA, con los colores del botón IA
 const ENGRANAJE = '<path d="M12 2.5l1.6.3.4 2.1a7 7 0 0 1 1.9.8l1.8-1.2 1.2 1.1-1.2 1.8a7 7 0 0 1 .8 1.9l2.1.4.3 1.6-.3 1.6-2.1.4a7 7 0 0 1-.8 1.9l1.2 1.8-1.2 1.2-1.8-1.2a7 7 0 0 1-1.9.8l-.4 2.1-1.6.3-1.6-.3-.4-2.1a7 7 0 0 1-1.9-.8l-1.8 1.2-1.2-1.2 1.2-1.8a7 7 0 0 1-.8-1.9l-2.1-.4L2.5 12l.3-1.6 2.1-.4a7 7 0 0 1 .8-1.9L4.5 6.3l1.2-1.1 1.8 1.2a7 7 0 0 1 1.9-.8l.4-2.1z"/><circle cx="12" cy="12" r="3.2"/>';
-function engranajes() {
+function engranajes(lateral = false) {
   const ia = S.estado?.ia || {}, motor = !!S.estado?.trabajando;
   const iaCls = !ia.activo ? "apagado" : ia.estado === "pausa" ? "pausa" : ia.estado === "trabajando" ? "on gira" : "on";
   const iaTxt = !ia.activo ? "IA apagada" : ia.estado === "pausa" ? "IA en pausa" : ia.estado === "trabajando" ? "La IA está trabajando" : "IA encendida, en espera";
-  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>Motor</small></span>
-    <span class="eng ia ${iaCls}" title="${iaTxt}"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg><small>IA</small></span></div>`;
+  const svg = t => `<svg viewBox="0 0 24 24" width="${t}" height="${t}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg>`;
+  if (lateral)        // 3.1.2 · boceto de Joan: «Motor ⚙ ⚙ IA» debajo de la marca, siempre a la vista
+    return `<a href="#motor" class="lat-engranajes" title="Motor de proceso"><small>Motor</small><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(24)}</span>
+      <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(24)}</span><small>IA</small></a>`;
+  return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(44)}<small>Motor</small></span>
+    <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(44)}<small>IA</small></span></div>`;
 }
 function vistaMotor() {
   const lotes = S.estado.lotes.filter(x => x.documentos.length);
   const pendiente = x => x.documentos.some(d => !["guardado", "limbo", "duplicado", "contacto"].includes(d.estado));
   const l = lotes.find(x => x.id === LOTE) || lotes.find(pendiente) || lotes[0];
-  if (!l) return `<div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div><div class="acciones">${engranajes()}</div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
+  if (!l) return `<div class="cab cab-motor"><div><small>Motor de proceso</small><h1>Motor de proceso</h1></div>${engranajes()}<div class="acciones"></div></div>${pestanasMotor("motor")}<div class="tarjeta vacio">No hay ningún lote todavía. Arrastra documentos al cuadro de la izquierda.</div>`;
   const docs = l.documentos;
   const enFase = i => docs.filter(d => (["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.fase) === i + 1 || (i === 6 && d.estado === "espera_emparejar")).length;
   const minF = Math.min(...docs.map(d => ["guardado", "limbo", "contacto"].includes(d.estado) ? 10 : d.estado === "espera_emparejar" ? 7 : d.fase));
@@ -210,8 +215,9 @@ function vistaMotor() {
   }).join("");
   const titulo = parado ? `Parado · fase ${parado.fase + 1} de 10` : hechos === docs.length ? "Terminado" : espera ? `Espera tu respuesta · ${espera} documento(s) para emparejar` : S.estado.trabajando ? `En marcha · fase ${minF} de 10` : "En pausa";
   return `
-  <div class="cab"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
-    <div class="acciones">${engranajes()}${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
+  <div class="cab cab-motor"><div><small>Motor de proceso</small><h1>Motor de proceso</h1><div class="sub">Pasa el ratón por una fase para ver qué hace, dónde están los archivos y qué hacer si falla.</div></div>
+    ${engranajes()}
+    <div class="acciones">${espera ? `<a class="btn pri" href="#revision">${ico("check")}Responder ahora</a>` : ""}<button class="btn" id="reanudar">${ico("play")}Reanudar lo pendiente</button></div></div>
   ${pestanasMotor("motor")}
   ${avisoPausaIA()}
   ${parado ? `<div class="tarjeta" style="border-color:var(--bad);background:var(--badSoft)"><b>El motor se ha parado: ${esc(parado.motivo || "")}</b><span class="sub">Nada se ha perdido: el original sigue en Entrada\\. Corrige la causa y pulsa «Reanudar lo pendiente».</span></div>` : ""}
@@ -714,14 +720,26 @@ function vistaExpediente() {
   if (!EXP) return '<div class="tarjeta vacio">Cargando…</div>';
   const { e } = EXP, v = S.info.variante;
   const titulares = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).length;
-  return `<a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 22)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
-  <div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>${esc(e.nombre)}</h1>
-    <div class="cab-exp">${ico("user", 14)} ${titulares} titular(es) · creado el ${fmtF(e.creado)} · <label class="fin-cambiar" title="Tipo de financiación (pulsa para cambiarlo)">${ico("edit", 14)}<select id="exp-finalidad">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label> · carpeta <code>${esc(e.carpeta)}</code>
-      <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
-      <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
-      <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 16)}</button></div></div>
-    <div class="acciones"><button class="btn" id="exp-carpeta">${ico("folder")}Abrir carpeta</button><button class="btn" id="exp-exportar">Exportar (zip)</button><button class="btn" id="rehacer">${ico("play")}Rehacer texto</button>
-      ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro expediente…</button>` : ""}<button class="btn peligro" id="exp-eliminar">${ico("trash")}Eliminar</button></div></div>
+  // 3.1.2 · cabecera según el boceto de Joan: sección en verde, nombre con ★ y campanita, datos en una línea,
+  // botones de trabajo debajo y, a la derecha, «Documentación» grande con «zip» y «carpeta» en columna
+  return `<div class="exp-cab">
+    <div class="exp-cab-izq">
+      <a class="seccion" href="#expedientes">Expedientes</a>
+      <div class="exp-titulo"><h1>${esc(e.nombre)}</h1>
+        <button type="button" class="marca-b ${e.marcas?.favorito ? "on" : ""}" id="exp-fav" title="Favorito">${e.marcas?.favorito ? "★" : "☆"}</button>
+        <button type="button" class="marca-b prio-${e.marcas?.prioridad || "no"} ${e.marcas?.prioridad ? "on" : ""}" id="exp-prio" title="${PRIO[e.marcas?.prioridad || ""]} (pulsa para cambiar)">${ico("bell", 18)}</button></div>
+      <div class="cab-exp"><span title="${titulares} titular(es)">${ico("user", 15)} ${titulares}</span><span>creado el ${fmtF(e.creado)}</span>
+        <span title="Carpeta del expediente">${ico("edit", 14)} <code>${esc(e.carpeta)}</code></span>
+        <select id="exp-finalidad" title="Tipo de financiación (pulsa para cambiarlo)">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+        <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button></div>
+      <div class="exp-botones"><button class="btn peligro icono" id="exp-eliminar" title="Eliminar el expediente (va a la Papelera)" aria-label="Eliminar">${ico("trash", 18)}</button>
+        ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro exp.</button>` : ""}<button class="btn" id="rehacer">${ico("play")}Rehacer texto</button></div>
+    </div>
+    <div class="exp-cab-der">
+      <a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 30)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
+      <div class="exp-mini"><button class="btn" id="exp-exportar" title="Exportar el expediente en un zip">zip</button>
+        <button class="btn icono" id="exp-carpeta" title="Abrir la carpeta del expediente" aria-label="Abrir carpeta">${ico("folder", 20)}</button></div>
+    </div></div>
   ${OPV && EXP.op ? panelOperacion(e) : ""}
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
