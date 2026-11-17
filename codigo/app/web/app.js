@@ -20,6 +20,10 @@ const IC = {
   bt: '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>', mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>', paste: '<rect x="7" y="4" width="10" height="4" rx="1"/><path d="M7 6H5v15h14V6h-2"/>',
   left: '<path d="m15 6-6 6 6 6"/>', right: '<path d="m9 6 6 6-6 6"/>', play: '<path d="M8 5v14l11-7z"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
   ia: '<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  wa: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-2.3-2.3l.8-1-1-2z"/>',
+  zip: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v2M12 7v2M12 11v2"/><rect x="10.5" y="14" width="3" height="4" rx="1"/>',
+  tel: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
   pause: '<path d="M9 5v14M15 5v14"/>', undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>', link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -757,11 +761,8 @@ function vistaExpediente() {
   ${e.estado === "unido" ? '<div class="tarjeta"><b>Este expediente se unió a otro.</b> <span class="sub">Sus personas y documentos están ahora en el expediente de destino.</span></div>' : ""}
   ${ARR.unir ? panelUnirExp(e) : ""}
   ${tarjetaDatosLeidos()}
-  ${EXP.neg ? `<div class="exp-notas">${panelNegBanco(e)}${panelNegCliente(e)}</div>` : ""}
-  <div class="exp-cuerpo">
-    <div class="exp-izq">${tarjetaPersonasExp(e)}</div>
-    <aside class="exp-der">${tarjetaChecklist(e)}</aside>
-  </div>${INFORME ? modalInforme() : ""}${dialogoEstado()}`;
+  ${EXP.neg ? `<div class="exp-notas">${panelNegBanco(e)}<div class="exp-col">${panelNegCliente(e)}${tarjetaPersonasExp(e)}</div></div>` : tarjetaPersonasExp(e)}
+  ${tarjetaChecklist(e)}${INFORME ? modalInforme() : ""}${dialogoEstado()}`;
 }
 // 3.1.0 · datos principales leídos en los documentos (personas del expediente y contactos del banco)
 function tarjetaDatosLeidos() {
@@ -852,13 +853,128 @@ function tarjetaChecklist(e) {
     return `<div class="ck-fila ${cls}"><span class="ck-ico">${ic}</span><div class="ck-txt"><span class="ck-nom">${esc(f.documento)}${f.importancia === "imprescindible" ? ' <span class="ck-imp" title="Imprescindible">•</span>' : ""}</span>
       ${f.archivos.length || f.detalle || ["sol", "nop"].includes(cls) ? `<small>${esc(f.archivos.join(", ") || f.detalle || txt)}${f.archivos.length && f.detalle ? " · " + esc(f.detalle) : ""}</small>` : ""}</div>
       ${libre ? `<span class="ck-acc"><button type="button" class="${marcas[f.clave]?.estado === "solicitado" ? "sel" : ""}" data-marca="${f.clave}" data-estado="solicitado" title="Ya se lo he pedido al cliente">Solicitado</button><button type="button" class="${marcas[f.clave]?.estado === "sin_pedir" ? "sel" : ""}" data-marca="${f.clave}" data-estado="sin_pedir" title="No hace falta pedirlo en este expediente">Sin pedir</button></span>` : `<span class="ck-estado">${txt}</span>`}</div>`; };
-  return `<section class="tarjeta checklist"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
+  return `<section class="tarjeta checklist ck-con-envio"><div class="ck-col-lista"><div class="neg-cab"><h2>Checklist · ${esc(v.finalidades[e.finalidad] || e.finalidad)}</h2><span class="sub">${ck.recibidos} de ${ck.total} aportados${solicitados ? ` · ${solicitados} solicitados` : ""}</span></div>
     ${solicitados ? `<div class="progreso fino"><i style="width:${Math.round(100 * ck.recibidos / Math.max(1, ck.recibidos + solicitados))}%"></i></div>` : ""}
     <div class="ck-tabs2">${grupos.map(x => `<button type="button" data-ck-tab="${x.id}" class="${x.id === CK_TAB ? "sel" : ""}">${esc(x.id === "exp" ? "Comunes" : x.nombre)} <small>${cuenta(x)}</small></button>`).join("")}</div>
     ${g ? (() => { const fam = {}; g.filas.forEach(f => (fam[f.familia || "Otros"] = fam[f.familia || "Otros"] || []).push(f));
         return Object.entries(fam).map(([k, fs], n) => `<div class="ck-grupo g${n % 6}" title="${esc(k)}">${fs.map(fila).join("")}</div>`).join(""); })() : '<span class="sub">La finalidad no tiene documentos: se configuran en Ajustes → Finalidades.</span>'}
     ${ck.avisos_cliente.length ? `<div class="ck-avisos"><b>Avisos al cliente</b>${ck.avisos_cliente.map(a => `<span>${esc(a)}</span>`).join("")}</div>` : ""}
-    <button class="btn" id="ck-informe">${ico("mail", 16)}Generar informe de lo que falta y enviar</button></section>`;
+    <button class="btn" id="ck-informe">${ico("mail", 16)}Generar informe de lo que falta y enviar</button></div>${panelEnvio(e)}</section>`;
+}
+// ---------------- 3.1.3 · preparar el envío de la documentación (boceto de Joan, 18/11): documentos, mensaje,
+// destinatarios (banco a la vista y cliente, con el origen de cada dato) y enviar por correo, WhatsApp, carpeta o zip
+const ENVIO = { exp: null, docs: new Set(), dest: new Set(), asunto: "", texto: "", plantilla: "neutro", editado: false, verPlantillas: false };
+const PLANTILLAS = [
+  ["muy_formal", "Muy formal", d => `Estimado/a ${d.trato}:\n\nPor medio del presente le remitimos la documentación correspondiente a la operación de ${d.operacion} de ${d.persona}, que se detalla a continuación:\n\n${d.lista}\n\nQuedamos a su entera disposición para cualquier aclaración.\n\nAtentamente,`],
+  ["formal", "Formal", d => `Buenos días, ${d.gestor}:\n\nLe adjunto la documentación de la operación de ${d.operacion} de ${d.persona}:\n\n${d.lista}\n\nQuedo a la espera de sus noticias. Un cordial saludo.`],
+  ["neutro", "Neutro", d => `Hola, ${d.gestor}: te adjunto los documentos referentes a la operación de ${d.persona}.\n\n${d.lista}\n\nSaludos.`],
+  ["cercano", "Cercano", d => `¡Hola, ${d.gestor}! Te paso la documentación de ${d.persona} para su ${d.operacion}:\n\n${d.lista}\n\nCualquier cosa que necesites, me dices. ¡Gracias!`],
+  ["muy_cercano", "Muy cercano", d => `¡Buenas, ${d.gestor}! Ahí va todo lo de ${d.persona}:\n\n${d.lista}\n\nA ver si sale pronto 😉 Un abrazo.`]];
+function envioDocs(e) {
+  // grupos de la checklist con una casilla por archivo; las filas sin archivo salen en negro (no se pueden elegir)
+  const { ck, docs } = EXP, porNombre = Object.fromEntries((docs || []).map(d => [d.nombre_final, d])), usados = new Set();
+  const grupos = [];
+  const filas = f => [{ doc: f.documento, files: f.archivos.map(a => porNombre[a]).filter(Boolean).map(d => { usados.add(d.id); return { id: d.id, nombre: d.nombre_final }; }) }];
+  e.personas.forEach(p => { const fs = ck.filas.filter(f => f.persona_id === p.id); if (fs.length) grupos.push({ nombre: `${p.nombre} ${p.apellido1}`, items: fs.flatMap(filas) }); });
+  const com = ck.filas.filter(f => !f.persona_id); if (com.length) grupos.push({ nombre: "Comunes", items: com.flatMap(filas) });
+  const otros = (docs || []).filter(d => !usados.has(d.id)).map(d => ({ doc: nombreTipo(d.tipo, d.modelo), files: [{ id: d.id, nombre: d.nombre_final }] }));
+  if (otros.length) grupos.push({ nombre: "Otros guardados", items: otros });
+  return grupos;
+}
+function envioDestinatarios() {
+  const D = EXP.datos || { personas: [], bancos: [] }, op = EXP.op?.datos || {}, lista = [], vistos = {};
+  const add = (grupo, tipo, valor, quien, origen) => { if (!valor) return; const k = tipo + ":" + valor.toLowerCase().replace(/\s/g, "");
+    if (vistos[k]) { if (!vistos[k].origenes.includes(origen)) vistos[k].origenes.push(origen); return; }
+    vistos[k] = { k, grupo, tipo, valor, quien, origenes: [origen] }; lista.push(vistos[k]); };
+  const bancos = EXP.neg?.bancos || [], visible = NEG.banco ? bancos.filter(b => b.id === NEG.banco) : bancos;
+  visible.forEach(b => D.bancos.filter(c => c.banco_id === b.id).forEach(c => {
+    const q = `${c.nombre}${c.cargo ? " · " + c.cargo : ""}`;
+    add("b" + b.id, "mail", c.email, q, c.origen); add("b" + b.id, "tel", c.movil, q, c.origen); add("b" + b.id, "fijo", c.telefono, q, c.origen); }));
+  D.personas.forEach(p => { const q = `${p.nombre} ${p.apellido1}`;
+    add("cliente", "mail", p.correo_informado, q, "manual · ficha");
+    (p.correos_recibidos || []).forEach(m => add("cliente", "mail", m, q, "remitente de correo"));
+    (p.correos || []).forEach(m => add("cliente", "mail", m, q, "leído en documento (OCR)"));
+    (p.telefonos || []).forEach(t => add("cliente", /^[67]/.test(t) ? "tel" : "fijo", t, q, "leído en documento (OCR)")); });
+  const tit = D.personas.find(p => p.papel === "Titular") || D.personas[0];
+  if (tit) { const q = `${tit.nombre} ${tit.apellido1}`; add("cliente", "mail", op.contacto_email, q, "manual · informe"); add("cliente", "tel", op.contacto_tel, q, "manual · informe"); }
+  return { lista, visible };
+}
+const envioArchivos = grupos => grupos.flatMap(g => g.items.flatMap(i => i.files.map(f => ({ ...f, doc: i.doc }))));
+function envioTexto(e, grupos, dest) {
+  const v = S.info.variante, sel = envioArchivos(grupos).filter(i => ENVIO.docs.has(i.id));
+  const pers = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).map(p => `${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`.trim());
+  const gest = dest.lista.filter(x => x.grupo !== "cliente" && ENVIO.dest.has(x.k)).map(x => x.quien.split(" · ")[0]);
+  const nombres = [...new Set(gest)];
+  const tipos = {}; sel.forEach(i => (tipos[i.doc] = (tipos[i.doc] || 0) + 1));
+  const d = { persona: pers.join(" y ") || "nuestro cliente", operacion: (v.finalidades[e.finalidad] || "financiación").toLowerCase(),
+    gestor: nombres.map(n => n.split(" ")[0]).join(" y ") || "buenos días", trato: nombres.join(" y ") || "Sr./Sra.",
+    lista: Object.entries(tipos).map(([t, n]) => `  · ${t}${n > 1 ? ` (${n})` : ""}`).join("\n") || "  · (elige los documentos)" };
+  return { asunto: `Documentación · ${d.persona} · ${v.finalidades[e.finalidad] || ""}`, texto: (PLANTILLAS.find(x => x[0] === ENVIO.plantilla) || PLANTILLAS[2])[2](d), d };
+}
+function panelEnvio(e) {
+  const grupos = envioDocs(e), dest = envioDestinatarios();
+  if (ENVIO.exp !== e.id) {                       // al entrar en otro expediente: todo lo que tiene archivo, y el primer correo del banco
+    Object.assign(ENVIO, { exp: e.id, docs: new Set(envioArchivos(grupos).map(i => i.id)), dest: new Set(), editado: false, verPlantillas: false });
+    const m = dest.lista.find(x => x.grupo !== "cliente" && x.tipo === "mail"); if (m) ENVIO.dest.add(m.k);
+  }
+  const t = envioTexto(e, grupos, dest);
+  if (!ENVIO.editado) { ENVIO.asunto = t.asunto; ENVIO.texto = t.texto; }
+  const chk = (on, attrs, titulo) => `<button type="button" class="chk ${on === null ? "nofile" : on === "medio" ? "medio" : on ? "on" : ""}" ${attrs} ${on === null ? "disabled" : ""} title="${esc(titulo)}">${on === "medio" ? "" : on ? ico("x", 13) : ""}</button>`;
+  const nDocs = envioArchivos(grupos).filter(i => ENVIO.docs.has(i.id)).length;
+  const item = i => {
+    if (!i.files.length) return `<div class="env-doc sin">${chk(null, "", "No hay archivo de este documento")}<span><span class="env-tipo">${esc(i.doc)}</span><small>sin archivo</small></span></div>`;
+    if (i.files.length === 1) { const f = i.files[0];
+      return `<div class="env-doc">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<span><span class="env-tipo">${esc(i.doc)}</span><small class="mono">${esc(f.nombre)}</small></span></div>`; }
+    const n = i.files.filter(f => ENVIO.docs.has(f.id)).length;
+    return `<div class="env-doc">${chk(n === i.files.length ? true : n ? "medio" : false, `data-env-varios="${i.files.map(f => f.id).join(",")}"`, "Todos los archivos de este documento")}<span><span class="env-tipo">${esc(i.doc)} <small class="env-n">${n} de ${i.files.length}</small></span></span></div>
+      <div class="env-archivos">${i.files.map(f => `<div class="env-doc arch">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<small class="mono">${esc(f.nombre)}</small></div>`).join("")}</div>`; };
+  const items = grupos.map(g => `<div class="env-grupo"><b>${esc(g.nombre)}</b>${g.items.map(item).join("")}</div>`).join("");
+  const ORIG = { "manual · ficha": "man", "manual · informe": "man", manual: "man", "remitente de correo": "rem", "leído en documento (OCR)": "ocr", "tarjeta de visita (OCR)": "ocr" };
+  const fila = x => `<div class="env-dest">${chk(x.tipo === "fijo" ? null : ENVIO.dest.has(x.k), x.tipo === "fijo" ? "" : `data-env-dest="${esc(x.k)}"`, x.tipo === "fijo" ? "Teléfono fijo: no vale para WhatsApp" : x.valor)}
+      <span class="env-dest-ico">${ico(x.tipo === "mail" ? "mail" : "tel", 15)}</span>
+      <span class="env-dest-txt"><span class="${x.tipo === "mail" ? "" : "mono"}">${esc(x.valor)}</span><span class="env-dest-de"><small>${esc(x.quien)}${x.tipo === "fijo" ? " · fijo" : ""}</small>${x.origenes.map(o => `<span class="origen ${ORIG[o] || "man"}">${esc(o)}</span>`).join("")}</span></span></div>`;
+  const bancos = dest.visible.map(b => { const l = dest.lista.filter(x => x.grupo === "b" + b.id);
+    return `<div class="env-grupo"><b>${ico("folder", 14)} ${esc(b.entidad)}</b>${l.length ? l.map(fila).join("") : '<small class="sub">Sin contactos: añádelos en Negociación banco.</small>'}</div>`; }).join("")
+    || '<div class="env-grupo"><small class="sub">Sin bancos: añade uno en Negociación banco.</small></div>';
+  const cli = dest.lista.filter(x => x.grupo === "cliente");
+  const selDest = dest.lista.filter(x => ENVIO.dest.has(x.k)), mails = selDest.filter(x => x.tipo === "mail").length, moviles = selDest.filter(x => x.tipo === "tel").length;
+  return `<div class="ck-col-envio">
+    <div class="env-col"><div class="env-cab"><span class="env-tit">Preparar envío</span><span class="env-sub">Documentos a enviar · ${nDocs}</span>
+        <span class="env-todos"><button type="button" class="link" data-env-todos="1">Todos</button> · <button type="button" class="link" data-env-todos="0">Ninguno</button></span></div>
+      <div class="env-lista">${items}</div></div>
+    <div class="env-col"><div class="env-cab"><span class="env-tit">Mensaje</span><span class="env-sub">Ya relleno: puedes cambiarlo</span></div>
+      <label class="env-lab" for="env-asunto">Asunto</label><input id="env-asunto" value="${esc(ENVIO.asunto)}">
+      <label class="env-lab" for="env-texto">Texto</label><textarea id="env-texto" rows="11">${esc(ENVIO.texto)}</textarea>
+      <div class="env-plant"><button type="button" class="btn peq" id="env-plantillas" aria-expanded="${ENVIO.verPlantillas}">${ico("edit", 14)}Plantillas · ${esc((PLANTILLAS.find(x => x[0] === ENVIO.plantilla) || [])[1] || "")} ${ico("down", 14)}</button>
+        ${ENVIO.editado ? '<button type="button" class="link" id="env-rehacer">Volver al texto de la plantilla</button>' : ""}
+        ${ENVIO.verPlantillas ? `<div class="env-menu" role="menu"><span class="env-menu-cab">De más formal a más cercano</span>${PLANTILLAS.map(([k, n, f]) => `<button type="button" role="menuitem" class="${k === ENVIO.plantilla ? "sel" : ""}" data-env-plantilla="${k}"><b>${n}</b><small>${esc(f(t.d).split("\n")[0].slice(0, 70))}…</small></button>`).join("")}</div>` : ""}</div></div>
+    <div class="env-col"><div class="env-cab"><span class="env-tit">Destinatarios</span><span class="env-sub">${NEG.banco ? "Banco a la vista arriba" : "Todos los bancos del expediente"} y cliente</span></div>
+      <div class="env-lista">${bancos}<div class="env-grupo"><b>${ico("user", 14)} Cliente</b>${cli.length ? cli.map(fila).join("") : '<small class="sub">Sin correos ni teléfonos del cliente.</small>'}</div></div></div>
+    <div class="env-botones"><span class="env-tit">Enviar</span>
+      <button class="btn pri env-b" data-env-via="correo" ${mails && nDocs ? "" : "disabled"} title="Abre tu programa de correo con los documentos adjuntos">${ico("mail", 22)}<span>Correo</span></button>
+      <button class="btn env-b wa" data-env-via="whatsapp" ${moviles ? "" : "disabled"} title="El asunto va al principio del texto">${ico("wa", 22)}<span>WhatsApp</span></button>
+      <button class="btn env-b" data-env-via="carpeta" ${nDocs ? "" : "disabled"} title="Copia los archivos sueltos en una carpeta, con un .txt del asunto, el texto y los destinatarios">${ico("folder", 22)}<span>Carpeta</span></button>
+      <button class="btn env-b" data-env-via="zip" ${nDocs ? "" : "disabled"} title="Un zip con los archivos y un .txt del asunto, el texto y los destinatarios">${ico("zip", 22)}<span>Zip</span></button>
+      <small class="sub">${nDocs} doc. · ${mails} correo(s) · ${moviles} móvil(es)</small></div>
+  </div>`;
+}
+function activarEnvio() {
+  const grupos = () => envioDocs(EXP.e);
+  document.querySelectorAll("[data-env-doc]").forEach(b => b.addEventListener("click", () => { const id = +b.dataset.envDoc; ENVIO.docs.has(id) ? ENVIO.docs.delete(id) : ENVIO.docs.add(id); pintar(); }));
+  document.querySelectorAll("[data-env-dest]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.envDest; ENVIO.dest.has(k) ? ENVIO.dest.delete(k) : ENVIO.dest.add(k); pintar(); }));
+  document.querySelectorAll("[data-env-varios]").forEach(b => b.addEventListener("click", () => {
+    const ids = b.dataset.envVarios.split(",").map(Number), todos = ids.every(i => ENVIO.docs.has(i));
+    ids.forEach(i => todos ? ENVIO.docs.delete(i) : ENVIO.docs.add(i)); pintar(); }));
+  document.querySelectorAll("[data-env-todos]").forEach(b => b.addEventListener("click", () => {
+    ENVIO.docs = new Set(b.dataset.envTodos === "1" ? envioArchivos(grupos()).map(i => i.id) : []); pintar(); }));
+  $("#env-asunto")?.addEventListener("input", ev => { ENVIO.asunto = ev.target.value; ENVIO.editado = true; });
+  $("#env-texto")?.addEventListener("input", ev => { ENVIO.texto = ev.target.value; ENVIO.editado = true; });
+  $("#env-plantillas")?.addEventListener("click", () => { ENVIO.verPlantillas = !ENVIO.verPlantillas; pintar(); });
+  $("#env-rehacer")?.addEventListener("click", () => { ENVIO.editado = false; pintar(); });
+  document.querySelectorAll("[data-env-plantilla]").forEach(b => b.addEventListener("click", () => {
+    if (ENVIO.editado && !confirm("Has cambiado el texto. ¿Sustituirlo por esta plantilla?")) return;
+    Object.assign(ENVIO, { plantilla: b.dataset.envPlantilla, editado: false, verPlantillas: false }); pintar(); }));
+  document.querySelectorAll("[data-env-via]").forEach(b => b.addEventListener("click", () => aviso("Diseño: el envío se programa cuando le des el visto bueno.")));
 }
 function textoInforme() {
   const { e, ck } = EXP, falta = ck.filas.filter(f => f.estado !== "Recibido" && (EXP.neg?.marcas || {})[f.clave]?.estado !== "sin_pedir");
@@ -964,6 +1080,7 @@ function activarExpediente(id) {
     await api("marca", { expediente: id, clave: b.dataset.marca, estado: actual === b.dataset.estado ? null : b.dataset.estado }); await recargar();
   }));
   $("#ck-informe")?.addEventListener("click", () => { INFORME = textoInforme(); pintar(); });
+  activarEnvio();
   $("#inf-cerrar")?.addEventListener("click", () => { INFORME = null; pintar(); });
   const enviar = async via => {
     const email = $("#inf-mail").value.trim(), tel = $("#inf-tel").value.replace(/\D/g, ""), texto = $("#inf-txt").value, asunto = $("#inf-asunto").value;

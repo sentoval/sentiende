@@ -645,6 +645,15 @@ _DIR = re.compile(r"(?:DOMICILIO(?: FISCAL| HABITUAL)?|DOMICILI|DIRECCI[OÓ]N)\s
 _NO_TEL = ("900", "901", "902", "905", "91554", "915548", "913", "963774")      # centralitas de Hacienda, bancos…
 
 
+def _lista_json(v):
+    import json
+    try:
+        x = json.loads(v) if isinstance(v, str) else (v or [])
+        return [str(i) for i in x if i]
+    except ValueError:
+        return []
+
+
 def datos_leidos(m, expediente_id):
     """Datos principales de cada persona del expediente leídos en SUS documentos (no en los comunes, donde salen
     notarios, vendedores o el banco): DNI, teléfonos, correos y dirección, por frecuencia. Y los contactos del banco."""
@@ -676,9 +685,13 @@ def datos_leidos(m, expediente_id):
                     "dni": p.get("dni") or "", "manual": bool(p.get("manual")),
                     "telefonos": [f"{n[:3]} {n[3:5]} {n[5:7]} {n[7:]}" for n in (moviles + fijos)[:3]],
                     "correos": [x for x, _ in mails.most_common(2)], "direccion": dirs.most_common(1)[0][0] if dirs else "",
-                    "documentos": len(docs)})
+                    "documentos": len(docs),
+                    # 3.1.3 · para «Preparar envío»: de dónde sale cada correo del cliente
+                    "correo_informado": p.get("correo_informado") or "", "correos_recibidos": _lista_json(p.get("correos_recibidos"))})
     bancos = []
     for b in m.negociacion.de_expediente(expediente_id).get("bancos", []):
         for c in b.get("contactos") or []:
-            bancos.append({"banco": b.get("entidad"), **{k: c.get(k) or "" for k in ("nombre", "cargo", "telefono", "movil", "email", "oficina", "direccion")}})
+            bancos.append({"banco": b.get("entidad"), "banco_id": b.get("id"), "id": c.get("id"),
+                           "origen": "tarjeta de visita (OCR)" if c.get("documento_id") else "manual",
+                           **{k: c.get(k) or "" for k in ("nombre", "cargo", "telefono", "movil", "email", "oficina", "direccion")}})
     return {"personas": out, "bancos": bancos}
