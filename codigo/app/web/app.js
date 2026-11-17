@@ -903,7 +903,7 @@ function tarjetaDocsExp(e) {
   if (!EXP.docs) return "";
   const d0 = EXP.docs.find(d => d.id === ARR.mover);
   const filas = EXP.docs.map(d => `<tr><td class="mono">${esc(d.nombre_final)}</td><td>${esc(nombreTipo(d.tipo, d.modelo))}</td><td>${d.de_expediente ? "Todo el expediente" : esc(d.persona)}${d.privado ? ' <span class="pill p-todo">Privado</span>' : ""}</td>
-    <td class="der"><button class="btn peq" data-abrir-doc="${esc(d.ruta_final || "")}" title="Ver en la carpeta">Abrir</button> ${e.estado === "abierto" ? `<button class="btn peq" data-mover="${d.id}">${ico("play", 14)}Mover…</button>` : ""} <button class="btn peq" data-eliminar-doc="${d.id}" title="A la Papelera">${ico("trash", 14)}</button></td></tr>
+    <td class="der"><button class="btn peq" data-abrir-doc="${esc(d.ruta_final || "")}" title="Abrir el documento">Abrir</button> ${e.estado === "abierto" ? `<button class="btn peq" data-mover="${d.id}">${ico("play", 14)}Mover…</button>` : ""} <button class="btn peq" data-eliminar-doc="${d.id}" title="A la Papelera">${ico("trash", 14)}</button></td></tr>
     ${d0 && d0.id === d.id ? `<tr class="fila-mover"><td colspan="4">${panelMover(e, d)}</td></tr>` : ""}`).join("");
   return `<section class="tarjeta sinp"><div class="tcab"><h2>Documentos guardados · ${EXP.docs.length}</h2></div>
     ${EXP.docs.length ? `<table class="tabla"><thead><tr><th>Archivo</th><th>Tipo</th><th>De</th><th></th></tr></thead><tbody>${filas}</tbody></table>` : '<div class="vacio">Sin documentos guardados.</div>'}</section>`;
@@ -1487,7 +1487,7 @@ function activarOperacion(id, recargar) {
     if (!confirm("¿Enviar este documento (y su original) a la Papelera? Se puede restaurar.")) return;
     try { await api("eliminar", { documento: +b.dataset.eliminarDoc }); aviso("Documento en la Papelera"); await recargar(); } catch (e) { aviso(e.message, true); }
   }));
-  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc, true)));
+  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc)));
   document.querySelectorAll("[data-papel]").forEach(s => s.addEventListener("change", async () => { await api("papel", { expediente: id, persona: +s.dataset.papel, papel: s.value }); aviso("Papel cambiado"); await recargar(); }));
 }
 
@@ -1596,7 +1596,7 @@ function activarBuscar() {
   $("#b-ir")?.addEventListener("click", ir);
   $("#b-q")?.addEventListener("keydown", e => e.key === "Enter" && ir());
   $("#b-q")?.focus();
-  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc, true)));
+  document.querySelectorAll("[data-abrir-doc]").forEach(b => b.addEventListener("click", () => abrirRuta(b.dataset.abrirDoc)));
 }
 
 // ---------------- Reglas de nombres (6) y Tipos de documento (8)

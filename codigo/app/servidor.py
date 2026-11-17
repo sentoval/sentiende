@@ -476,7 +476,13 @@ def crear_manejador(app):
                         raise MotorError("Esa carpeta o archivo no es del programa.")
                     if sys.platform == "win32":
                         if datos.get("seleccionar") and ruta.is_file():
-                            subprocess.Popen(["explorer", "/select,", str(ruta)])
+                            # 3.1.3: el Explorador se lanzaba oculto (sin_ventanas_negras pone SW_HIDE a todo
+                            # Popen); aquí se pide la ventana visible a propósito.
+                            si = subprocess.STARTUPINFO()
+                            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            si.wShowWindow = 1                                # SW_SHOWNORMAL
+                            subprocess.Popen(["explorer", "/select,", str(ruta)], startupinfo=si,
+                                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
                         else:
                             os.startfile(str(ruta))
                     return self._json({"ok": True})
