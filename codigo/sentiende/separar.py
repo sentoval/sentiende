@@ -147,6 +147,10 @@ def separar(textos, clasificador):
             actual.seccion = max([actual.seccion] + p["secs"])
             if p["puntos"] > actual.puntos and not actual.tipo:
                 actual.tipo, actual.puntos = p["tipo"], p["puntos"]
+    # 3.1.3 (Joan) · un «Cuadro contable» (cuentas, hojas de cálculo) se guarda como un único documento
+    if partes and partes[0].tipo == "cuadrocontable" and len(partes) > 1:
+        todas = [n for q in partes for n in q.paginas]
+        partes = [Parte(todas, "cuadrocontable", max(q.puntos for q in partes), None, [f for q in partes for f in q.firmas])]
     reordenado = False
     numeros = {p["n"]: p["num"] for p in info if not p["blanco"]}
     for q in partes:

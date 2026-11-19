@@ -4,7 +4,7 @@
 La ventana del programa muestra las pantallas (HTML) y estas hablan con el motor por /api/….
 El trabajo pesado (leer, OCR) va en un hilo aparte para que la ventana no se congele;
 un cerrojo evita que dos peticiones toquen el motor a la vez."""
-import io, json, mimetypes, re, threading, traceback
+import io, json, mimetypes, re, threading, time, traceback
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, unquote
@@ -20,6 +20,7 @@ from sentiende.contexto import ContextoLote
 
 WEB = Path(__file__).resolve().parent / "web"
 CERROJO = threading.RLock()
+from sentiende import envio as envio_mod
 
 class App:
     def __init__(self, raiz, carpeta_variante):
@@ -41,6 +42,8 @@ class App:
         self.motor.al_guardar.append(self.politica_correo.apuntar_remitente)
         self._ia_hilo = None
         threading.Thread(target=self._correo_auto, daemon=True).start()
+        self._en_curso, self._cerrojo_ocupado, self._enviando = 0, threading.Lock(), False
+        threading.Thread(target=self._envios_auto, daemon=True).start()
         threading.Thread(target=self._ia_auto, daemon=True).start()
 
     # ---------------- Controlador IA (v3.0)
@@ -212,12 +215,17 @@ class App:
             l["documentos"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] not in ("separado", "deshecho")]
             l["separados"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] == "separado"]
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
-        return {"trabajando": self.trabajando, "ia": self.ia.resumen(), "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
+        ia = self.ia.resumen()
+        ocupado = [t for c, t in ((self.trabajando, "procesando documentos"), (self.correo_estado.get("trabajando"), "recogiendo el correo"),
+                                  (ia.get("estado") == "trabajando", "la IA está trabajando"), (self._enviando, "enviando correos programados"),
+                                  (self._en_curso > 0, "guardando o moviendo archivos")) if c]
+        return {"trabajando": self.trabajando, "ia": ia, "ocupado": ocupado, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
                             "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
                             "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
                             "cuarentena": a.db.execute("SELECT COUNT(*) FROM cuarentena WHERE estado = 'pendiente'").fetchone()[0],
-                            "notificaciones": a.db.execute("SELECT COUNT(*) FROM notificaciones WHERE visto = 0").fetchone()[0]}}
+                            "notificaciones": a.db.execute("SELECT COUNT(*) FROM notificaciones WHERE visto = 0").fetchone()[0],
+                            **{"envios_" + k: v for k, v in envio_mod.cuentas(self.motor).items()}}}
 
     def documento(self, did):
         m, a = self.motor, self.motor.almacen
@@ -244,6 +252,23 @@ class App:
         d["fecha_claves"] = {t["id"]: m.clave_fecha(t["id"]) for t in m.variante.base["documentos"]}
         return d
 
+    def _envios_auto(self):
+        """3.1.3 · envía los correos programados cuando llega su hora (solo mientras el programa está abierto)."""
+        while True:
+            time.sleep(30)
+            try:
+                with CERROJO:
+                    self._enviando = True
+                    envio_mod.vencidos(self.motor, self.correo)
+            except Exception:
+                traceback.print_exc()
+            finally:
+                self._enviando = False
+
+    def envios_pendientes(self):
+        with CERROJO:
+            return envio_mod.cuentas(self.motor)["programados"]
+
     def expedientes(self):
         a = self.motor.almacen
         out = []
@@ -254,6 +279,7 @@ class App:
             op = a.db.execute("SELECT datos FROM operacion WHERE expediente_id = ?", (e["id"],)).fetchone()
             e["operacion"] = json.loads(op["datos"]) if op else {}
             e["etiqueta"] = self.motor.gestion.etiqueta(e["estado"], e["operacion"])
+            e["cobro"] = self.motor.gestion.cobro(e["estado"], e["operacion"])
             e["marcas"] = marcas.get(e["id"], {"favorito": False, "prioridad": ""})
             e["avisos"] = len(a.avisos_cliente(e["id"]))           # 3.1.2 · circulito en la lista
             try:
@@ -323,6 +349,22 @@ class App:
         img.thumbnail((2600, 3600) if grande else (1100, 1500))
         buf = io.BytesIO(); img.save(buf, "PNG"); return buf.getvalue()
 
+def abrir_en_windows(ruta, seleccionar=False):
+    """Abre un archivo, carpeta o dirección web con el programa de Windows que toque (en Linux, nada)."""
+    import os, subprocess, sys
+    if sys.platform != "win32":
+        return
+    if seleccionar and Path(ruta).is_file():
+        # 3.1.3: el Explorador se lanzaba oculto (sin_ventanas_negras pone SW_HIDE a todo Popen);
+        # aquí se pide la ventana visible a propósito.
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 1                                # SW_SHOWNORMAL
+        subprocess.Popen(["explorer", "/select,", str(ruta)], startupinfo=si, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    else:
+        os.startfile(str(ruta))
+
+
 def crear_manejador(app):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -390,12 +432,17 @@ def crear_manejador(app):
                         return self._json({"ajustes": app.correo.ajustes(), "estado": app.correo_estado, "proveedores": PREDEFINIDOS})
                     if p == "/api/bluetooth": return self._json(app.bluetooth.estado)
                     if m := re.fullmatch(r"/api/negociacion/(\d+)", p): return self._json(app.motor.negociacion.de_expediente(int(m.group(1))))
+                    if p == "/api/envios": return self._json(envio_mod.lista(app.motor))            # 3.1.3 · programados y con problema
+                    if m := re.fullmatch(r"/api/envios/(\d+)", p): return self._json(envio_mod.lista(app.motor, int(m.group(1))))
                     if m := re.fullmatch(r"/api/datos_expediente/(\d+)", p):
                         from sentiende.gestion import datos_leidos
                         return self._json(datos_leidos(app.motor, int(m.group(1))))
                     g = app.motor.gestion
                     q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
                     if m := re.fullmatch(r"/api/operacion/(\d+)", p): return self._json(g.operacion(int(m.group(1))))
+                    if m := re.fullmatch(r"/api/textos_cambios/(\d+)", p):     # 3.1.3 · resaltar «Rehacer texto»
+                        from sentiende import textos
+                        return self._json({"cambios": textos.desactualizado(app.motor.almacen, app.motor.carpetas.documentos, int(m.group(1)), app.motor.variante.nombres["sin_dni"])})
                     if p == "/api/estadisticas": return self._json(g.estadisticas())
                     if p == "/api/papelera": return self._json(g.papelera())
                     if p == "/api/personas": return self._json(g.personas())
@@ -427,6 +474,16 @@ def crear_manejador(app):
                 self._error(e)
 
         def do_POST(self):
+            # 3.1.3 (Joan, 19/11): mientras haya una acción en curso, el engranaje rojo del lateral gira
+            with app._cerrojo_ocupado:
+                app._en_curso += 1
+            try:
+                return self._post()
+            finally:
+                with app._cerrojo_ocupado:
+                    app._en_curso -= 1
+
+        def _post(self):
             p = urlparse(self.path).path
             try:
                 if p == "/api/subir":     # un archivo por petición; el nombre va en la cabecera
@@ -469,17 +526,42 @@ def crear_manejador(app):
                     lote, ids = app.encolar(fs, "escáner")
                     return self._json({"lote": lote, "documentos": ids, "archivo": ", ".join(f.name for f in fs)})
                 if p == "/api/abrir":
-                    import os, subprocess, sys
                     ruta = Path(datos.get("ruta") or "")
                     raices = [Path(x).resolve() for x in app.motor.carpetas.rutas.values()]
                     if not ruta.exists() or not any(r == ruta.resolve() or r in ruta.resolve().parents for r in raices):
                         raise MotorError("Esa carpeta o archivo no es del programa.")
-                    if sys.platform == "win32":
-                        if datos.get("seleccionar") and ruta.is_file():
-                            subprocess.Popen(["explorer", "/select,", str(ruta)])
-                        else:
-                            os.startfile(str(ruta))
+                    abrir_en_windows(str(ruta), bool(datos.get("seleccionar")))
                     return self._json({"ok": True})
+                if p == "/api/enviar_documentacion":           # 3.1.3 · «Preparar envío» (correo, WhatsApp, carpeta, zip)
+                    from sentiende.envio import preparar, ErrorEnvio
+                    try:
+                        with CERROJO:
+                            r = preparar(app.motor, app.correo, int(datos["expediente"]), datos.get("via"), datos.get("documentos") or [],
+                                         datos.get("asunto"), datos.get("texto"), datos.get("destinatarios") or [], abrir=abrir_en_windows)
+                    except ErrorEnvio as e:
+                        raise MotorError(str(e))
+                    return self._json(r)
+                if p == "/api/envio_sentiende":                # 3.1.3 · vía Sentiende: ahora (cuando vacío) o programado
+                    from sentiende import envio as ev
+                    try:
+                        with CERROJO:
+                            return self._json(ev.programar(app.motor, app.correo, int(datos["expediente"]), datos.get("documentos") or [],
+                                                           datos.get("asunto"), datos.get("texto"), datos.get("destinatarios") or [], datos.get("cuando") or None))
+                    except ev.ErrorEnvio as e:
+                        raise MotorError(str(e))
+                if p == "/api/envio_accion":                   # cancelar / reintentar / visto
+                    from sentiende import envio as ev
+                    try:
+                        with CERROJO:
+                            return self._json(ev.accion(app.motor, app.correo, int(datos["id"]), datos["accion"]))
+                    except ev.ErrorEnvio as e:
+                        raise MotorError(str(e))
+                if p == "/api/cobrar":                         # 3.1.3 · botón Cobrar / Cobrado
+                    with CERROJO:
+                        return self._json(app.motor.gestion.cobrar(int(datos["expediente"]), datos.get("fecha"), bool(datos.get("deshacer"))))
+                if p == "/api/destinatario_extra":             # 3.1.3 · «Añadir destinatario» (guardado en el expediente)
+                    with CERROJO:
+                        return self._json(app.motor.gestion.destinatario_extra(int(datos["expediente"]), datos))
                 if p.startswith("/api/ia/"):
                     return self._json(self._ia_post(p[8:], datos))
                 if p == "/api/bluetooth":

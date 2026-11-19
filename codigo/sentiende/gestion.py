@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS remitentes(email TEXT PRIMARY KEY, estado TEXT, fecha
 CREATE TABLE IF NOT EXISTS papelera(id INTEGER PRIMARY KEY, tipo TEXT, ref_id INTEGER, nombre TEXT, fecha TEXT, carpeta TEXT,
   datos TEXT, restaurado TEXT);
 """
-FASES = {"abierto": "Abierto", "completo": "Documentación completa", "enviado": "Enviado al banco", "aprobado": "Aprobado"}
+FASES = {"abierto": "Abierto", "aprobado": "Aprobado"}
+FASES_QUITADAS = ("completo", "enviado")       # 3.1.3 (Joan, 18/11): «Documentación completa» y «Enviado al banco» ya no existen → Abierto
 MOTIVOS_CIERRE = ["Denegado por el banco", "El cliente desiste", "Documentación incompleta", "Firmó con otra entidad", "Otro"]
 PAPELES = ["Titular", "Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior", "Tercero"]
 
@@ -68,7 +69,7 @@ class Gestion:
 
     def guardar_ajustes(self, nuevos):
         for k, v in (nuevos.get("carpetas") or {}).items():          # primero las carpetas (escriben su parte del archivo)
-            if k in ("entrada", "originales", "documentos", "papelera") and v and str(v) != str(self.m.carpetas.rutas[k]):
+            if k in ("entrada", "originales", "documentos", "papelera", "firmados") and v and str(v) != str(self.m.carpetas.rutas[k]):
                 p = Path(v)
                 try:
                     p.mkdir(parents=True, exist_ok=True)
@@ -131,9 +132,11 @@ class Gestion:
         r = self.db.execute("SELECT datos FROM operacion WHERE expediente_id = ?", (eid,)).fetchone()
         datos = json.loads(r["datos"]) if r else {}
         datos.setdefault("fase", "abierto")
+        if datos["fase"] in FASES_QUITADAS:
+            datos["fase"] = "abierto"
         hist = [dict(x) for x in self.db.execute("SELECT * FROM historial_estado WHERE expediente_id = ? ORDER BY id DESC", (eid,))]
         return {"estado": exp["estado"], "datos": datos, "historial": hist, "fases": FASES, "motivos": MOTIVOS_CIERRE,
-                "etiqueta": self.etiqueta(exp["estado"], datos)}
+                "etiqueta": self.etiqueta(exp["estado"], datos), "cobro": self.cobro(exp["estado"], datos)}
 
     @staticmethod
     def etiqueta(estado, datos):
@@ -146,6 +149,49 @@ class Gestion:
         if estado == "papelera":
             return "En la Papelera"
         return FASES.get((datos or {}).get("fase", "abierto"), "Abierto")
+
+    @staticmethod
+    def cobro(estado, datos):
+        """3.1.3 · firmado sin fecha de cobro → «pendiente»; con fecha → «cobrado»."""
+        if estado != "firmado":
+            return None
+        return "cobrado" if (datos or {}).get("fecha_cobro") else "pendiente"
+
+    def zip_firmado(self, eid):
+        """3.1.3 (Joan, 19/11): al cobrar, un zip con TODO el expediente (SeDocumentos y Doc_original) en la carpeta
+        `_Firmados` (junto al exe, configurable). Las carpetas del expediente se quedan donde están."""
+        c, exp = self.m.carpetas, self.a.expediente(eid)
+        fuentes = [("SeDocumentos", c.documentos / exp["carpeta"]), ("Doc_original", c.originales / exp["carpeta"])]
+        if not any(f.exists() for _, f in fuentes):
+            return None
+        destino = c.rutas["firmados"]
+        destino.mkdir(parents=True, exist_ok=True)
+        z = libre(destino / f"{exp['carpeta']}_cobrado_{datetime.date.today():%Y%m%d}.zip")
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
+            for nombre, src in fuentes:
+                for p in src.rglob("*") if src.exists() else []:
+                    if p.is_file():
+                        f.write(p, Path(nombre) / exp["carpeta"] / p.relative_to(src))
+        self.a.evento(f"Expediente {exp['carpeta']} cobrado: copia completa en {z}")
+        return z
+
+    def cobrar(self, eid, fecha=None, deshacer=False):
+        op = self.operacion(eid)
+        if op["estado"] != "firmado":
+            raise ErrorGestion("Solo se cobra un expediente firmado.")
+        d = op["datos"]
+        if deshacer:
+            d.pop("fecha_cobro", None); nota = "Cobro deshecho: vuelve a «pendiente de cobro»"
+        else:
+            d["fecha_cobro"] = fecha or datetime.date.today().isoformat()
+            nota = f"Honorarios cobrados el {d['fecha_cobro']}" + (f" ({d['honorarios_importe']} €)" if d.get("honorarios_importe") else "")
+            z = self.zip_firmado(eid)
+            if z:
+                d["zip_firmados"] = str(z); nota += f" · copia en {z.name}"
+        self._guardar_datos(eid, d)
+        self._historial(eid, "cobrado" if not deshacer else "firmado", nota)
+        self.db.commit()
+        return self.operacion(eid)
 
     def _guardar_datos(self, eid, datos):
         self.db.execute("INSERT OR REPLACE INTO operacion VALUES(?, ?)", (eid, json.dumps(datos, ensure_ascii=False)))
@@ -176,6 +222,23 @@ class Gestion:
         self.db.commit()
         return self.operacion(eid)
 
+    def destinatario_extra(self, eid, datos):
+        """3.1.3 · destinatario añadido a mano en «Preparar envío». Se guarda en el expediente (o como contacto del banco)."""
+        nombre, mail, movil = (datos.get("nombre") or "").strip(), (datos.get("email") or "").strip(), (datos.get("movil") or "").strip()
+        if not mail and not movil:
+            raise ErrorGestion("Pon un correo o un móvil.")
+        if mail and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", mail):
+            raise ErrorGestion("Ese correo no parece válido.")
+        if datos.get("banco"):
+            cid = self.m.negociacion.contacto(int(datos["banco"]), {"nombre": nombre, "email": mail, "movil": movil})
+            return {"contacto": cid}
+        op = self.operacion(eid)
+        d = op["datos"]
+        d.setdefault("destinatarios", []).append({"nombre": nombre, "email": mail, "movil": movil, "creado": ahora()})
+        self._guardar_datos(eid, d)
+        self.db.commit()
+        return {"ok": True}
+
     def cambiar_estado(self, eid, nuevo, extra=None):
         extra = extra or {}
         op = self.operacion(eid)
@@ -183,8 +246,6 @@ class Gestion:
         exp = self.a.expediente(eid)
         if nuevo in FASES:
             d["fase"] = nuevo
-            if nuevo == "enviado" and not d.get("fecha_envio"):
-                d["fecha_envio"] = datetime.date.today().isoformat()
             if nuevo == "aprobado" and not d.get("fecha_aprobacion"):
                 d["fecha_aprobacion"] = datetime.date.today().isoformat()
             estado_exp = "abierto"
@@ -645,6 +706,15 @@ _DIR = re.compile(r"(?:DOMICILIO(?: FISCAL| HABITUAL)?|DOMICILI|DIRECCI[OÓ]N)\s
 _NO_TEL = ("900", "901", "902", "905", "91554", "915548", "913", "963774")      # centralitas de Hacienda, bancos…
 
 
+def _lista_json(v):
+    import json
+    try:
+        x = json.loads(v) if isinstance(v, str) else (v or [])
+        return [str(i) for i in x if i]
+    except ValueError:
+        return []
+
+
 def datos_leidos(m, expediente_id):
     """Datos principales de cada persona del expediente leídos en SUS documentos (no en los comunes, donde salen
     notarios, vendedores o el banco): DNI, teléfonos, correos y dirección, por frecuencia. Y los contactos del banco."""
@@ -676,9 +746,13 @@ def datos_leidos(m, expediente_id):
                     "dni": p.get("dni") or "", "manual": bool(p.get("manual")),
                     "telefonos": [f"{n[:3]} {n[3:5]} {n[5:7]} {n[7:]}" for n in (moviles + fijos)[:3]],
                     "correos": [x for x, _ in mails.most_common(2)], "direccion": dirs.most_common(1)[0][0] if dirs else "",
-                    "documentos": len(docs)})
+                    "documentos": len(docs),
+                    # 3.1.3 · para «Preparar envío»: de dónde sale cada correo del cliente
+                    "correo_informado": p.get("correo_informado") or "", "correos_recibidos": _lista_json(p.get("correos_recibidos"))})
     bancos = []
     for b in m.negociacion.de_expediente(expediente_id).get("bancos", []):
         for c in b.get("contactos") or []:
-            bancos.append({"banco": b.get("entidad"), **{k: c.get(k) or "" for k in ("nombre", "cargo", "telefono", "movil", "email", "oficina", "direccion")}})
+            bancos.append({"banco": b.get("entidad"), "banco_id": b.get("id"), "id": c.get("id"),
+                           "origen": "tarjeta de visita (OCR)" if c.get("documento_id") else "manual",
+                           **{k: c.get(k) or "" for k in ("nombre", "cargo", "telefono", "movil", "email", "oficina", "direccion")}})
     return {"personas": out, "bancos": bancos}

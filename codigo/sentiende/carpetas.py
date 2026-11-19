@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 NOMBRES = {"entrada": "Entrada", "originales": "Doc_original", "documentos": "SeDocumentos",
-           "papelera": "Papelera", "variantes": "Variantes", "datos": "Datos"}
+           "papelera": "Papelera", "variantes": "Variantes", "datos": "Datos",
+           "firmados": "_Firmados"}          # 3.1.3 (Joan, 19/11): zip de cada expediente al cobrarlo
 LIMBO = "_Limbo"
 
 class Carpetas:

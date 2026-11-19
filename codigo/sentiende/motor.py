@@ -23,6 +23,15 @@ from .nombres import Nombrador, carpeta_expediente
 from . import checklist, textos
 from .negociacion import Negociacion, parece_tarjeta
 
+def parece_cuentas(texto):
+    """Muchas líneas con dos o más importes (tabla de cuentas) → hoja de cálculo pasada a PDF."""
+    lineas = [l for l in (texto or "").split("\n") if l.strip()]
+    if len(lineas) < 8:
+        return False
+    con = sum(1 for l in lineas if len(re.findall(r"-?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\s*€?", l)) >= 2)
+    return con / len(lineas) >= 0.4
+
+
 class MotorError(Exception):
     pass
 
@@ -221,6 +230,14 @@ class Motor:
                 a.actualizar(did, fase=5, datos=datos)
                 a.evento(f"Datos: {len(datos['dni'])} DNI/NIE, {len(datos['iban'])} IBAN, {len(datos['fechas'])} fechas", did, lote, 5)
             c = self.clasificador.clasificar(texto)
+            # 3.1.3 (Joan) · las cuentas y hojas de cálculo que no se sabe dónde clasificar van a «Cuadro contable»
+            if "cuadrocontable" in self.variante.docs and c.tipo != "cuadrocontable":
+                ext = (a.documento(did)["extension"] or "").lower()
+                hoja = ext in (".xlsx", ".xls", ".xlsm", ".ods", ".csv")
+                if (hoja and (not c.tipo or c.confianza < 0.75)) or (not c.tipo or c.confianza < 0.5) and parece_cuentas(texto):
+                    c.tipo = "cuadrocontable"
+                    c.confianza = max(c.confianza or 0, 0.8 if hoja else 0.76)
+                    c.indicios = list(c.indicios or []) + ["hoja de cálculo" if hoja else "tabla de importes sin otro tipo claro"]
             # 3.1.2 · un formulario de solicitud cuyo archivo dice «firmado» se guarda como «Formulario firmado»
             if c.tipo == "formsolicitud" and "FIRMAD" in norm(a.documento(did)["nombre_recibido"] or ""):
                 c.tipo = "formfirmado"
@@ -660,6 +677,8 @@ class Motor:
         a = self.almacen
         if not a.documento(doc_id):
             raise MotorError(f"No existe el documento {doc_id}.")
+        if a.documento(doc_id)["estado"] == "limbo":          # 3.1.2b · ya está en el Limbo: no se vuelve a guardar
+            return a.documento(doc_id)
         p = persona or {"nombre": "", "apellido1": "", "dni": None}
         return self._renombrar_y_guardar(doc_id, limbo=True, persona=p)
 
@@ -712,9 +731,34 @@ class Motor:
             _refrescar(self, eid)
         return a.documento(doc_id)
 
+    def _reparar_origen(self, d):
+        """3.1.2b · El original ya no está donde dice (p. ej. el DNI de Joan: se guardó en el Limbo, se intentó guardar
+        otra vez y quedó «parado» buscando el archivo en Entrada). Se recupera de donde esté de verdad:
+        - si hay un PDF suyo en _Limbo, pasa a ser la copia de trabajo, como al «Sacar del Limbo»;
+        - si no, se usa el original que ya está en Doc_original."""
+        a, c = self.almacen, self.carpetas
+        if not d["ruta_original"] or Path(d["ruta_original"]).exists():
+            return d
+        lf = Path(d["ruta_final"] or "")
+        if lf.is_file() and (lf.parent == c.limbo or c.limbo in lf.parents):
+            w = libre(c.trabajo(d["lote_id"]) / f"limbo_{d['id']}{lf.suffix.lower()}")
+            w.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(lf), w)
+            paginas = 1
+            if w.suffix.lower() == ".pdf":
+                from pypdf import PdfReader
+                paginas = len(PdfReader(str(w)).pages)
+            a.actualizar(d["id"], ruta_original=str(w), extension=w.suffix.lower(), paginas=paginas, paginas_sel=None,
+                         rotaciones=[{"n": i} for i in range(1, paginas + 1)], ruta_trabajo=str(w.parent), ruta_final=None)
+            a.evento("El original ya no estaba en Entrada: se recupera la copia del Limbo y se sigue", d["id"], d["lote_id"], 10)
+        elif Path(d["ruta_original_final"] or "").is_file():
+            a.actualizar(d["id"], ruta_original=d["ruta_original_final"])
+            a.evento("El original ya no estaba en Entrada: se usa el que ya está en Doc_original", d["id"], d["lote_id"], 10)
+        return a.documento(d["id"])
+
     def _renombrar_y_guardar(self, doc_id, limbo=False, persona=None):
         a, c = self.almacen, self.carpetas
-        d = a.documento(doc_id)
+        d = self._reparar_origen(a.documento(doc_id))
         lote = d["lote_id"]
         try:
             # fase 8 · renombrar
@@ -776,8 +820,11 @@ class Motor:
                     orig_destino = orig_dir
                 else:
                     nombre_orig = a.documento(d["padre_id"])["nombre_recibido"] if d["padre_id"] else d["nombre_recibido"]
-                    orig_destino = libre(orig_dir / nombre_orig)
-                    shutil.move(d["ruta_original"], orig_destino)
+                    if Path(d["ruta_original"]).parent == orig_dir:          # ya estaba en su sitio
+                        orig_destino = Path(d["ruta_original"])
+                    else:
+                        orig_destino = libre(orig_dir / nombre_orig)
+                        shutil.move(d["ruta_original"], orig_destino)
                 if d["padre_id"]:
                     for h in a.documentos("padre_id = ? OR id = ?", (d["padre_id"], d["padre_id"])):
                         a.actualizar(h["id"], ruta_original_final=str(orig_destino))

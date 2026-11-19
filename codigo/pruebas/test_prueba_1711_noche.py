@@ -30,3 +30,32 @@ class Noche(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Noche2(unittest.TestCase):
+    def test_nif_del_empresario_en_la_nomina(self):
+        t = ("CALABUIG JAQUOTOT, VICENTE\nAV GASPAR 12\n46020 VALENCIA\nNIF. 12345678Z 413\nBALLESTER GARCIA, JOAN 16/1538095- 67\n"
+             "N MATRIC | ANTIGUEDAD\nCALABUIG JAQUOTOT VICENTE | CONDUCTOR | 21 FEB 25 | 87654321X\n")
+        p = {x["completo"]: x["dni"] for x in personas(t)}
+        self.assertNotEqual(p.get("Vicente Calabuig Jaquotot"), "12345678Z")
+
+    def test_renta_individual_y_menor(self):
+        from sentiende.extraer import tributacion
+        self.assertEqual(tributacion("Opción de tributación\nTributación individual ¦ X 0068"), "individual")
+        t = "Descendientes\nApellidos y nombre ¦ RAMOS SERISOLA ARIADNA 0076\nFecha de nacimiento ¦ 04/12/2019 0077\n"
+        self.assertTrue(any(x.get("nacimiento") == "2019-12-04" for x in personas(t)))
+
+
+class CuadroContable(unittest.TestCase):
+    def test_cuadro_entero_y_cuentas(self):
+        from sentiende.variante import Variante
+        from sentiende.clasificar import Clasificador
+        from sentiende.separar import separar
+        from sentiende.motor import parece_cuentas
+        cl = Clasificador(Variante(Path(__file__).resolve().parents[1] / "variantes" / "sefinancia"))
+        hoja = lambda mes: (f"MES ¦ {mes} MAÑANA ¦ CONTABLE ¦ FORMAS DE PAGO\nDIA ¦ SERVICIOS RECAUDACIÓN GAS OIL KILOMETRO ¦ TARJETA ¦ EFECTIVO ¦ EMISORA\n"
+                            + "\n".join(f"{d}-Jan ¦ 235.00 € ¦ 7.00 € ¦ 194.00 ¦ #DIV/0! ¦ 59.35 €" for d in range(1, 12)))
+        s = separar([hoja("ENERO"), hoja("ENERO TARDE"), hoja("FEBRERO"), hoja("FEBRERO TARDE")], cl)
+        self.assertEqual([(q.paginas, q.tipo) for q in s.partes], [([1, 2, 3, 4], "cuadrocontable")])
+        self.assertTrue(parece_cuentas(hoja("MARZO")))
+        self.assertFalse(parece_cuentas("NÓMINA\nTrabajador X\nSalario base 1.286,29\nLíquido 1.369,51\n" * 2))

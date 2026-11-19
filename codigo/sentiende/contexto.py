@@ -245,7 +245,9 @@ class ContextoLote:
                 k = max(claves, key=lambda c: len(dni_docs[c]))
                 dni = _con_letra(k, dni_vistos.get(k, []))
             variantes = sorted({norm(p.get("completo") or "").strip() for p in nombres if p.get("completo")})
-            identidades.append({"clave": r, "persona": {k2: (mejor or {}).get(k2) for k2 in ("nombre", "apellido1", "apellido2", "completo")} if mejor else None,
+            hoy = datetime.date.today()
+            menor = any(p.get("nacimiento") and (hoy - datetime.date.fromisoformat(p["nacimiento"])).days < 18 * 365.25 for p in nombres)
+            identidades.append({"menor": menor, "clave": r, "persona": {k2: (mejor or {}).get(k2) for k2 in ("nombre", "apellido1", "apellido2", "completo")} if mejor else None,
                                 "dni": dni, "variantes": variantes, "docs": sorted(x["docs"]), "_nodos": sorted(x["nodos"]),
                                 "compartidos": sorted(did for did in x["docs"] if tipos.get(did) in COMPARTIDOS),
                                 "individuales": sorted(did for did in x["docs"] if tipos.get(did) not in COMPARTIDOS)})
@@ -267,7 +269,7 @@ class ContextoLote:
             comp_t = {x for x in t["compartidos"] if tipos.get(x) not in CON_TERCEROS} or set(t["compartidos"])
             candidatos = []
             for o in identidades[1:]:
-                if not comp_t or not o.get("persona"):
+                if not comp_t or not o.get("persona") or o.get("menor"):     # 3.1.2b · un menor nunca es cotitular
                     continue
                 juntos = len(comp_t & set(o["compartidos"]))
                 if juntos and 100 * juntos / len(comp_t) >= aj["cotitular"]:
@@ -317,8 +319,13 @@ class ContextoLote:
             if dec.get("comun") and porid[did]["tipo"] not in CON_TERCEROS:
                 repetidos.setdefault((porid[did]["tipo"], _mes(porid[did]) or ""), []).append(did)
         for (tipo, _), dids in repetidos.items():
-            if len(dids) < 2:
+            # 3.1.2b · una renta con «Tributación individual» es de su primer declarante aunque llegue sola
+            # (la de Miguel se guardó como común con el código de Mónica)
+            individuales = [did for did in dids if (porid[did].get("datos") or {}).get("tributacion") == "individual"]
+            if len(dids) < 2 and not individuales:
                 continue
+            if len(dids) < 2:
+                dids = individuales
             for did in dids:
                 orden = sorted((int(n.split("_")[1]), n) for n in en_doc.get(did, ()) if n.startswith("n"))
                 for _, n in orden:
@@ -474,11 +481,17 @@ class ContextoLote:
         manual = self._manual_parecida(ident)
         if manual:
             return manual, False
+        p = ident.get("persona")
         if ident.get("dni"):
             for r in a.db.execute("SELECT * FROM personas WHERE dni IS NOT NULL"):
                 if _clave_dni(r["dni"]) == _clave_dni(ident["dni"]):
-                    return dict(r), False
-        p = ident.get("persona")
+                    r = dict(r)
+                    # 3.1.2b · el DNI es de una persona con un nombre que no tiene nada que ver (nómina de Vicente con el NIF
+                    # de su empresario, Joan): ese DNI no es suyo; se decide por el nombre
+                    if p and p.get("apellido1") and not compatibles(r, p) and not _algun_apellido(r, p):
+                        ident = dict(ident, dni=None)
+                        break
+                    return r, False
         if p:
             for r in a.db.execute("SELECT * FROM personas"):
                 r = dict(r)
@@ -708,3 +721,10 @@ class ContextoLote:
             a.evento(f"Contexto del lote {lote_id}: {hechos['asignados']} guardado(s), {hechos['propuestos']} propuesto(s)"
                      + (", expediente nuevo" if hechos["creado"] else ""), lote_id=lote_id, nivel="info")
         return hechos
+
+
+def _algun_apellido(r, p):
+    """¿Comparten algún apellido (de 3 letras o más)? Sirve para no tomar por ajeno un DNI con el nombre mal leído."""
+    a = {norm(x).strip() for x in (r.get("apellido1"), r.get("apellido2")) if x and len(norm(x).strip()) > 2}
+    b = {norm(x).strip() for x in (p.get("apellido1"), p.get("apellido2")) if x and len(norm(x).strip()) > 2}
+    return bool(a & b)

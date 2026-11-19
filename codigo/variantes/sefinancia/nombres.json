@@ -5,7 +5,7 @@
  "prefijo_privado": "PRIVADO_NO_COMPARTIR_",
  "sufijo_sustituido": "-ant",
  "extension": ".pdf",
- "mantener_extension": ["prevision"],
+ "mantener_extension": ["prevision", "cuadrocontable"],
  "carpeta_expediente": "{Nombre1}{Apellido1}_{DNI5}_{MMAA}",
  "dato_distintivo": {
   "Mes MMAA": "periodo:MMAA", "Mes detallado en riesgos MMAA": "periodo:MMAA",

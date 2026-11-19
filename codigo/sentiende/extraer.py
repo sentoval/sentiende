@@ -206,6 +206,7 @@ def extraer(texto, base=None):
         "fechas": [f.isoformat() for f in fs], "importes": importes(texto),
         "periodo": (p.isoformat() if (p := periodo(texto)) else None),
         "ejercicio": ejercicio(texto),
+        "tributacion": tributacion(texto),
         "caducidad": (c.isoformat() if (c := caducidad(texto)) else None),
         "emision": (e.isoformat() if (e := emision(texto, fs)) else None),
         "trimestre": list(tri) if tri else None,
@@ -330,6 +331,12 @@ ETIQUETAS = [   # (expresión, orden, fuerza)
      r"COMPRADOR|COMPRADORA|ARRENDATARIO|ARRENDADOR|PRESTATARIO|AVALISTA|BENEFICIARIO|BENEFICIARIA", None),
 ]
 
+def tributacion(texto):
+    """Renta: «Tributación individual ¦ X» o «Tributación conjunta ¦ X» (la opción marcada). None si no se ve."""
+    m = re.search(r"TRIBUTACION (INDIVIDUAL|CONJUNTA)\s*¦?\s*X\b", norm(texto or "")[:20000])
+    return m.group(1).lower() if m else None
+
+
 def personas(texto):
     """Nombres de personas del documento, validados, con su DNI si está cerca. Los más seguros primero."""
     t = juntar_cifras(re.sub(r"([A-Z])-\n([A-Z])", r"\1\2", norm(texto)))      # palabras partidas con guion al final de línea
@@ -347,7 +354,9 @@ def personas(texto):
         # 3.1.2 · en la renta (AEAT) cada persona va como «NIF ¦ X 0075» y debajo «Apellidos y nombre ¦ … 0076»:
         # un NIF seguido de «Apellidos» es ya de la persona siguiente (a Miguel no se le leía el suyo y a una hija se le
         # asignaba el de su hermana)
-        sig = re.search(r"\n\s*N\.?I\.?F\.?[^\n]*\n\s*APELLIDOS", despues)
+        # (3.1.2b) lo mismo si debajo del NIF viene otro nombre en formato «APELLIDOS, NOMBRE» (nómina: el NIF del
+        # empresario va encima de su nombre, justo después de la dirección del trabajador)
+        sig = re.search(r"\n\s*(?:N\.?I\.?F|D\.?N\.?I|NIE)\.?[^\n]*\n\s*(?:APELLIDOS|[A-ZÑ]{2,}(?: [A-ZÑ]{2,})+,\s*[A-ZÑ]{2,})", despues)
         despues = despues[: sig.start()] if sig else despues
         # hacia atrás solo vale una línea propia del DNI justo encima («NIF: 12345678Z», también con la casilla «0001»
         # detrás), nunca el de otra persona; si existe, manda sobre lo de después
@@ -355,6 +364,12 @@ def personas(texto):
         antes = " ".join(l for l in lineas_antes if re.fullmatch(r"\s*(?:N\.?I\.?F\.?|D\.?N\.?I\.?|NIE|DOCUMENTO)[^A-Z]{0,6}(?:" + dni_re + r")(?:\s+\d{4})?\s*", l))
         dn = [dni_valido(m.group(0)) for m in re.finditer(dni_re, antes)] or [dni_valido(m.group(0)) for m in re.finditer(dni_re, despues)]
         p["dni"] = next((x for x in dn if x), None)
+        # 3.1.2b · fecha de nacimiento en su mismo bloque (renta: descendientes) → para no hacer cotitular a un menor
+        fn = re.search(r"FECHA DE NACIMIENTO\s*[:¦]?\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", despues)
+        if fn:
+            f = _fecha(*fn.groups())
+            if f:
+                p["nacimiento"] = f.isoformat()
         clave = frozenset(norm(p["completo"]).split())
         for q in encontradas:
             cq = frozenset(norm(q["completo"]).split())

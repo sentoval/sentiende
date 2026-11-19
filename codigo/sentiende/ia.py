@@ -943,6 +943,9 @@ class ControladorIA:
         hechas = []
         # 1. separar en varios documentos
         sep = dec.get("separar")
+        # 3.1.3 (Joan) · un «Cuadro contable» se guarda siempre como un único documento: no se separa
+        if (dec.get("tipo") or d["tipo"]) == "cuadrocontable":
+            sep = None
         if fn.get("separar") and isinstance(sep, list) and len(sep) >= 2:
             try:
                 grupos = [[prep["paginas"][int(n) - 1] for n in g] for g in sep]
