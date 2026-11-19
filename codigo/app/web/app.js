@@ -752,7 +752,7 @@ function vistaExpediente() {
         ${EXP.op?.cobro === "pendiente" ? `<button type="button" class="btn-cobro pendiente" id="exp-cobrar" title="Marcar los honorarios como cobrados">${ico("check", 15)}Cobrar${EXP.op.datos.honorarios_importe ? " · " + eur(EXP.op.datos.honorarios_importe) : ""}</button>`
           : EXP.op?.cobro === "cobrado" ? `<button type="button" class="btn-cobro cobrado" id="exp-cobrado" title="Cobrado el ${fmtF(EXP.op.datos.fecha_cobro)} (pulsa para deshacer)">${ico("check", 15)}Cobrado · ${fmtF(EXP.op.datos.fecha_cobro)}</button>` : ""}</div>
       <div class="exp-botones"><button class="btn peligro icono" id="exp-eliminar" title="Eliminar el expediente (va a la Papelera)" aria-label="Eliminar">${ico("trash", 18)}</button>
-        ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro exp.</button>` : ""}<button class="btn" id="rehacer">${ico("play")}Rehacer texto</button></div>
+        ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro exp.</button>` : ""}<button class="btn ${EXP.textosCambios ? "resaltado" : ""}" id="rehacer" title="${EXP.textosCambios ? "Hay cambios en los documentos: el archivo de texto del expediente está desactualizado" : "Rehace el archivo de texto del expediente"}">${ico("play")}Rehacer texto${EXP.textosCambios ? '<span class="punto-cambio" aria-label="hay cambios"></span>' : ""}</button></div>
     </div>
     <div class="exp-cab-der">
       <a class="btn pri btn-doc-grande" href="#documentacion/${e.id}">${ico("folder", 30)}Documentación<span class="num">${(EXP.docs || []).length}</span></a>
@@ -1199,7 +1199,7 @@ function activarExpediente(id) {
     try { const r = await api("arreglo", { accion: "quitar_persona", expediente: id, persona: p.id }); aviso("Quitada del expediente" + (r.ficha_borrada ? " y su ficha borrada" : "")); await recargar(); }
     catch (e) { aviso(e.message, true); }
   }));
-  $("#rehacer")?.addEventListener("click", async () => { await api("textos", { expediente: id }); aviso("Archivo de texto rehecho"); });
+  $("#rehacer")?.addEventListener("click", async () => { await api("textos", { expediente: id }); EXP.textosCambios = false; pintar(); aviso("Archivo de texto rehecho"); });
   $("#unir-exp")?.addEventListener("click", () => { ARR.unir = true; ARR.destino = ""; pintar(); });
   $("#arr-destino")?.addEventListener("change", ev => { ARR.destino = ev.target.value; pintar(); });
   document.querySelectorAll("#arr-cancelar").forEach(b => b.addEventListener("click", () => { ARR.unir = false; ARR.mover = null; pintar(); }));
@@ -1226,9 +1226,9 @@ function activarExpediente(id) {
 async function cargarExpediente(id, suave) {
   if (!suave) { EXP = null; pintar(); }
   const e = S.expedientes.find(x => x.id === id) || (await api("expedientes")).find(x => x.id === id);
-  const [ck, docs, neg, op, datos, envios] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id), api("datos_expediente/" + id).catch(() => null), api("envios/" + id).catch(() => [])]);
+  const [ck, docs, neg, op, datos, envios, tx] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id), api("datos_expediente/" + id).catch(() => null), api("envios/" + id).catch(() => []), api("textos_cambios/" + id).catch(() => ({}))]);
   if (EXP?.e?.id !== id) { Object.assign(NEG, { banco: 0, verBanco: false, contacto: null }); OPV = false; DIALOGO = null; }
-  EXP = { e, ck, docs, neg, op, datos, envios }; ARR.unir = false; ARR.mover = null; pintar();
+  EXP = { e, ck, docs, neg, op, datos, envios, textosCambios: !!tx?.cambios }; ARR.unir = false; ARR.mover = null; pintar();
 }
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
@@ -1298,7 +1298,7 @@ function vistaAjustes() {
     <a class="btn" href="#ia">Abrir ajustes de la IA</a></div></section>
   ${tarjetaContexto()}
   <section class="tarjeta"><h2>Carpetas</h2>
-    ${[["entrada", "Entrada (lo que llega)"], ["documentos", "SeDocumentos (los ordenados)"], ["originales", "Doc_original (originales sin tocar)"], ["papelera", "Papelera"]]
+    ${[["entrada", "Entrada (lo que llega)"], ["documentos", "SeDocumentos (los ordenados)"], ["originales", "Doc_original (originales sin tocar)"], ["papelera", "Papelera"], ["firmados", "_Firmados (zip de cada expediente cobrado)"]]
       .map(([k, l]) => `<div class="fila-carpeta"><label for="cp-${k}">${l}</label><input id="cp-${k}" data-carpeta="${k}" value="${esc(c[k])}"><button class="btn peq" data-abrir="${esc(c[k])}">Abrir</button></div>`).join("")}
     <div class="dato"><span>Datos (base de datos y ajustes)</span><span class="mono">${esc(c.datos)}</span></div>
     <div class="acciones"><button class="btn pri" id="cp-ok">${ico("check")}Guardar carpetas</button></div>
@@ -1336,7 +1336,7 @@ function tarjetaCorreo() {
   if (!CORREO) return "";
   const f = CORREO.form, pv = CORREO.proveedores, p = pv[f.proveedor] || pv.otro, e = CORREO.estado;
   const campo = (id, et, val, tipo = "text", extra = "") => `<div class="campo"><label for="co-${id}">${et}</label><input id="co-${id}" type="${tipo}" value="${esc(val ?? "")}" ${extra}></div>`;
-  return `<section class="tarjeta"><div><h2>Recibir por correo</h2><span class="sub">El programa entra en tu buzón, recoge los adjuntos (PDF, fotos, Word y Excel) de los correos nuevos y los mete en el motor, un lote por correo. <b>Solo lee</b>: nunca envía, borra ni mueve correos; no los marca como leídos y solo les pone la etiqueta «SeFinancia» para no recogerlos dos veces. Los adjuntos con macros o ejecutables se ignoran.</span></div>
+  return `<section class="tarjeta"><div><h2>Recibir por correo</h2><span class="sub">El programa entra en tu buzón, recoge los adjuntos (PDF, fotos, Word y Excel) de los correos nuevos y los mete en el motor, un lote por correo. No los marca como leídos y les pone la etiqueta «SeFinancia»; los que entran se mueven a «procesadosMMAA». Nunca borra nada. Solo <b>envía</b> desde «Preparar envío» de un expediente, cuando eliges «Vía Sentiende». Los adjuntos con macros o ejecutables se ignoran.</span></div>
     <div class="campos-inline">
       <div class="campo"><label for="co-proveedor">Proveedor</label><select id="co-proveedor">${Object.entries(pv).map(([k, x]) => `<option value="${k}" ${k === f.proveedor ? "selected" : ""}>${esc(x.nombre)}</option>`).join("")}</select></div>
       ${campo("servidor", "Servidor IMAP", f.servidor, "text", 'placeholder="imap.tuproveedor.es"')}${campo("puerto", "Puerto", f.puerto, "number", 'min="1" style="max-width:100px"')}
@@ -1347,6 +1347,8 @@ function tarjetaCorreo() {
     <div class="sub reglas-correo"><b>Reglas al recoger</b> · espera 1 minuto desde que llega cada correo · remitente conocido (en «Correos» de una ficha) con adjuntos: entra; sin adjuntos: aviso ·
       desconocido sin adjuntos o con fotos que no se reconocen: etiqueta «No_Apto_SeFina» · con Word/Excel y sin PDF: te pregunta en la campanita sin abrirlos ·
       con algún PDF: entra (si solo trae PDF y nada se relaciona con lo registrado, vuelve a la bandeja de entrada) · lo que entra se mueve a la carpeta «procesadosMMAA» del buzón. Nunca se borra nada.</div>
+    <div class="campos-inline">${campo("smtp_servidor", "Servidor de salida (SMTP) para enviar", f.smtp_servidor, "text", `placeholder="${f.proveedor === "gmail" ? "smtp.gmail.com (automático)" : f.proveedor === "outlook" ? "smtp.office365.com (automático)" : f.proveedor === "yahoo" ? "smtp.mail.yahoo.com (automático)" : "smtp.tuproveedor.es"}"`)}${campo("smtp_puerto", "Puerto SMTP", f.smtp_puerto, "number", 'min="1" style="max-width:100px" placeholder="465"')}</div>
+    <span class="sub">Solo hace falta si envías con «Vía Sentiende» y tu proveedor no es Gmail, Outlook ni Yahoo. 465 = SSL; 587 = STARTTLS.</span>
     <div class="campos-inline"><div class="campo"><label for="co-cada">Revisar solo</label><select id="co-cada">${[[0, "Solo cuando pulse «Correo»"], [5, "Cada 5 minutos"], [15, "Cada 15 minutos"], [30, "Cada 30 minutos"], [60, "Cada hora"]].map(([v, n]) => `<option value="${v}" ${+f.cada_minutos === v ? "selected" : ""}>${n}</option>`).join("")}</select></div></div>
     <div class="acciones"><button class="btn pri" id="co-guardar">${ico("check")}Guardar</button><button class="btn" id="co-probar">Probar conexión</button>${CORREO.ajustes.servidor && CORREO.ajustes.hay_clave ? `<button class="btn" id="co-revisar">${ico("mail")}Revisar ahora</button>` : ""}</div>
     ${e.ultimo ? `<span class="sub">Última revisión: ${esc(e.ultimo.replace("T", " ").slice(0, 16))}${e.error ? " · error: " + esc(e.error) : e.resumen ? ` · ${e.resumen.adjuntos} adjunto(s) recogido(s)` : ""}</span>` : ""}
@@ -1354,7 +1356,7 @@ function tarjetaCorreo() {
 }
 function leerCorreoForm() {
   const f = CORREO.form;
-  ["servidor", "puerto", "usuario", "clave", "carpeta", "dias", "remitentes"].forEach(k => { const el = $("#co-" + k); if (el) f[k] = el.value; });
+  ["servidor", "puerto", "usuario", "clave", "carpeta", "dias", "remitentes", "smtp_servidor", "smtp_puerto"].forEach(k => { const el = $("#co-" + k); if (el) f[k] = el.value; });
   f.cada_minutos = +($("#co-cada")?.value || 0); f.activo = true;
   return f;
 }

@@ -71,8 +71,8 @@ def _mensaje(remite, para, asunto, texto, archivos, borrador):
 
 
 def _smtp(ajustes):
-    if ajustes.get("smtp_servidor"):
-        return ajustes["smtp_servidor"], int(ajustes.get("smtp_puerto") or 465)
+    if (ajustes.get("smtp_servidor") or "").strip():
+        return ajustes["smtp_servidor"].strip(), int(ajustes.get("smtp_puerto") or 465)
     if ajustes.get("proveedor") in SMTP:
         return SMTP[ajustes["proveedor"]]
     s = (ajustes.get("servidor") or "").lower()

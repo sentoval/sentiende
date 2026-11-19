@@ -432,6 +432,9 @@ def crear_manejador(app):
                     g = app.motor.gestion
                     q = dict(x.split("=", 1) for x in (urlparse(self.path).query or "").split("&") if "=" in x)
                     if m := re.fullmatch(r"/api/operacion/(\d+)", p): return self._json(g.operacion(int(m.group(1))))
+                    if m := re.fullmatch(r"/api/textos_cambios/(\d+)", p):     # 3.1.3 · resaltar «Rehacer texto»
+                        from sentiende import textos
+                        return self._json({"cambios": textos.desactualizado(app.motor.almacen, app.motor.carpetas.documentos, int(m.group(1)), app.motor.variante.nombres["sin_dni"])})
                     if p == "/api/estadisticas": return self._json(g.estadisticas())
                     if p == "/api/papelera": return self._json(g.papelera())
                     if p == "/api/personas": return self._json(g.personas())

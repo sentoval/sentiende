@@ -20,6 +20,28 @@ def nombre_registro(almacen, expediente_id, sin_dni="NOINFORMADO"):
 
 def generar(almacen, carpeta_docs, expediente_id, sin_dni="NOINFORMADO"):
     """Escribe (o reescribe) el registro de texto del expediente. Devuelve su ruta."""
+    destino, out = _contenido(almacen, carpeta_docs, expediente_id, sin_dni)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    tmp = destino.with_suffix(".tmp")
+    tmp.write_text("\n".join(out), encoding="utf-8-sig")   # con BOM: el Bloc de notas lo abre bien
+    tmp.replace(destino)
+    return destino
+
+
+def desactualizado(almacen, carpeta_docs, expediente_id, sin_dni="NOINFORMADO"):
+    """3.1.3 (Joan, 19/11): ¿el registro de texto ya no coincide con lo guardado? (falta, hay documentos nuevos,
+    movidos, renombrados, girados o leídos otra vez). Se compara todo menos la línea «Generado:»."""
+    try:
+        destino, out = _contenido(almacen, carpeta_docs, expediente_id, sin_dni)
+        if not destino.exists():
+            return bool(almacen.documentos("expediente_id = ? AND estado = 'guardado'", (expediente_id,)))
+        lineas = lambda t: [l for l in t.replace("\r\n", "\n").replace("\r", "\n").split("\n") if not l.startswith("Generado: ")]
+        return lineas(destino.read_text(encoding="utf-8-sig")) != lineas("\n".join(out))
+    except Exception:
+        return False
+
+
+def _contenido(almacen, carpeta_docs, expediente_id, sin_dni):
     exp = almacen.expediente(expediente_id)
     destino = Path(carpeta_docs) / exp["carpeta"] / nombre_registro(almacen, expediente_id, sin_dni)
     docs = sorted(almacen.documentos("expediente_id = ? AND estado = 'guardado'", (expediente_id,)), key=lambda d: d["nombre_final"] or "")
@@ -46,8 +68,4 @@ def generar(almacen, carpeta_docs, expediente_id, sin_dni="NOINFORMADO"):
             out.append(f"--- Página {n}" + (f" (pág. {n_arch} del archivo recibido)" if n_arch != n or d.get("padre_id") else "") + f" · {origen}" + (f" · lectura {round(conf * 100)} %" if conf is not None and origen == "OCR" else "") + " ---")
             out.append((c["texto"].strip() if c and c["texto"] else "[Sin texto guardado para esta página.]"))
             out.append("")
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    tmp = destino.with_suffix(".tmp")
-    tmp.write_text("\n".join(out), encoding="utf-8-sig")   # con BOM: el Bloc de notas lo abre bien
-    tmp.replace(destino)
-    return destino
+    return destino, out

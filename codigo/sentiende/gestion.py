@@ -69,7 +69,7 @@ class Gestion:
 
     def guardar_ajustes(self, nuevos):
         for k, v in (nuevos.get("carpetas") or {}).items():          # primero las carpetas (escriben su parte del archivo)
-            if k in ("entrada", "originales", "documentos", "papelera") and v and str(v) != str(self.m.carpetas.rutas[k]):
+            if k in ("entrada", "originales", "documentos", "papelera", "firmados") and v and str(v) != str(self.m.carpetas.rutas[k]):
                 p = Path(v)
                 try:
                     p.mkdir(parents=True, exist_ok=True)
@@ -157,6 +157,24 @@ class Gestion:
             return None
         return "cobrado" if (datos or {}).get("fecha_cobro") else "pendiente"
 
+    def zip_firmado(self, eid):
+        """3.1.3 (Joan, 19/11): al cobrar, un zip con TODO el expediente (SeDocumentos y Doc_original) en la carpeta
+        `_Firmados` (junto al exe, configurable). Las carpetas del expediente se quedan donde están."""
+        c, exp = self.m.carpetas, self.a.expediente(eid)
+        fuentes = [("SeDocumentos", c.documentos / exp["carpeta"]), ("Doc_original", c.originales / exp["carpeta"])]
+        if not any(f.exists() for _, f in fuentes):
+            return None
+        destino = c.rutas["firmados"]
+        destino.mkdir(parents=True, exist_ok=True)
+        z = libre(destino / f"{exp['carpeta']}_cobrado_{datetime.date.today():%Y%m%d}.zip")
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
+            for nombre, src in fuentes:
+                for p in src.rglob("*") if src.exists() else []:
+                    if p.is_file():
+                        f.write(p, Path(nombre) / exp["carpeta"] / p.relative_to(src))
+        self.a.evento(f"Expediente {exp['carpeta']} cobrado: copia completa en {z}")
+        return z
+
     def cobrar(self, eid, fecha=None, deshacer=False):
         op = self.operacion(eid)
         if op["estado"] != "firmado":
@@ -167,6 +185,9 @@ class Gestion:
         else:
             d["fecha_cobro"] = fecha or datetime.date.today().isoformat()
             nota = f"Honorarios cobrados el {d['fecha_cobro']}" + (f" ({d['honorarios_importe']} €)" if d.get("honorarios_importe") else "")
+            z = self.zip_firmado(eid)
+            if z:
+                d["zip_firmados"] = str(z); nota += f" · copia en {z.name}"
         self._guardar_datos(eid, d)
         self._historial(eid, "cobrado" if not deshacer else "firmado", nota)
         self.db.commit()
