@@ -231,7 +231,7 @@ def main(argv=None, lanzador=None):
                 if not n:
                     return True
                 txt = (f"Hay {n} envío(s) de correo programado(s).\n\nSi cierras el programa NO se enviarán a su hora: "
-                       "se enviarán cuando lo vuelvas a abrir (o puedes cancelarlos).\n\n¿Cerrar de todas formas?")
+                       "al volver a abrirlo te preguntará si quieres enviarlos con retraso.\n\n¿Cerrar de todas formas?")
                 try:
                     return bool(ventana.create_confirmation_dialog("Envíos programados", txt))
                 except Exception:

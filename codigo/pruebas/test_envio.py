@@ -90,8 +90,11 @@ class Envio(unittest.TestCase):
             self.assertEqual((e["estado"], envio.cuentas(m)["programados"]), ("programado", 1))
             self.assertEqual(envio.vencidos(m, c), [])                             # aún no toca
             m.almacen.db.execute("UPDATE envios SET cuando = '2020-01-01T00:00:00'"); m.almacen.db.commit()
-            r = envio.vencidos(m, c)                                               # sin correo configurado → error
-            self.assertEqual(r[0]["estado"], "error")
+            r = envio.vencidos(m, c)                                               # programa cerrado a esa hora → se pregunta
+            self.assertEqual(r[0]["estado"], "retrasado")
+            self.assertEqual(envio.cuentas(m), {"programados": 0, "errores": 1})
+            r = envio.accion(m, c, e["id"], "enviar")                              # sin correo configurado → error
+            self.assertEqual(r["estado"], "error")
             self.assertEqual(envio.cuentas(m), {"programados": 0, "errores": 1})
             envio.accion(m, c, e["id"], "visto")
             self.assertEqual(envio.cuentas(m)["errores"], 0)

@@ -248,16 +248,28 @@ def ejecutar(m, correo, i):
     return envio(m, i)
 
 
+RETRASO_MAX = datetime.timedelta(minutes=5)
+
+
 def vencidos(m, correo):
-    """Lo llama un hilo del servidor cada 30 s: envía los programados cuya hora ya ha llegado."""
-    _tabla(m.almacen.db)
-    ids = [r[0] for r in m.almacen.db.execute("SELECT id FROM envios WHERE estado = 'programado' AND cuando <= ?", (_ahora().isoformat(),))]
-    return [ejecutar(m, correo, i) for i in ids]
+    """Lo llama un hilo del servidor cada 30 s: envía los programados cuya hora ya ha llegado.
+    Si ha pasado más de 5 minutos (el programa estaba cerrado), NO se envía: queda «retrasado» y se pregunta
+    con la campanita roja (Joan, 19/11/2026: «pregunta antes de enviarlo con retraso»)."""
+    db = m.almacen.db; _tabla(db)
+    ahora, out = _ahora(), []
+    for i, cuando in db.execute("SELECT id, cuando FROM envios WHERE estado = 'programado' AND cuando <= ?", (ahora.isoformat(),)).fetchall():
+        if ahora - datetime.datetime.fromisoformat(cuando) > RETRASO_MAX:
+            db.execute("UPDATE envios SET estado = 'retrasado', visto = 0 WHERE id = ?", (i,)); db.commit()
+            m.almacen.evento(f"Envío programado para el {cuando[:16].replace('T', ' ')} sin enviar (el programa estaba cerrado): se pregunta antes de enviarlo", nivel="aviso")
+            out.append(envio(m, i))
+        else:
+            out.append(ejecutar(m, correo, i))
+    return out
 
 
 def lista(m, eid=None):
     _tabla(m.almacen.db)
-    q, p = "SELECT id FROM envios WHERE estado IN ('programado', 'error')", []
+    q, p = "SELECT id FROM envios WHERE estado IN ('programado', 'error', 'retrasado')", []
     if eid:
         q += " AND expediente_id = ?"; p.append(eid)
     return [envio(m, r[0]) for r in m.almacen.db.execute(q + " ORDER BY cuando", p)]
@@ -267,16 +279,16 @@ def cuentas(m):
     _tabla(m.almacen.db)
     c = lambda q: m.almacen.db.execute(q).fetchone()[0]
     return {"programados": c("SELECT COUNT(*) FROM envios WHERE estado = 'programado'"),
-            "errores": c("SELECT COUNT(*) FROM envios WHERE estado = 'error' AND visto = 0")}
+            "errores": c("SELECT COUNT(*) FROM envios WHERE estado IN ('error', 'retrasado') AND visto = 0")}
 
 
 def accion(m, correo, i, que):
     db = m.almacen.db
     if que == "cancelar":
-        db.execute("UPDATE envios SET estado = 'cancelado', hecho = ? WHERE id = ? AND estado IN ('programado', 'error')", (_ahora().isoformat(), i))
+        db.execute("UPDATE envios SET estado = 'cancelado', hecho = ? WHERE id = ? AND estado IN ('programado', 'error', 'retrasado')", (_ahora().isoformat(), i))
     elif que == "visto":
         db.execute("UPDATE envios SET visto = 1 WHERE id = ?", (i,))
-    elif que == "reintentar":
+    elif que in ("reintentar", "enviar"):
         return ejecutar(m, correo, i)
     else:
         raise ErrorEnvio("Acción desconocida.")

@@ -982,12 +982,12 @@ function panelEnvio(e) {
 }
 function filasEnvios(lista, conExpediente) {
   const f = t => `${fmtF(t)} a las ${(t || "").slice(11, 16)}`;
-  return lista.map(x => `<div class="env-prog-fila ${x.estado}">
-    <span class="env-prog-ico">${ico(x.estado === "error" ? "bell" : "clock", 18)}</span>
-    <span class="env-prog-txt"><b>${x.estado === "error" ? "No se ha podido enviar" : "Envío programado"} · ${f(x.estado === "error" ? x.hecho : x.cuando)}</b>
+  return lista.map(x => `<div class="env-prog-fila ${x.estado === "retrasado" ? "error" : x.estado}">
+    <span class="env-prog-ico">${ico(x.estado === "programado" ? "clock" : "bell", 18)}</span>
+    <span class="env-prog-txt"><b>${x.estado === "error" ? "No se ha podido enviar · " + f(x.hecho) : x.estado === "retrasado" ? `No salió a su hora (el programa estaba cerrado) · era para el ${f(x.cuando)}` : "Envío programado · " + f(x.cuando)}</b>
       <small>${conExpediente ? `<a href="#expediente/${x.expediente_id}">${esc(x.expediente || "")}</a> · ` : ""}«${esc(x.asunto || "")}» · ${x.documentos} doc. · para ${esc(x.para.join(", "))}</small>
       ${x.error ? `<small class="bad-txt">${esc(x.error)}</small>` : ""}</span>
-    <span class="env-prog-acc">${x.estado === "error" ? `<button class="btn peq pri" data-envio="${x.id}" data-accion="reintentar">Reintentar ahora</button>${x.visto ? "" : `<button class="btn peq" data-envio="${x.id}" data-accion="visto">Visto</button>`}` : ""}
+    <span class="env-prog-acc">${x.estado === "retrasado" ? `<button class="btn peq pri" data-envio="${x.id}" data-accion="enviar">Enviar ahora</button>` : ""}${x.estado === "error" ? `<button class="btn peq pri" data-envio="${x.id}" data-accion="reintentar">Reintentar ahora</button>${x.visto ? "" : `<button class="btn peq" data-envio="${x.id}" data-accion="visto">Visto</button>`}` : ""}
       <button class="btn peq" data-envio="${x.id}" data-accion="cancelar">${x.estado === "error" ? "Descartar" : "Cancelar"}</button></span></div>`).join("");
 }
 function activarFilasEnvios(recargar) {
@@ -995,7 +995,7 @@ function activarFilasEnvios(recargar) {
     const acc = b.dataset.accion;
     if (acc === "cancelar" && !confirm("¿Cancelar este envío? No se enviará.")) return;
     try { const r = await api("envio_accion", { id: +b.dataset.envio, accion: acc });
-      aviso(acc === "reintentar" ? (r.estado === "enviado" ? "Correo enviado" : "Sigue sin poder enviarse: " + (r.error || "")) : acc === "cancelar" ? "Envío cancelado" : "Visto", r.estado === "error");
+      aviso(acc === "reintentar" || acc === "enviar" ? (r.estado === "enviado" ? "Correo enviado" : "Sigue sin poder enviarse: " + (r.error || "")) : acc === "cancelar" ? "Envío cancelado" : "Visto", r.estado === "error");
       await refrescar(true); await recargar(); } catch (e) { aviso(e.message, true); }
   }));
 }
