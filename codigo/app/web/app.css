@@ -851,3 +851,10 @@ td.donde { max-width: 640px; min-width: 420px; }
 /* 3.1.3 · «Rehacer texto» resaltado cuando el archivo de texto está desactualizado */
 .btn.resaltado { border-color: var(--warn); color: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.15); position: relative; }
 .punto-cambio { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-left: 6px; animation: latido-se 2s ease-in-out infinite; }
+/* 3.1.3 · engranaje rojo «el programa está trabajando» (el primero del lateral) */
+.lat-engranajes .eng.proc { color: #5B6573; transition: color .3s, filter .3s; }
+.lat-engranajes .eng.proc.activo { color: #EF4444; filter: drop-shadow(0 0 7px rgba(239,68,68,.95)); animation: brillo-proc 1.2s ease-in-out infinite; }
+.lat-engranajes .eng.proc.activo svg { stroke-width: 2; }
+.lat-engranajes .eng.proc.gira svg { animation-duration: 1.6s; }
+@keyframes brillo-proc { 50% { filter: drop-shadow(0 0 2px rgba(239,68,68,.4)); } }
+@media (prefers-reduced-motion: reduce) { .lat-engranajes .eng.proc.activo { animation: none; } }

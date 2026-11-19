@@ -42,6 +42,7 @@ class App:
         self.motor.al_guardar.append(self.politica_correo.apuntar_remitente)
         self._ia_hilo = None
         threading.Thread(target=self._correo_auto, daemon=True).start()
+        self._en_curso, self._cerrojo_ocupado, self._enviando = 0, threading.Lock(), False
         threading.Thread(target=self._envios_auto, daemon=True).start()
         threading.Thread(target=self._ia_auto, daemon=True).start()
 
@@ -214,7 +215,11 @@ class App:
             l["documentos"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] not in ("separado", "deshecho")]
             l["separados"] = [d for d in docs if d["lote_id"] == l["id"] and d["estado"] == "separado"]
         cuenta = lambda *est: sum(1 for d in docs if d["estado"] in est)
-        return {"trabajando": self.trabajando, "ia": self.ia.resumen(), "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
+        ia = self.ia.resumen()
+        ocupado = [t for c, t in ((self.trabajando, "procesando documentos"), (self.correo_estado.get("trabajando"), "recogiendo el correo"),
+                                  (ia.get("estado") == "trabajando", "la IA está trabajando"), (self._enviando, "enviando correos programados"),
+                                  (self._en_curso > 0, "guardando o moviendo archivos")) if c]
+        return {"trabajando": self.trabajando, "ia": ia, "ocupado": ocupado, "lotes": [l for l in lotes if l["documentos"] or l["separados"]],
                 "cuentas": {"pendientes": cuenta("en_proceso", "espera_emparejar", "parado"), "revisar": cuenta("espera_emparejar", "parado"),
                             "limbo": cuenta("limbo"), "avisos_cliente": len(a.avisos_cliente()),
                             "avisos_se": a.db.execute("SELECT COUNT(*) FROM eventos WHERE nivel = 'se' AND id > ?", (self.motor.gestion.ajustes().get("avisos_se_visto", 0),)).fetchone()[0],
@@ -253,9 +258,12 @@ class App:
             time.sleep(30)
             try:
                 with CERROJO:
+                    self._enviando = True
                     envio_mod.vencidos(self.motor, self.correo)
             except Exception:
                 traceback.print_exc()
+            finally:
+                self._enviando = False
 
     def envios_pendientes(self):
         with CERROJO:
@@ -466,6 +474,16 @@ def crear_manejador(app):
                 self._error(e)
 
         def do_POST(self):
+            # 3.1.3 (Joan, 19/11): mientras haya una acción en curso, el engranaje rojo del lateral gira
+            with app._cerrojo_ocupado:
+                app._en_curso += 1
+            try:
+                return self._post()
+            finally:
+                with app._cerrojo_ocupado:
+                    app._en_curso -= 1
+
+        def _post(self):
             p = urlparse(self.path).path
             try:
                 if p == "/api/subir":     # un archivo por petición; el nombre va en la cabecera

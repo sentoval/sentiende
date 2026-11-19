@@ -46,25 +46,35 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force salida\SeFinancia\Datos -ErrorAction SilentlyContinue
-          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.1.2_windows.zip
+          Compress-Archive -Path salida\SeFinancia -DestinationPath SeFinancia_v3.2.0_windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SeFinancia_v3.1.2_windows
-          path: SeFinancia_v3.1.2_windows.zip
+          name: SeFinancia_v3.2.0_windows
+          path: SeFinancia_v3.2.0_windows.zip
 
       - name: Publicar para descargar
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.1.2
-          name: SeFinancia v3.1.2
+          tag_name: v3.2.0
+          name: SeFinancia v3.2.0
           prerelease: false
           make_latest: true
-          files: SeFinancia_v3.1.2_windows.zip
+          files: SeFinancia_v3.2.0_windows.zip
           body: |
-            SeFinancia 3.1.2 · motor Sentiende 3.1.2 (compilación ${{ github.run_number }}).
-            Descarga SeFinancia_v3.1.2_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+            SeFinancia 3.2.0 · motor Sentiende 3.2.0 (compilación ${{ github.run_number }}).
+            Descarga SeFinancia_v3.2.0_windows.zip, descomprímelo y copia la carpeta encima de la anterior (la carpeta Datos no se toca).
+
+            Novedades de la 3.2.0:
+            - Preparar envío de la documentación (en la checklist del expediente): documentos con casillas (✓; en negro los que no tienen archivo), mensaje con plantillas de más formal a más cercano (en plural si hay varios destinatarios), destinatarios del banco a la vista y del cliente con el origen de cada dato, y «Añadir nuevo destinatario».
+            - Enviar por correo vía Sentiende (ahora o programado; con aviso al cerrar el programa si hay envíos programados y pregunta si alguno no salió a su hora) o vía externa (borrador con adjuntos en tu programa de correo), por WhatsApp, a una carpeta o en zip (con un mensaje.txt). Campanita roja «Problema de envío» y pantalla «Envíos de documentación».
+            - Engranaje rojo en el lateral: gira y se ilumina mientras el programa trabaja; espera a que pare antes de tocar nada.
+            - Cobro: «Pendiente de cobro» junto a «Firmado» en la lista y botón Cobrar / Cobrado; al cobrar se guarda un zip de todo el expediente en la carpeta _Firmados (junto al programa, configurable).
+            - Estados: se quitan «Documentación completa» y «Enviado al banco».
+            - Tipo nuevo «Cuadro contable» (cuentas y hojas de cálculo sin tipo claro), siempre en un único documento.
+            - «Abrir» abre el documento; «Rehacer texto» se resalta cuando hay cambios; servidor de salida (SMTP) en Ajustes › Correo.
+            - Arreglos: documento atascado en el Limbo, nóminas asignadas al empresario, renta individual que llega sola, menores que no pueden ser cotitulares.
 
             Novedades de la 3.1.2:
             - Correo con reglas de «apto»: espera 1 minuto en la revisión automática (a mano no espera); remitente conocido (en los correos de una ficha) con adjuntos entra y sin adjuntos te avisa; desconocido sin adjuntos o con fotos que no se reconocen queda con la etiqueta «No_Apto_SeFina»; con Word/Excel y sin PDF te pregunta en la campanita sin abrirlos (Sí / No / No y bloquear); con algún PDF entra (si solo trae PDF y nada se relaciona con lo registrado, vuelve a la bandeja de entrada).

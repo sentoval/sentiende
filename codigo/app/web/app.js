@@ -45,11 +45,27 @@ const FASES = [
   ["Guardar", "El editado va a SeDocumentos\\<expediente>\\ y el original de Entrada\\ a Doc_original\\<expediente>\\. Se vacía la copia de trabajo.", "SeDocumentos\\ y Doc_original\\", "Sin permiso o disco lleno: se para aquí, nada se pierde. Reintentar."],
 ];
 
+// 3.1.3 (Joan, 19/11): engranaje rojo del lateral = el programa está trabajando (no tocar nada hasta que pare)
+let EN_CURSO = 0;
+function ocupadoAhora() {
+  const r = [...(S.estado?.ocupado || [])];
+  if (EN_CURSO && !r.includes("guardando o moviendo archivos")) r.push("guardando o moviendo archivos");
+  return r;
+}
+function marcarOcupado() {
+  const r = ocupadoAhora();
+  document.querySelectorAll(".eng.proc").forEach(el => { el.classList.toggle("gira", !!r.length); el.classList.toggle("activo", !!r.length);
+    el.title = r.length ? "Trabajando: " + r.join(" · ") + ". Espera a que pare antes de tocar nada." : "En reposo: puedes trabajar"; });
+}
 async function api(p, cuerpo, opciones = {}) {
-  const r = await fetch("/api/" + p, cuerpo !== undefined ? { method: "POST", body: typeof cuerpo === "string" || cuerpo instanceof Blob ? cuerpo : JSON.stringify(cuerpo), ...opciones } : {});
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || "Error");
-  return j;
+  const post = cuerpo !== undefined;
+  if (post) { EN_CURSO++; marcarOcupado(); }
+  try {
+    const r = await fetch("/api/" + p, post ? { method: "POST", body: typeof cuerpo === "string" || cuerpo instanceof Blob ? cuerpo : JSON.stringify(cuerpo), ...opciones } : {});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Error");
+    return j;
+  } finally { if (post) { EN_CURSO--; setTimeout(marcarOcupado, 400); } }
 }
 function aviso(txt, mal = false) {
   const a = $("#aviso"); a.textContent = txt; a.className = "si" + (mal ? " mal" : "");
@@ -203,8 +219,9 @@ function engranajes(lateral = false) {
   const iaTxt = !ia.activo ? "IA apagada" : ia.estado === "pausa" ? "IA en pausa" : ia.estado === "trabajando" ? "La IA está trabajando" : "IA encendida, en espera";
   const svg = t => `<svg viewBox="0 0 24 24" width="${t}" height="${t}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">${ENGRANAJE}</svg>`;
   if (lateral)        // 3.1.2 · boceto de Joan: «Motor ⚙ ⚙ IA» debajo de la marca, siempre a la vista
-    return `<a href="#motor" class="lat-engranajes" title="Motor de proceso"><small>Motor</small><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(24)}</span>
-      <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(24)}</span><small>IA</small></a>`;
+    return (oc => `<a href="#motor" class="lat-engranajes" title="Motor de proceso"><span class="eng proc ${oc.length ? "gira activo" : ""}" title="${oc.length ? "Trabajando: " + esc(oc.join(" · ")) + ". Espera a que pare antes de tocar nada." : "En reposo: puedes trabajar"}">${svg(24)}</span>
+      <span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(24)}</span>
+      <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(24)}</span></a>`)(ocupadoAhora());
   return `<div class="engranajes"><span class="eng motor ${motor ? "gira" : ""}" title="${motor ? "El motor está trabajando" : "El motor está parado"}">${svg(88)}<small>Motor</small></span>
     <span class="eng ia ${iaCls}" title="${iaTxt}">${svg(88)}<small>IA</small></span></div>`;
 }
@@ -1530,6 +1547,7 @@ async function refrescar(repintar) {
   if (cambio && r === "ia_informe" && !repintar) return ir();
   if (repintar || (cambio && ["motor", "limbo", "cuarentena", ""].includes(r))) pintar();
   else if (cambio) { lateral(); if (r === "revision" && !S.editando && !S.doc) ir(); }
+  marcarOcupado();
 }
 function aplicarApariencia() { document.body.style.zoom = ((S.ajustes?.apariencia?.tamano || 100) / 100).toString(); }
 async function inicio() {
