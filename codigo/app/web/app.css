@@ -858,3 +858,4 @@ td.donde { max-width: 640px; min-width: 420px; }
 .lat-engranajes .eng.proc.gira svg { animation-duration: 1.6s; }
 @keyframes brillo-proc { 50% { filter: drop-shadow(0 0 2px rgba(239,68,68,.4)); } }
 @media (prefers-reduced-motion: reduce) { .lat-engranajes .eng.proc.activo { animation: none; } }
+.lat-engranajes { gap: 13px; }   /* 3.2.0 (Joan, 19/11): un 30 % más separados (antes 10 px) */
