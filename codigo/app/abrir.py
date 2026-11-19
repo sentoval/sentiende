@@ -220,7 +220,26 @@ def main(argv=None, lanzador=None):
             import webview
             import inspect
             extra = {"maximized": True} if "maximized" in inspect.signature(webview.create_window).parameters else {}
-            webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680), **extra)   # 3.0.3: se abre a pantalla completa (maximizada)
+            ventana = webview.create_window(titulo, url, width=1440, height=900, min_size=(1000, 680), **extra)   # 3.0.3: se abre a pantalla completa (maximizada)
+
+            def al_cerrar():
+                # 3.1.3 (Joan, 18/11): si hay envíos programados, avisar de que no saldrán con el programa cerrado
+                try:
+                    n = app.envios_pendientes()
+                except Exception:
+                    n = 0
+                if not n:
+                    return True
+                txt = (f"Hay {n} envío(s) de correo programado(s).\n\nSi cierras el programa NO se enviarán a su hora: "
+                       "se enviarán cuando lo vuelvas a abrir (o puedes cancelarlos).\n\n¿Cerrar de todas formas?")
+                try:
+                    return bool(ventana.create_confirmation_dialog("Envíos programados", txt))
+                except Exception:
+                    return True
+            try:
+                ventana.events.closing += al_cerrar
+            except Exception:
+                pass
             import inspect
             if icono.is_file() and "icon" in inspect.signature(webview.start).parameters:
                 webview.start(icon=str(icono))

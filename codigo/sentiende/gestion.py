@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS remitentes(email TEXT PRIMARY KEY, estado TEXT, fecha
 CREATE TABLE IF NOT EXISTS papelera(id INTEGER PRIMARY KEY, tipo TEXT, ref_id INTEGER, nombre TEXT, fecha TEXT, carpeta TEXT,
   datos TEXT, restaurado TEXT);
 """
-FASES = {"abierto": "Abierto", "completo": "Documentación completa", "enviado": "Enviado al banco", "aprobado": "Aprobado"}
+FASES = {"abierto": "Abierto", "aprobado": "Aprobado"}
+FASES_QUITADAS = ("completo", "enviado")       # 3.1.3 (Joan, 18/11): «Documentación completa» y «Enviado al banco» ya no existen → Abierto
 MOTIVOS_CIERRE = ["Denegado por el banco", "El cliente desiste", "Documentación incompleta", "Firmó con otra entidad", "Otro"]
 PAPELES = ["Titular", "Cotitular", "Avalista", "Beneficiario", "Cónyuge o pareja no titular", "Administrador", "Titular anterior", "Tercero"]
 
@@ -131,9 +132,11 @@ class Gestion:
         r = self.db.execute("SELECT datos FROM operacion WHERE expediente_id = ?", (eid,)).fetchone()
         datos = json.loads(r["datos"]) if r else {}
         datos.setdefault("fase", "abierto")
+        if datos["fase"] in FASES_QUITADAS:
+            datos["fase"] = "abierto"
         hist = [dict(x) for x in self.db.execute("SELECT * FROM historial_estado WHERE expediente_id = ? ORDER BY id DESC", (eid,))]
         return {"estado": exp["estado"], "datos": datos, "historial": hist, "fases": FASES, "motivos": MOTIVOS_CIERRE,
-                "etiqueta": self.etiqueta(exp["estado"], datos)}
+                "etiqueta": self.etiqueta(exp["estado"], datos), "cobro": self.cobro(exp["estado"], datos)}
 
     @staticmethod
     def etiqueta(estado, datos):
@@ -146,6 +149,28 @@ class Gestion:
         if estado == "papelera":
             return "En la Papelera"
         return FASES.get((datos or {}).get("fase", "abierto"), "Abierto")
+
+    @staticmethod
+    def cobro(estado, datos):
+        """3.1.3 · firmado sin fecha de cobro → «pendiente»; con fecha → «cobrado»."""
+        if estado != "firmado":
+            return None
+        return "cobrado" if (datos or {}).get("fecha_cobro") else "pendiente"
+
+    def cobrar(self, eid, fecha=None, deshacer=False):
+        op = self.operacion(eid)
+        if op["estado"] != "firmado":
+            raise ErrorGestion("Solo se cobra un expediente firmado.")
+        d = op["datos"]
+        if deshacer:
+            d.pop("fecha_cobro", None); nota = "Cobro deshecho: vuelve a «pendiente de cobro»"
+        else:
+            d["fecha_cobro"] = fecha or datetime.date.today().isoformat()
+            nota = f"Honorarios cobrados el {d['fecha_cobro']}" + (f" ({d['honorarios_importe']} €)" if d.get("honorarios_importe") else "")
+        self._guardar_datos(eid, d)
+        self._historial(eid, "cobrado" if not deshacer else "firmado", nota)
+        self.db.commit()
+        return self.operacion(eid)
 
     def _guardar_datos(self, eid, datos):
         self.db.execute("INSERT OR REPLACE INTO operacion VALUES(?, ?)", (eid, json.dumps(datos, ensure_ascii=False)))
@@ -176,6 +201,23 @@ class Gestion:
         self.db.commit()
         return self.operacion(eid)
 
+    def destinatario_extra(self, eid, datos):
+        """3.1.3 · destinatario añadido a mano en «Preparar envío». Se guarda en el expediente (o como contacto del banco)."""
+        nombre, mail, movil = (datos.get("nombre") or "").strip(), (datos.get("email") or "").strip(), (datos.get("movil") or "").strip()
+        if not mail and not movil:
+            raise ErrorGestion("Pon un correo o un móvil.")
+        if mail and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", mail):
+            raise ErrorGestion("Ese correo no parece válido.")
+        if datos.get("banco"):
+            cid = self.m.negociacion.contacto(int(datos["banco"]), {"nombre": nombre, "email": mail, "movil": movil})
+            return {"contacto": cid}
+        op = self.operacion(eid)
+        d = op["datos"]
+        d.setdefault("destinatarios", []).append({"nombre": nombre, "email": mail, "movil": movil, "creado": ahora()})
+        self._guardar_datos(eid, d)
+        self.db.commit()
+        return {"ok": True}
+
     def cambiar_estado(self, eid, nuevo, extra=None):
         extra = extra or {}
         op = self.operacion(eid)
@@ -183,8 +225,6 @@ class Gestion:
         exp = self.a.expediente(eid)
         if nuevo in FASES:
             d["fase"] = nuevo
-            if nuevo == "enviado" and not d.get("fecha_envio"):
-                d["fecha_envio"] = datetime.date.today().isoformat()
             if nuevo == "aprobado" and not d.get("fecha_aprobacion"):
                 d["fecha_aprobacion"] = datetime.date.today().isoformat()
             estado_exp = "abierto"

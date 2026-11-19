@@ -2,7 +2,8 @@
 """Recibir por correo (v1.1). Lee un buzón IMAP y recoge los adjuntos admitidos.
 
 Reglas de seguridad (decididas con Joan):
-- Nunca se envía ni se borra ningún correo. Los mensajes se leen con BODY.PEEK (no se marcan como
+- Nunca se borra ningún correo. Solo se ENVÍA (3.1.3, Joan 18/11/2026) desde «Preparar envío» del expediente, cuando
+  Joan elige «Enviar desde Sentiende» y pulsa el botón, a los destinatarios que él marca (sentiende/envio.py). Los mensajes se leen con BODY.PEEK (no se marcan como
   leídos) y, si el servidor lo permite, se les pone la etiqueta «SeFinancia». Además se guarda un registro local.
 - 3.2 (Joan, 17/11/2026): los correos «aptos» ya procesados se MUEVEN a la carpeta «procesadosMMAA» del buzón,
   solo con MOVE o con UIDPLUS (UID EXPUNGE de ese único correo). Si el servidor no tiene ninguna de las dos
@@ -94,7 +95,7 @@ class Correo:
 
     def guardar(self, nuevos):
         a = self.ajustes(con_clave=True)
-        for k in ("activo", "proveedor", "servidor", "puerto", "usuario", "carpeta", "dias", "remitentes", "cada_minutos", "revisar_nuevos"):
+        for k in ("activo", "proveedor", "servidor", "puerto", "usuario", "carpeta", "dias", "remitentes", "cada_minutos", "revisar_nuevos", "smtp_servidor", "smtp_puerto"):
             if k in nuevos:
                 a[k] = nuevos[k]
         if nuevos.get("clave"):

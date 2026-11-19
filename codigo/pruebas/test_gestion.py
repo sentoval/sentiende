@@ -15,11 +15,15 @@ class TestGestion(unittest.TestCase):
             eid = m.crear_expediente(pid, "hipotecario")
             self.assertEqual(g.operacion(eid)["etiqueta"], "Abierto")
             g.guardar_operacion(eid, {"importe_solicitado": "200000", "honorarios_tipo": "porcentaje", "honorarios_valor": "1,5"})
-            self.assertEqual(g.cambiar_estado(eid, "enviado")["etiqueta"], "Enviado al banco")
+            self.assertEqual(g.cambiar_estado(eid, "aprobado")["etiqueta"], "Aprobado")
+            with self.assertRaises(Exception):
+                g.cambiar_estado(eid, "enviado")                 # 3.1.3: fase quitada
             op = g.cambiar_estado(eid, "firmado", {"importe_concedido": "180000", "entidad": "CaixaBank"})
-            self.assertEqual((op["estado"], op["datos"]["honorarios_importe"]), ("firmado", 2700.0))
+            self.assertEqual((op["estado"], op["datos"]["honorarios_importe"], op["cobro"]), ("firmado", 2700.0, "pendiente"))
             e = g.estadisticas()
             self.assertEqual((e["cuenta"]["firmados"], e["honorarios_pendientes"]), (1, 2700.0))
+            self.assertEqual(g.cobrar(eid, "2026-11-20")["cobro"], "cobrado")
+            self.assertEqual(g.cobrar(eid, deshacer=True)["cobro"], "pendiente")
             g.marcar(eid, favorito=True, prioridad="alta")
             self.assertEqual(g.marcas()[eid], {"favorito": True, "prioridad": "alta"})
             with self.assertRaises(Exception):

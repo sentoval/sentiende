@@ -23,7 +23,7 @@ const IC = {
   wa: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 .8a3.5 3.5 0 0 1-2.3-2.3l.8-1-1-2z"/>',
   zip: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v2M12 7v2M12 11v2"/><rect x="10.5" y="14" width="3" height="4" rx="1"/>',
   tel: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
-  down: '<path d="m6 9 6 6 6-6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   pause: '<path d="M9 5v14M15 5v14"/>', undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>', link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -74,14 +74,14 @@ function fbar(fase, estado) {
 function lateral() {
   const v = S.info.variante, c = S.estado?.cuentas || {};
   const r0 = S.ruta.split("/")[0] || "motor";
-  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", documentacion: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor", ia_mirar: "motor" })[r0] || r0;
+  const r = ({ limbo: "motor", cuarentena: "motor", avisos_cliente: "expedientes", expediente: "expedientes", documentacion: "expedientes", persona: "personas", separar: "revision", reglas: "ajustes", ia: "ajustes", ia_informe: "motor", ia_envio: "motor", ia_mirar: "motor", envios: "expedientes" })[r0] || r0;
   const item = (id, ic, txt, num, activo = true, prox = "") =>
     activo ? `<a href="#${id}" ${r === id ? 'aria-current="page"' : ""}>${ico(ic)}${txt}${num ? `<span class="num">${num}</span>` : ""}</a>`
            : `<a class="inactivo" aria-disabled="true" title="Llegará en una próxima versión">${ico(ic)}${txt}<span class="prox">${prox}</span></a>`;
   const abiertos = S.expedientes.filter(e => e.estado === "abierto").slice(0, 8);
   $("#lateral").innerHTML = `
     <div class="marca"><img class="logo" src="/api/logo" alt="" width="48" height="48"><span><b>${esc(v.nombre)}</b><span>con Sentiende</span></span></div>
-    <div class="lat-estado-zona">${engranajes(true)}
+    <div class="lat-estado-zona">${c.envios_errores ? `<a href="#envios" class="campana-se campana-envio ${r0 === "envios" ? "activa" : ""}" title="Algún correo de Preparar envío no ha salido">${ico("bell", 18)}<span>Problema de envío</span><b>${c.envios_errores}</b></a>` : ""}${engranajes(true)}
     ${(c.avisos_se || c.notificaciones) ? `<a href="#avisos_se" class="campana-se ${r === "avisos_se" ? "activa" : ""}" title="Avisos del programa y expedientes creados solos">${ico("bell", 18)}<span>Avisos del programa</span><b>${(c.avisos_se || 0) + (c.notificaciones || 0)}</b></a>` : ""}</div>
     <div class="nav">
       ${item("expedientes", "folder", "Expedientes")}
@@ -748,7 +748,9 @@ function vistaExpediente() {
       <div class="cab-exp"><span title="${titulares} titular(es)">${ico("user", 15)} ${titulares}</span><span>creado el ${fmtF(e.creado)}</span>
         <span title="Carpeta del expediente">${ico("edit", 14)} <code>${esc(e.carpeta)}</code></span>
         <select id="exp-finalidad" title="Tipo de financiación (pulsa para cambiarlo)">${Object.entries(v.finalidades).map(([k, n]) => `<option value="${k}" ${k === e.finalidad ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
-        <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button></div>
+        <button type="button" class="estado-b ${e.estado}" id="op-estado" title="Estado y datos de la operación">${esc(EXP.op?.etiqueta || e.etiqueta || "Abierto")} · cambiar estado</button>
+        ${EXP.op?.cobro === "pendiente" ? `<button type="button" class="btn-cobro pendiente" id="exp-cobrar" title="Marcar los honorarios como cobrados">${ico("check", 15)}Cobrar${EXP.op.datos.honorarios_importe ? " · " + eur(EXP.op.datos.honorarios_importe) : ""}</button>`
+          : EXP.op?.cobro === "cobrado" ? `<button type="button" class="btn-cobro cobrado" id="exp-cobrado" title="Cobrado el ${fmtF(EXP.op.datos.fecha_cobro)} (pulsa para deshacer)">${ico("check", 15)}Cobrado · ${fmtF(EXP.op.datos.fecha_cobro)}</button>` : ""}</div>
       <div class="exp-botones"><button class="btn peligro icono" id="exp-eliminar" title="Eliminar el expediente (va a la Papelera)" aria-label="Eliminar">${ico("trash", 18)}</button>
         ${e.estado === "abierto" ? `<button class="btn" id="unir-exp">${ico("users")}Unir con otro exp.</button>` : ""}<button class="btn" id="rehacer">${ico("play")}Rehacer texto</button></div>
     </div>
@@ -863,21 +865,21 @@ function tarjetaChecklist(e) {
 }
 // ---------------- 3.1.3 · preparar el envío de la documentación (boceto de Joan, 18/11): documentos, mensaje,
 // destinatarios (banco a la vista y cliente, con el origen de cada dato) y enviar por correo, WhatsApp, carpeta o zip
-const ENVIO = { exp: null, docs: new Set(), dest: new Set(), asunto: "", texto: "", plantilla: "neutro", editado: false, verPlantillas: false };
-const PLANTILLAS = [
-  ["muy_formal", "Muy formal", d => `Estimado/a ${d.trato}:\n\nPor medio del presente le remitimos la documentación correspondiente a la operación de ${d.operacion} de ${d.persona}, que se detalla a continuación:\n\n${d.lista}\n\nQuedamos a su entera disposición para cualquier aclaración.\n\nAtentamente,`],
-  ["formal", "Formal", d => `Buenos días, ${d.gestor}:\n\nLe adjunto la documentación de la operación de ${d.operacion} de ${d.persona}:\n\n${d.lista}\n\nQuedo a la espera de sus noticias. Un cordial saludo.`],
-  ["neutro", "Neutro", d => `Hola, ${d.gestor}: te adjunto los documentos referentes a la operación de ${d.persona}.\n\n${d.lista}\n\nSaludos.`],
-  ["cercano", "Cercano", d => `¡Hola, ${d.gestor}! Te paso la documentación de ${d.persona} para su ${d.operacion}:\n\n${d.lista}\n\nCualquier cosa que necesites, me dices. ¡Gracias!`],
-  ["muy_cercano", "Muy cercano", d => `¡Buenas, ${d.gestor}! Ahí va todo lo de ${d.persona}:\n\n${d.lista}\n\nA ver si sale pronto 😉 Un abrazo.`]];
+const ENVIO = { exp: null, docs: new Set(), dest: new Set(), asunto: "", texto: "", plantilla: "neutro", editado: false, verPlantillas: false, extra: [], nuevo: null, elegirCorreo: false, enviando: false };
+const PLANTILLAS = [   // d.pl: más de un destinatario → en plural (Joan, 18/11)
+  ["muy_formal", "Muy formal", d => `${d.pl ? "Estimados/as" : "Estimado/a"} ${d.trato}:\n\nPor medio del presente ${d.pl ? "les" : "le"} remitimos la documentación correspondiente a la operación de ${d.operacion} de ${d.persona}, que se detalla a continuación:\n\n${d.lista}\n\nQuedamos a su entera disposición para cualquier aclaración.\n\nAtentamente,`],
+  ["formal", "Formal", d => `Buenos días, ${d.gestor}:\n\n${d.pl ? "Les" : "Le"} adjunto la documentación de la operación de ${d.operacion} de ${d.persona}:\n\n${d.lista}\n\nQuedo a la espera de sus noticias. Un cordial saludo.`],
+  ["neutro", "Neutro", d => `Hola, ${d.gestor}: ${d.pl ? "os" : "te"} adjunto los documentos referentes a la operación de ${d.persona}.\n\n${d.lista}\n\nSaludos.`],
+  ["cercano", "Cercano", d => `¡Hola, ${d.gestor}! ${d.pl ? "Os" : "Te"} paso la documentación de ${d.persona} para su ${d.operacion}:\n\n${d.lista}\n\nCualquier cosa que ${d.pl ? "necesitéis, me decís" : "necesites, me dices"}. ¡Gracias!`],
+  ["muy_cercano", "Muy cercano", d => `¡Buenas, ${d.gestor}! Ahí va todo lo de ${d.persona}:\n\n${d.lista}\n\nA ver si sale pronto 😉 Un abrazo${d.pl ? " a todos" : ""}.`]];
 function envioDocs(e) {
   // grupos de la checklist con una casilla por archivo; las filas sin archivo salen en negro (no se pueden elegir)
   const { ck, docs } = EXP, porNombre = Object.fromEntries((docs || []).map(d => [d.nombre_final, d])), usados = new Set();
   const grupos = [];
-  const filas = f => [{ doc: f.documento, files: f.archivos.map(a => porNombre[a]).filter(Boolean).map(d => { usados.add(d.id); return { id: d.id, nombre: d.nombre_final }; }) }];
+  const filas = f => [{ doc: f.documento, files: f.archivos.map(a => porNombre[a]).filter(Boolean).map(d => { usados.add(d.id); return { id: d.id, nombre: d.nombre_final, privado: !!d.privado }; }) }];
   e.personas.forEach(p => { const fs = ck.filas.filter(f => f.persona_id === p.id); if (fs.length) grupos.push({ nombre: `${p.nombre} ${p.apellido1}`, items: fs.flatMap(filas) }); });
   const com = ck.filas.filter(f => !f.persona_id); if (com.length) grupos.push({ nombre: "Comunes", items: com.flatMap(filas) });
-  const otros = (docs || []).filter(d => !usados.has(d.id)).map(d => ({ doc: nombreTipo(d.tipo, d.modelo), files: [{ id: d.id, nombre: d.nombre_final }] }));
+  const otros = (docs || []).filter(d => !usados.has(d.id)).map(d => ({ doc: nombreTipo(d.tipo, d.modelo), files: [{ id: d.id, nombre: d.nombre_final, privado: !!d.privado }] }));
   if (otros.length) grupos.push({ nombre: "Otros guardados", items: otros });
   return grupos;
 }
@@ -895,6 +897,8 @@ function envioDestinatarios() {
     (p.correos_recibidos || []).forEach(m => add("cliente", "mail", m, q, "remitente de correo"));
     (p.correos || []).forEach(m => add("cliente", "mail", m, q, "leído en documento (OCR)"));
     (p.telefonos || []).forEach(t => add("cliente", /^[67]/.test(t) ? "tel" : "fijo", t, q, "leído en documento (OCR)")); });
+  (op.destinatarios || []).forEach(x => { add("cliente", "mail", x.email, x.nombre || "Añadido a mano", "manual · añadido"); add("cliente", "tel", x.movil, x.nombre || "Añadido a mano", "manual · añadido"); });
+  ENVIO.extra.forEach(x => { add("extra", "mail", x.email, x.nombre || "Solo este envío", "solo este envío"); add("extra", "tel", x.movil, x.nombre || "Solo este envío", "solo este envío"); });
   const tit = D.personas.find(p => p.papel === "Titular") || D.personas[0];
   if (tit) { const q = `${tit.nombre} ${tit.apellido1}`; add("cliente", "mail", op.contacto_email, q, "manual · informe"); add("cliente", "tel", op.contacto_tel, q, "manual · informe"); }
   return { lista, visible };
@@ -903,10 +907,11 @@ const envioArchivos = grupos => grupos.flatMap(g => g.items.flatMap(i => i.files
 function envioTexto(e, grupos, dest) {
   const v = S.info.variante, sel = envioArchivos(grupos).filter(i => ENVIO.docs.has(i.id));
   const pers = e.personas.filter(p => ["Titular", "Cotitular"].includes(p.papel)).map(p => `${p.nombre} ${p.apellido1} ${p.apellido2 || ""}`.trim());
-  const gest = dest.lista.filter(x => x.grupo !== "cliente" && ENVIO.dest.has(x.k)).map(x => x.quien.split(" · ")[0]);
-  const nombres = [...new Set(gest)];
+  const marcados = dest.lista.filter(x => ENVIO.dest.has(x.k));
+  const gest = marcados.filter(x => x.grupo !== "cliente").map(x => x.quien.split(" · ")[0]);
+  const nombres = [...new Set(gest)], personas = new Set(marcados.map(x => x.quien.split(" · ")[0]));
   const tipos = {}; sel.forEach(i => (tipos[i.doc] = (tipos[i.doc] || 0) + 1));
-  const d = { persona: pers.join(" y ") || "nuestro cliente", operacion: (v.finalidades[e.finalidad] || "financiación").toLowerCase(),
+  const d = { pl: personas.size > 1, persona: pers.join(" y ") || "nuestro cliente", operacion: (v.finalidades[e.finalidad] || "financiación").toLowerCase(),
     gestor: nombres.map(n => n.split(" ")[0]).join(" y ") || "buenos días", trato: nombres.join(" y ") || "Sr./Sra.",
     lista: Object.entries(tipos).map(([t, n]) => `  · ${t}${n > 1 ? ` (${n})` : ""}`).join("\n") || "  · (elige los documentos)" };
   return { asunto: `Documentación · ${d.persona} · ${v.finalidades[e.finalidad] || ""}`, texto: (PLANTILLAS.find(x => x[0] === ENVIO.plantilla) || PLANTILLAS[2])[2](d), d };
@@ -914,22 +919,22 @@ function envioTexto(e, grupos, dest) {
 function panelEnvio(e) {
   const grupos = envioDocs(e), dest = envioDestinatarios();
   if (ENVIO.exp !== e.id) {                       // al entrar en otro expediente: todo lo que tiene archivo, y el primer correo del banco
-    Object.assign(ENVIO, { exp: e.id, docs: new Set(envioArchivos(grupos).map(i => i.id)), dest: new Set(), editado: false, verPlantillas: false });
+    Object.assign(ENVIO, { exp: e.id, extra: [], nuevo: null, elegirCorreo: false, docs: new Set(envioArchivos(grupos).filter(i => !i.privado).map(i => i.id)), dest: new Set(), editado: false, verPlantillas: false });
     const m = dest.lista.find(x => x.grupo !== "cliente" && x.tipo === "mail"); if (m) ENVIO.dest.add(m.k);
   }
   const t = envioTexto(e, grupos, dest);
   if (!ENVIO.editado) { ENVIO.asunto = t.asunto; ENVIO.texto = t.texto; }
-  const chk = (on, attrs, titulo) => `<button type="button" class="chk ${on === null ? "nofile" : on === "medio" ? "medio" : on ? "on" : ""}" ${attrs} ${on === null ? "disabled" : ""} title="${esc(titulo)}">${on === "medio" ? "" : on ? ico("x", 13) : ""}</button>`;
+  const chk = (on, attrs, titulo) => `<button type="button" class="chk ${on === null ? "nofile" : on === "medio" ? "medio" : on ? "on" : ""}" ${attrs} ${on === null ? "disabled" : ""} title="${esc(titulo)}">${on === "medio" ? "" : on ? ico("check", 13) : ""}</button>`;
   const nDocs = envioArchivos(grupos).filter(i => ENVIO.docs.has(i.id)).length;
   const item = i => {
     if (!i.files.length) return `<div class="env-doc sin">${chk(null, "", "No hay archivo de este documento")}<span><span class="env-tipo">${esc(i.doc)}</span><small>sin archivo</small></span></div>`;
     if (i.files.length === 1) { const f = i.files[0];
-      return `<div class="env-doc">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<span><span class="env-tipo">${esc(i.doc)}</span><small class="mono">${esc(f.nombre)}</small></span></div>`; }
+      return `<div class="env-doc">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<span><span class="env-tipo">${esc(i.doc)}</span><small class="mono">${f.privado ? '<span class="pill p-todo">Privado</span> ' : ""}${esc(f.nombre)}</small></span></div>`; }
     const n = i.files.filter(f => ENVIO.docs.has(f.id)).length;
     return `<div class="env-doc">${chk(n === i.files.length ? true : n ? "medio" : false, `data-env-varios="${i.files.map(f => f.id).join(",")}"`, "Todos los archivos de este documento")}<span><span class="env-tipo">${esc(i.doc)} <small class="env-n">${n} de ${i.files.length}</small></span></span></div>
-      <div class="env-archivos">${i.files.map(f => `<div class="env-doc arch">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<small class="mono">${esc(f.nombre)}</small></div>`).join("")}</div>`; };
+      <div class="env-archivos">${i.files.map(f => `<div class="env-doc arch">${chk(ENVIO.docs.has(f.id), `data-env-doc="${f.id}"`, f.nombre)}<small class="mono">${f.privado ? '<span class="pill p-todo">Privado</span> ' : ""}${esc(f.nombre)}</small></div>`).join("")}</div>`; };
   const items = grupos.map(g => `<div class="env-grupo"><b>${esc(g.nombre)}</b>${g.items.map(item).join("")}</div>`).join("");
-  const ORIG = { "manual · ficha": "man", "manual · informe": "man", manual: "man", "remitente de correo": "rem", "leído en documento (OCR)": "ocr", "tarjeta de visita (OCR)": "ocr" };
+  const ORIG = { "manual · ficha": "man", "manual · informe": "man", manual: "man", "remitente de correo": "rem", "leído en documento (OCR)": "ocr", "tarjeta de visita (OCR)": "ocr", "manual · añadido": "man", "solo este envío": "solo" };
   const fila = x => `<div class="env-dest">${chk(x.tipo === "fijo" ? null : ENVIO.dest.has(x.k), x.tipo === "fijo" ? "" : `data-env-dest="${esc(x.k)}"`, x.tipo === "fijo" ? "Teléfono fijo: no vale para WhatsApp" : x.valor)}
       <span class="env-dest-ico">${ico(x.tipo === "mail" ? "mail" : "tel", 15)}</span>
       <span class="env-dest-txt"><span class="${x.tipo === "mail" ? "" : "mono"}">${esc(x.valor)}</span><span class="env-dest-de"><small>${esc(x.quien)}${x.tipo === "fijo" ? " · fijo" : ""}</small>${x.origenes.map(o => `<span class="origen ${ORIG[o] || "man"}">${esc(o)}</span>`).join("")}</span></span></div>`;
@@ -949,14 +954,56 @@ function panelEnvio(e) {
         ${ENVIO.editado ? '<button type="button" class="link" id="env-rehacer">Volver al texto de la plantilla</button>' : ""}
         ${ENVIO.verPlantillas ? `<div class="env-menu" role="menu"><span class="env-menu-cab">De más formal a más cercano</span>${PLANTILLAS.map(([k, n, f]) => `<button type="button" role="menuitem" class="${k === ENVIO.plantilla ? "sel" : ""}" data-env-plantilla="${k}"><b>${n}</b><small>${esc(f(t.d).split("\n")[0].slice(0, 70))}…</small></button>`).join("")}</div>` : ""}</div></div>
     <div class="env-col"><div class="env-cab"><span class="env-tit">Destinatarios</span><span class="env-sub">${NEG.banco ? "Banco a la vista arriba" : "Todos los bancos del expediente"} y cliente</span></div>
-      <div class="env-lista">${bancos}<div class="env-grupo"><b>${ico("user", 14)} Cliente</b>${cli.length ? cli.map(fila).join("") : '<small class="sub">Sin correos ni teléfonos del cliente.</small>'}</div></div></div>
+      <div class="env-lista">${bancos}<div class="env-grupo"><b>${ico("user", 14)} Cliente</b>${cli.length ? cli.map(fila).join("") : '<small class="sub">Sin correos ni teléfonos del cliente.</small>'}</div>
+      ${dest.lista.some(x => x.grupo === "extra") ? `<div class="env-grupo"><b>Solo para este envío</b>${dest.lista.filter(x => x.grupo === "extra").map(fila).join("")}</div>` : ""}
+      ${ENVIO.nuevo ? `<div class="env-nuevo"><b>Nuevo destinatario</b>
+        <input id="envn-nombre" placeholder="Nombre (opcional)" value="${esc(ENVIO.nuevo.nombre || "")}"><input id="envn-email" type="email" placeholder="Correo" value="${esc(ENVIO.nuevo.email || "")}"><input id="envn-movil" placeholder="Móvil" value="${esc(ENVIO.nuevo.movil || "")}">
+        <label class="env-lab" for="envn-donde">Guardar en</label><select id="envn-donde"><option value="">Solo para este envío</option><option value="exp">El expediente (cliente)</option>${dest.visible.map(b => `<option value="b${b.id}">Contacto de ${esc(b.entidad)}</option>`).join("")}</select>
+        <span class="fila"><button type="button" class="btn peq pri" id="envn-ok">${ico("check", 14)}Añadir</button><button type="button" class="btn peq" id="envn-no">Cancelar</button></span></div>`
+      : '<button type="button" class="btn peq env-anadir" id="env-anadir">＋ Añadir nuevo destinatario</button>'}</div></div>
     <div class="env-botones"><span class="env-tit">Enviar</span>
-      <button class="btn pri env-b" data-env-via="correo" ${mails && nDocs ? "" : "disabled"} title="Abre tu programa de correo con los documentos adjuntos">${ico("mail", 22)}<span>Correo</span></button>
+      <span class="env-correo"><button class="btn pri env-b" id="env-correo" ${mails && nDocs ? "" : "disabled"} aria-expanded="${ENVIO.elegirCorreo}" title="Elige cómo enviar el correo">${ico("mail", 22)}<span>Correo</span></button>
+        ${ENVIO.elegirCorreo === true ? `<span class="env-menu env-menu-correo" role="menu"><span class="env-menu-cab">¿Cómo lo envío?</span>
+          <button type="button" role="menuitem" id="env-via-sentiende"><b>Vía Sentiende</b><small>Lo envía el programa con tu cuenta de Ajustes › Correo: ahora o programado</small></button>
+          <button type="button" role="menuitem" data-env-via="correo_borrador"><b>Vía externa</b><small>Prepara un borrador con los adjuntos en tu programa de correo (Outlook…) y lo envías tú</small></button></span>`
+        : ENVIO.elegirCorreo === "sentiende" ? `<span class="env-menu env-menu-correo" role="menu"><span class="env-menu-cab">Vía Sentiende · ¿cuándo?</span>
+          <button type="button" role="menuitem" id="env-ahora"><b>Ahora</b><small>Se envía en este momento</small></button>
+          <button type="button" role="menuitem" id="env-prog-ver" class="${ENVIO.programar ? "sel" : ""}"><b>Programado</b><small>Eliges el día y la hora</small></button>
+          ${ENVIO.programar ? `<span class="env-prog"><label class="env-lab" for="env-cuando">Fecha y hora de envío</label><input id="env-cuando" type="datetime-local" value="${esc(ENVIO.cuando || "")}" min="${new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16)}">
+            <button type="button" class="btn pri peq" id="env-programar">${ico("clock", 14)}Programar envío</button>
+            <small class="warn-txt">Solo se envía si el programa está abierto a esa hora.</small></span>` : ""}
+          <button type="button" class="link env-volver" id="env-volver">‹ Volver</button></span>` : ""}</span>
       <button class="btn env-b wa" data-env-via="whatsapp" ${moviles ? "" : "disabled"} title="El asunto va al principio del texto">${ico("wa", 22)}<span>WhatsApp</span></button>
       <button class="btn env-b" data-env-via="carpeta" ${nDocs ? "" : "disabled"} title="Copia los archivos sueltos en una carpeta, con un .txt del asunto, el texto y los destinatarios">${ico("folder", 22)}<span>Carpeta</span></button>
       <button class="btn env-b" data-env-via="zip" ${nDocs ? "" : "disabled"} title="Un zip con los archivos y un .txt del asunto, el texto y los destinatarios">${ico("zip", 22)}<span>Zip</span></button>
       <small class="sub">${nDocs} doc. · ${mails} correo(s) · ${moviles} móvil(es)</small></div>
+    ${(EXP.envios || []).length ? `<div class="env-programados">${filasEnvios(EXP.envios, false)}</div>` : ""}
   </div>`;
+}
+function filasEnvios(lista, conExpediente) {
+  const f = t => `${fmtF(t)} a las ${(t || "").slice(11, 16)}`;
+  return lista.map(x => `<div class="env-prog-fila ${x.estado}">
+    <span class="env-prog-ico">${ico(x.estado === "error" ? "bell" : "clock", 18)}</span>
+    <span class="env-prog-txt"><b>${x.estado === "error" ? "No se ha podido enviar" : "Envío programado"} · ${f(x.estado === "error" ? x.hecho : x.cuando)}</b>
+      <small>${conExpediente ? `<a href="#expediente/${x.expediente_id}">${esc(x.expediente || "")}</a> · ` : ""}«${esc(x.asunto || "")}» · ${x.documentos} doc. · para ${esc(x.para.join(", "))}</small>
+      ${x.error ? `<small class="bad-txt">${esc(x.error)}</small>` : ""}</span>
+    <span class="env-prog-acc">${x.estado === "error" ? `<button class="btn peq pri" data-envio="${x.id}" data-accion="reintentar">Reintentar ahora</button>${x.visto ? "" : `<button class="btn peq" data-envio="${x.id}" data-accion="visto">Visto</button>`}` : ""}
+      <button class="btn peq" data-envio="${x.id}" data-accion="cancelar">${x.estado === "error" ? "Descartar" : "Cancelar"}</button></span></div>`).join("");
+}
+function activarFilasEnvios(recargar) {
+  document.querySelectorAll("[data-envio]").forEach(b => b.addEventListener("click", async () => {
+    const acc = b.dataset.accion;
+    if (acc === "cancelar" && !confirm("¿Cancelar este envío? No se enviará.")) return;
+    try { const r = await api("envio_accion", { id: +b.dataset.envio, accion: acc });
+      aviso(acc === "reintentar" ? (r.estado === "enviado" ? "Correo enviado" : "Sigue sin poder enviarse: " + (r.error || "")) : acc === "cancelar" ? "Envío cancelado" : "Visto", r.estado === "error");
+      await refrescar(true); await recargar(); } catch (e) { aviso(e.message, true); }
+  }));
+}
+let ENVIOS = null;
+function vistaEnvios() {
+  if (!ENVIOS) return '<div class="tarjeta vacio">Cargando…</div>';
+  return `<div class="cab"><div><small><a href="#expedientes">Expedientes</a></small><h1>Envíos de documentación</h1><div class="sub">Correos programados y los que no han podido salir. Los programados solo se envían con el programa abierto.</div></div></div>
+    ${ENVIOS.length ? `<section class="tarjeta env-programados sueltos">${filasEnvios(ENVIOS, true)}</section>` : '<div class="tarjeta vacio">No hay envíos programados ni con problemas.</div>'}`;
 }
 function activarEnvio() {
   const grupos = () => envioDocs(EXP.e);
@@ -974,7 +1021,52 @@ function activarEnvio() {
   document.querySelectorAll("[data-env-plantilla]").forEach(b => b.addEventListener("click", () => {
     if (ENVIO.editado && !confirm("Has cambiado el texto. ¿Sustituirlo por esta plantilla?")) return;
     Object.assign(ENVIO, { plantilla: b.dataset.envPlantilla, editado: false, verPlantillas: false }); pintar(); }));
-  document.querySelectorAll("[data-env-via]").forEach(b => b.addEventListener("click", () => aviso("Diseño: el envío se programa cuando le des el visto bueno.")));
+  $("#env-correo")?.addEventListener("click", () => { ENVIO.elegirCorreo = ENVIO.elegirCorreo ? false : true; ENVIO.programar = false; pintar(); });
+  $("#env-via-sentiende")?.addEventListener("click", () => { ENVIO.elegirCorreo = "sentiende"; pintar(); });
+  $("#env-volver")?.addEventListener("click", () => { ENVIO.elegirCorreo = true; ENVIO.programar = false; pintar(); });
+  $("#env-prog-ver")?.addEventListener("click", () => { ENVIO.programar = !ENVIO.programar; pintar(); });
+  $("#env-cuando")?.addEventListener("input", ev => { ENVIO.cuando = ev.target.value; });
+  const sentiende = async cuando => {
+    const dest = envioDestinatarios().lista.filter(x => ENVIO.dest.has(x.k) && x.tipo === "mail");
+    if (!cuando && !confirm(`¿Enviar ahora desde Sentiende ${ENVIO.docs.size} documento(s) a ${dest.map(x => x.valor).join(", ")}?`)) return;
+    try {
+      const r = await api("envio_sentiende", { expediente: EXP.e.id, documentos: [...ENVIO.docs], asunto: ENVIO.asunto, texto: ENVIO.texto, cuando,
+        destinatarios: dest.map(x => ({ tipo: x.tipo, valor: x.valor, quien: x.quien, origenes: x.origenes })) });
+      Object.assign(ENVIO, { elegirCorreo: false, programar: false });
+      aviso(r.estado === "enviado" ? "Correo enviado" : r.estado === "programado" ? `Envío programado: ${fmtF(r.cuando)} a las ${r.cuando.slice(11, 16)}` : "No se ha podido enviar: " + (r.error || ""), r.estado === "error");
+      await refrescar(true); await cargarExpediente(EXP.e.id, true);
+    } catch (er) { aviso(er.message, true); }
+  };
+  $("#env-ahora")?.addEventListener("click", () => sentiende(null));
+  $("#env-programar")?.addEventListener("click", () => { const c = $("#env-cuando").value; if (!c) return aviso("Elige la fecha y la hora.", true); sentiende(c); });
+  activarFilasEnvios(() => cargarExpediente(EXP.e.id, true));
+  $("#env-anadir")?.addEventListener("click", () => { ENVIO.nuevo = {}; pintar(); $("#envn-email")?.focus(); });
+  $("#envn-no")?.addEventListener("click", () => { ENVIO.nuevo = null; pintar(); });
+  $("#envn-ok")?.addEventListener("click", async () => {
+    const n = { nombre: $("#envn-nombre").value.trim(), email: $("#envn-email").value.trim(), movil: $("#envn-movil").value.trim() }, donde = $("#envn-donde").value;
+    if (!n.email && !n.movil) return aviso("Pon un correo o un móvil.", true);
+    const k = [n.email && "mail:" + n.email.toLowerCase(), n.movil && "tel:" + n.movil.toLowerCase().replace(/\s/g, "")].filter(Boolean);
+    try {
+      if (!donde) ENVIO.extra.push(n);
+      else { await api("destinatario_extra", { expediente: EXP.e.id, ...n, banco: donde.startsWith("b") ? +donde.slice(1) : null });
+        await cargarExpediente(EXP.e.id, true); }
+      k.forEach(x => ENVIO.dest.add(x)); ENVIO.nuevo = null; pintar(); aviso("Destinatario añadido");
+    } catch (er) { aviso(er.message, true); }
+  });
+  document.querySelectorAll("[data-env-via]").forEach(b => b.addEventListener("click", async () => {
+    const via = b.dataset.envVia, dest = envioDestinatarios().lista.filter(x => ENVIO.dest.has(x.k) && x.tipo !== "fijo")
+      .filter(x => via === "whatsapp" ? x.tipo === "tel" : via.startsWith("correo") ? x.tipo === "mail" : true);
+    const docs = [...ENVIO.docs];
+    ENVIO.elegirCorreo = false;
+    try {
+      const r = await api("enviar_documentacion", { expediente: EXP.e.id, via, documentos: docs, asunto: ENVIO.asunto, texto: ENVIO.texto,
+        destinatarios: dest.map(x => ({ tipo: x.tipo, valor: x.valor, quien: x.quien, origenes: x.origenes })) });
+      aviso({ correo_sentiende: "Correo enviado", correo_borrador: "Borrador abierto en tu programa de correo",
+        whatsapp: `WhatsApp abierto con el texto; arrastra los archivos de la carpeta${r.otros_moviles ? ` (los otros ${r.otros_moviles} móvil(es), uno a uno)` : ""}`,
+        carpeta: "Carpeta preparada con mensaje.txt", zip: "Zip preparado con mensaje.txt" }[via]);
+      pintar();
+    } catch (er) { aviso(er.message, true); pintar(); }
+  }));
 }
 function textoInforme() {
   const { e, ck } = EXP, falta = ck.filas.filter(f => f.estado !== "Recibido" && (EXP.neg?.marcas || {})[f.clave]?.estado !== "sin_pedir");
@@ -1134,9 +1226,9 @@ function activarExpediente(id) {
 async function cargarExpediente(id, suave) {
   if (!suave) { EXP = null; pintar(); }
   const e = S.expedientes.find(x => x.id === id) || (await api("expedientes")).find(x => x.id === id);
-  const [ck, docs, neg, op, datos] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id), api("datos_expediente/" + id).catch(() => null)]);
+  const [ck, docs, neg, op, datos, envios] = await Promise.all([api("checklist/" + id), api("documentos_expediente/" + id), api("negociacion/" + id), api("operacion/" + id), api("datos_expediente/" + id).catch(() => null), api("envios/" + id).catch(() => [])]);
   if (EXP?.e?.id !== id) { Object.assign(NEG, { banco: 0, verBanco: false, contacto: null }); OPV = false; DIALOGO = null; }
-  EXP = { e, ck, docs, neg, op, datos }; ARR.unir = false; ARR.mover = null; pintar();
+  EXP = { e, ck, docs, neg, op, datos, envios }; ARR.unir = false; ARR.mover = null; pintar();
 }
 
 // ------------------------------------------------------------------ Avisos, Limbo, Ajustes
@@ -1387,6 +1479,7 @@ function pintar() {
     expedientes: [vistaExpedientes, activarExpedientes],
     expediente: [vistaExpediente, () => activarExpediente(+id)],
     documentacion: [vistaDocumentacion, () => activarExpediente(+id)],
+    envios: [vistaEnvios, () => activarFilasEnvios(async () => { ENVIOS = await api("envios"); pintar(); })],
     unir: [vistaUnir, activarUnir], avisos: [vistaAvisosSe, activarNotificaciones], avisos_se: [vistaAvisosSe, () => { activarNotificaciones(); activarLecturaPobre(); $("#se-vistos")?.addEventListener("click", async () => { await api("avisos_se_vistos", {}); await refrescar(true); aviso("Avisos marcados como vistos"); }); }],
     avisos_cliente: [vistaAvisosCliente, activarAvisosCliente], limbo: [vistaLimbo, activarLimbo], ajustes: [vistaAjustes, activarAjustes],
     cuarentena: [vistaCuarentena, activarCuarentena], personas: [vistaPersonas, activarPersonas], persona: [() => vistaPersona(+id), () => activarPersona(+id)],
@@ -1413,6 +1506,7 @@ async function ir() {
   if (r === "unir") UNIR = (id || "").split(",").filter(Boolean).map(Number);
   if (r === "revision" || r === "unir") S.prop = await api("propuestas_union");
   if (["avisos", "avisos_se", "avisos_cliente"].includes(r)) AV = await api("avisos");
+  if (r === "envios") ENVIOS = await api("envios");
   if (r === "cuarentena") CUA = await api("cuarentena");
   if (r === "personas" || r === "persona") PERS = await api("personas");
   if (r === "papelera") PAP = await api("papelera");
@@ -1494,7 +1588,7 @@ function vistaExpedientes() {
   ${lista.length ? `<section class="tarjeta sinp"><table class="tabla lista-exp"><thead><tr><th></th><th>Expediente</th><th>Estado</th><th>Personas</th><th>Checklist</th><th>Carpeta</th><th title="Avisos de cliente">Avisos</th></tr></thead><tbody>
   ${lista.map(e => `<tr class="clic prio-${e.marcas.prioridad || "no"} ${e.estado === "unido" ? "apagada" : ""}" data-exp="${e.id}">
     <td class="marcas-exp"><button type="button" class="marca-b ${e.marcas.favorito ? "on" : ""}" data-fav="${e.id}" title="Favorito">${e.marcas.favorito ? "★" : "☆"}</button><button type="button" class="marca-b ${e.marcas.prioridad ? "on" : ""}" data-prio="${e.id}" title="${PRIO[e.marcas.prioridad]} (pulsa para cambiar)">${ico("bell", 16)}</button></td>
-    <td><b>${esc(e.nombre)}</b><div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)}</div></td><td>${pill(e.etiqueta, e.estado === "firmado" ? "ok" : e.estado === "cerrado" ? "bad" : "todo")}</td>
+    <td><b>${esc(e.nombre)}</b><div class="sub">${esc(v.finalidades[e.finalidad] || e.finalidad)}</div></td><td><span class="pills-estado">${pill(e.etiqueta, e.estado === "firmado" ? "ok" : e.estado === "cerrado" ? "bad" : "todo")}${e.cobro === "pendiente" ? pill("Pendiente de cobro", "warn") : e.cobro === "cobrado" ? pill("Cobrado", "ok") : ""}</span></td>
     <td>${e.personas.map(p => esc(`${p.nombre} ${p.apellido1}`) + ` <span class="muted">(${esc(p.papel)})</span>`).join("<br>")}</td>
     <td>${e.checklist ? `${e.checklist.recibidos} de ${e.checklist.total}` : "—"}</td><td class="mono">${esc(e.carpeta)}</td>
     <td class="centro">${e.avisos ? `<a class="circ-avisos" href="#avisos_cliente" title="${e.avisos} aviso(s) de cliente">${e.avisos}</a>` : ""}</td></tr>`).join("")}</tbody></table></section>`
@@ -1557,6 +1651,10 @@ function dialogoEstado() {
   if (!DIALOGO) return "";
   const d = EXP.op.datos, bancos = [...new Set([...(EXP.neg?.bancos || []).map(b => b.entidad), ...S.info.bancos])];
   const lista = `<datalist id="dl-bancos">${bancos.map(b => `<option value="${esc(b)}">`).join("")}</datalist>`;
+  if (DIALOGO === "cobrar") return `<div class="zoom informe"><div class="tarjeta"><h2>Marcar como cobrado</h2>
+    <div class="op-campos"><div class="campo"><label>Honorarios</label><input disabled value="${eur(d.honorarios_importe)}"></div>
+    <div class="campo"><label for="dco-fecha">Fecha de cobro</label><input id="dco-fecha" type="date" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+    <div class="acciones"><button class="btn pri" id="dco-ok">${ico("check")}Cobrado</button><button class="btn" id="dlg-no">Cancelar</button></div></div></div>`;
   if (DIALOGO === "firmar") return `<div class="zoom informe"><div class="tarjeta"><h2>Marcar como firmado</h2>
     <div class="op-campos"><div class="campo"><label>Importe concedido (€)</label><input id="df-imp" type="number" value="${esc(d.importe_concedido || d.importe_solicitado || "")}"></div>
     <div class="campo"><label>Entidad</label><input id="df-ent" list="dl-bancos" value="${esc(d.entidad || "")}">${lista}</div>
@@ -1574,6 +1672,10 @@ function dialogoEstado() {
 }
 function activarOperacion(id, recargar) {
   $("#op-estado")?.addEventListener("click", () => { OPV = !OPV; pintar(); });
+  $("#exp-cobrar")?.addEventListener("click", () => { DIALOGO = "cobrar"; pintar(); });
+  $("#exp-cobrado")?.addEventListener("click", async () => { if (!confirm("¿Deshacer el cobro? Volverá a «pendiente de cobro».")) return;
+    try { EXP.op = await api("cobrar", { expediente: id, deshacer: true }); aviso("Vuelve a pendiente de cobro"); await recargar(); } catch (e) { aviso(e.message, true); } });
+  $("#dco-ok")?.addEventListener("click", async () => { try { EXP.op = await api("cobrar", { expediente: id, fecha: $("#dco-fecha").value }); DIALOGO = null; aviso("Honorarios cobrados"); await recargar(); } catch (e) { aviso(e.message, true); } });
   $("#op-cerrar-panel")?.addEventListener("click", () => { OPV = false; pintar(); });
   const cambiar = async (estado, extra) => { try { EXP.op = await api("estado_expediente", { expediente: id, estado, extra }); DIALOGO = null; aviso(EXP.op.etiqueta); await recargar(); } catch (e) { aviso(e.message, true); } };
   document.querySelectorAll("[data-fase]").forEach(b => b.addEventListener("click", () => cambiar(b.dataset.fase)));
