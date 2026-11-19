@@ -1,8 +1,8 @@
 name: Crear SeFinancia.exe
 
+# Desde el 19/11/2026 (Joan): el programa de Windows se compila EN LOCAL, en el equipo de Joan, con
+# Crear_SeFinancia.bat. Este flujo ya no se lanza solo al subir a main; queda solo para lanzarlo a mano.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
