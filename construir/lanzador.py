@@ -7,7 +7,7 @@ actualizarlos por separado sin volver a crear el .exe."""
 import importlib, os, sys
 from pathlib import Path
 
-LANZADOR = 2          # súbelo cuando cambien las librerías que lleva el .exe
+LANZADOR = 3          # súbelo cuando cambien las librerías que lleva el .exe
 
 def _para_pyinstaller():
     """Nunca se ejecuta: le dice a PyInstaller qué meter en el .exe (lo que usa el motor)."""
@@ -16,6 +16,7 @@ def _para_pyinstaller():
     import statistics, string, subprocess, tempfile, textwrap, threading, time, traceback, unicodedata, uuid
     import urllib.parse, urllib.request, webbrowser, zipfile, xml.etree.ElementTree
     import imaplib, ssl, email, email.header, email.message, email.parser, email.policy, email.utils, inspect, ctypes.wintypes   # v1.1: correo
+    import smtplib, hmac, email.generator, email.mime.multipart, email.mime.base, email.mime.text, email.contentmanager   # 3.2.1: enviar correo
     import numpy, cv2, PIL.Image, PIL.ImageOps, PIL.ImageDraw, PIL.ImageFont
     import pdfplumber, pypdf, pypdfium2, pytesseract, docx, openpyxl, webview
 

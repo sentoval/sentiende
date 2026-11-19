@@ -12,7 +12,8 @@ Vías (decididas con Joan):
 - «carpeta»: los archivos sueltos en una carpeta, con «mensaje.txt» (asunto, texto y destinatarios).
 - «zip»: un zip con los archivos y «mensaje.txt».
 Todo va a Datos\\Envios\\<carpeta del expediente>\\<fecha>_<vía>. Los originales no se tocan (siempre se copia)."""
-import datetime, mimetypes, re, shutil, smtplib, ssl, zipfile
+import datetime, mimetypes, re, shutil, ssl, zipfile
+# smtplib se importa solo al enviar: el SeFinancia.exe de la 3.2.0 (lanzador 2) no lo lleva dentro y el programa no abría
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
@@ -84,6 +85,10 @@ def _smtp(ajustes):
 
 
 def enviar_smtp(ajustes, clave, msg):
+    try:
+        import smtplib
+    except ImportError:
+        raise ErrorEnvio("Falta el módulo de envío de correo en esta versión del programa: vuelve a crear el programa con el kit (Crear_SeFinancia.bat).")
     host, puerto = _smtp(ajustes)
     if "gmail" in host:
         clave = clave.replace(" ", "")
